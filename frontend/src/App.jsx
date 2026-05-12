@@ -134,7 +134,7 @@ function PreviewPanel({ track, onClose, setPreviewTrack }) {
   }
 
   return (
-    <div ref={panelRef} className="w-1/2 h-full overflow-y-auto border-l border-neutral-800/50">
+    <div ref={panelRef} className="w-full h-full">
       <audio ref={audioRef} src={`/api/beets/items/${track.id}/stream`} />
 
       <div className="p-8 space-y-8 relative">
@@ -317,28 +317,17 @@ function PreviewPanel({ track, onClose, setPreviewTrack }) {
 
 function PreviewProvider({ children }) {
   const [previewTrack, setPreviewTrack] = useState(null)
-  const [isPanelOpen, setIsPanelOpen] = useState(false)
   const location = useLocation()
 
   // Close preview panel when navigating away from track views
   useEffect(() => {
     if (location.pathname.startsWith('/tools')) {
       setPreviewTrack(null)
-      setIsPanelOpen(false)
     }
   }, [location.pathname])
 
-  // Track when panel opens/closes
-  useEffect(() => {
-    if (previewTrack && !isPanelOpen) {
-      setIsPanelOpen(true)
-    } else if (!previewTrack && isPanelOpen) {
-      setIsPanelOpen(false)
-    }
-  }, [previewTrack, isPanelOpen])
-
   return (
-    <PreviewContext.Provider value={{ previewTrack, setPreviewTrack, isPanelOpen }}>
+    <PreviewContext.Provider value={{ previewTrack, setPreviewTrack }}>
       {children}
     </PreviewContext.Provider>
   )
@@ -347,7 +336,7 @@ function PreviewProvider({ children }) {
 function AlbumDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { previewTrack, setPreviewTrack, isPanelOpen } = useContext(PreviewContext)
+  const { previewTrack, setPreviewTrack } = useContext(PreviewContext)
   const [album, setAlbum] = useState(null)
   const [tracks, setTracks] = useState([])
   const [loading, setLoading] = useState(true)
@@ -620,7 +609,7 @@ function AlbumDetail() {
     >
       <Header />
       <div className="flex">
-        <div className={`transition-all duration-300 ${previewTrack ? 'w-1/2' : 'w-full'}`}>
+        <div className="flex-1 min-w-0">
           <div className="max-w-7xl mx-auto px-6 py-8">
         <button onClick={() => navigate(-1)} className="text-sm text-neutral-400 hover:text-rose-500 mb-6">
           ← Back
@@ -804,10 +793,7 @@ function AlbumDetail() {
         </div>
 
         {previewTrack && (
-          <div
-            className={`w-1/2 sticky top-16 h-[calc(100vh-4rem)] self-start ${!isPanelOpen ? 'animate-slide-in' : ''}`}
-            key="preview-panel"
-          >
+          <div className="w-1/2 flex-shrink-0 border-l border-neutral-800 sticky top-16 h-[calc(100vh-4rem)] self-start overflow-y-auto">
             <PreviewPanel
               track={previewTrack}
               onClose={() => setPreviewTrack(null)}
@@ -1300,7 +1286,7 @@ function DuplicatesFinder() {
 }
 
 function Dashboard() {
-  const { previewTrack, setPreviewTrack, isPanelOpen } = useContext(PreviewContext)
+  const { previewTrack, setPreviewTrack } = useContext(PreviewContext)
   const [stats, setStats] = useState(null)
   const [albums, setAlbums] = useState([])
   const [items, setItems] = useState([])
@@ -1411,7 +1397,7 @@ function Dashboard() {
       />
 
       <div className="flex">
-        <div className={`transition-all duration-300 ${previewTrack ? 'w-1/2' : 'w-full'}`}>
+        <div className="flex-1 min-w-0">
           <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Search Results Info */}
         {searchQuery && (
@@ -1545,10 +1531,7 @@ function Dashboard() {
         </div>
 
         {previewTrack && (
-          <div
-            className={`w-1/2 sticky top-16 h-[calc(100vh-4rem)] self-start bg-neutral-950 ${!isPanelOpen ? 'animate-slide-in' : ''}`}
-            key="preview-panel"
-          >
+          <div className="w-1/2 flex-shrink-0 border-l border-neutral-800 sticky top-16 h-[calc(100vh-4rem)] self-start overflow-y-auto bg-neutral-950">
             <PreviewPanel
               track={previewTrack}
               onClose={() => setPreviewTrack(null)}
