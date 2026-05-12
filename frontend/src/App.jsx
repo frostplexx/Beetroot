@@ -12,6 +12,7 @@ function PreviewPanel({ track, onClose, setPreviewTrack }) {
   const [editMode, setEditMode] = useState(false)
   const [fetchingLyrics, setFetchingLyrics] = useState(false)
   const [lyricsError, setLyricsError] = useState(null)
+  const [lyricsSuccess, setLyricsSuccess] = useState(false)
   const [formData, setFormData] = useState({
     title: '',
     artist: '',
@@ -100,7 +101,10 @@ function PreviewPanel({ track, onClose, setPreviewTrack }) {
   const handleFetchLyrics = async () => {
     setFetchingLyrics(true)
     setLyricsError(null)
+    setLyricsSuccess(false)
+
     try {
+      // Call the fetch lyrics endpoint
       const response = await fetch('/api/beets/fetch-lyrics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -108,26 +112,52 @@ function PreviewPanel({ track, onClose, setPreviewTrack }) {
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to fetch lyrics')
+        const error = await response.json().catch(() => ({}))
+        const errorMsg = error.error || 'Failed to fetch lyrics from server'
+
+        // Provide more helpful error messages
+        if (response.status === 404) {
+          throw new Error('Lyrics service not found. Make sure the lyrics plugin is enabled in beets config.')
+        } else if (response.status >= 500) {
+          throw new Error('Server error while fetching lyrics. Please try again.')
+        } else {
+          throw new Error(errorMsg)
+        }
       }
 
-      // Wait a moment for beets to write to database
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Wait for beets to write to database
+      await new Promise(resolve => setTimeout(resolve, 1000))
 
       // Refetch the track to get updated lyrics
       const itemResponse = await fetch(`/api/beets/items`)
+
+      if (!itemResponse.ok) {
+        throw new Error('Failed to reload track data')
+      }
+
       const items = await itemResponse.json()
       const updatedTrack = items.find(item => item.id === track.id)
 
-      if (updatedTrack && updatedTrack.lyrics) {
-        // Update the preview track with new data (without closing)
+      if (!updatedTrack) {
+        throw new Error('Track not found after fetching lyrics')
+      }
+
+      if (updatedTrack.lyrics && updatedTrack.lyrics.trim().length > 0) {
+        // Successfully found lyrics
         setPreviewTrack(updatedTrack)
+        setLyricsSuccess(true)
+        setTimeout(() => setLyricsSuccess(false), 3000)
       } else {
-        setLyricsError('No lyrics found for this track')
+        // Beets command succeeded but no lyrics were found online
+        setLyricsError('No lyrics found online for this track. The song may not be in lyrics databases, or the metadata may not match.')
       }
     } catch (err) {
-      setLyricsError(err.message)
+      // Network or other errors
+      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        setLyricsError('Network error. Please check your connection and try again.')
+      } else {
+        setLyricsError(err.message)
+      }
     } finally {
       setFetchingLyrics(false)
     }
@@ -213,22 +243,56 @@ function PreviewPanel({ track, onClose, setPreviewTrack }) {
                   <button
                     onClick={handleFetchLyrics}
                     disabled={fetchingLyrics}
-                    className="px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-rose-500 hover:text-rose-500 disabled:opacity-50 transition-colors"
+                    className="px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-rose-500 hover:text-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                   >
-                    {fetchingLyrics ? 'Fetching...' : 'Fetch Lyrics'}
+                    {fetchingLyrics && (
+                      <div className="w-3 h-3 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin"></div>
+                    )}
+                    {fetchingLyrics ? 'Searching online...' : 'Fetch Lyrics'}
                   </button>
                 )}
               </div>
-              {lyricsError && (
-                <div className="mb-4 p-3 bg-red-950/30 border border-red-900/50 rounded text-sm text-red-400">
-                  {lyricsError}
+
+              {/* Success message */}
+              {lyricsSuccess && (
+                <div className="mb-4 p-3 bg-rose-950/30 border border-rose-900/50 rounded text-sm text-rose-400 flex items-center gap-2">
+                  <i className="fa-solid fa-check-circle"></i>
+                  Lyrics found and saved!
                 </div>
               )}
+
+              {/* Error message */}
+              {lyricsError && (
+                <div className="mb-4 p-3 bg-red-950/30 border border-red-900/50 rounded text-sm">
+                  <div className="flex items-start gap-2">
+                    <i className="fa-solid fa-exclamation-triangle text-red-500 mt-0.5"></i>
+                    <div className="flex-1">
+                      <p className="text-red-400 font-medium mb-1">Failed to fetch lyrics</p>
+                      <p className="text-red-300/80 text-xs">{lyricsError}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Fetching state */}
+              {fetchingLyrics && (
+                <div className="mb-4 p-3 bg-neutral-800/50 border border-neutral-700 rounded text-sm text-neutral-400 flex items-center gap-3">
+                  <div className="w-4 h-4 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin"></div>
+                  <div>
+                    <p className="font-medium">Searching for lyrics...</p>
+                    <p className="text-xs text-neutral-500 mt-0.5">This may take a few moments</p>
+                  </div>
+                </div>
+              )}
+
               <div className="text-sm text-neutral-400 leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">
-                {track.lyrics || (
+                {track.lyrics ? (
+                  track.lyrics
+                ) : (
                   <div className="text-center py-8">
+                    <i className="fa-solid fa-music text-3xl text-neutral-700 mb-3"></i>
                     <p className="text-neutral-500 mb-2">No lyrics available</p>
-                    <p className="text-xs text-neutral-600">Click "Fetch Lyrics" to search for lyrics online</p>
+                    <p className="text-xs text-neutral-600">Click "Fetch Lyrics" to search online lyrics databases</p>
                   </div>
                 )}
               </div>
