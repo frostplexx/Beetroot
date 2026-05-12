@@ -77,6 +77,11 @@ func main() {
 	mux.HandleFunc("/api/beets/modify-item", handlers.ModifyItemHandler())
 	mux.HandleFunc("/api/beets/mb-recommendations", handlers.GetMusicBrainzRecommendationsHandler(db))
 
+	// Delete endpoints
+	mux.HandleFunc("/api/beets/delete/album", handlers.DeleteAlbumHandler())
+	mux.HandleFunc("/api/beets/delete/item", handlers.DeleteItemHandler())
+	mux.HandleFunc("/api/beets/delete/artist", handlers.DeleteArtistHandler())
+
 	// Tool endpoints
 	mux.HandleFunc("/api/beets/duplicates", handlers.DuplicatesHandler())
 	mux.HandleFunc("/api/beets/duplicates/merge", handlers.MergeDuplicatesHandler())

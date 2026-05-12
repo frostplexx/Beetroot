@@ -44,6 +44,7 @@ type Item struct {
 	Disc               sql.NullInt64   `json:"disc"`
 	DiscTotal          sql.NullInt64   `json:"disctotal"`
 	Genres             sql.NullString  `json:"genres"`
+	Lyrics             sql.NullString  `json:"lyrics"`
 	MusicBrainzTrackID sql.NullString  `json:"mb_trackid"`
 	MusicBrainzAlbumID sql.NullString  `json:"mb_albumid"`
 	Added              float64         `json:"added"`
@@ -352,7 +353,7 @@ func (db *DB) GetItems(ctx context.Context, opts QueryOptions) ([]Item, error) {
 	query := `SELECT
 		id, title, artist, artist_sort, album, album_id, albumartist,
 		path, length, bitrate, format, year, month, day,
-		track, tracktotal, disc, disctotal, genres,
+		track, tracktotal, disc, disctotal, genres, lyrics,
 		mb_trackid, mb_albumid, added, mtime
 	FROM items`
 
@@ -388,7 +389,7 @@ func (db *DB) GetItems(ctx context.Context, opts QueryOptions) ([]Item, error) {
 			&pathBytes, &item.Length, &item.Bitrate, &item.Format,
 			&item.Year, &item.Month, &item.Day,
 			&item.Track, &item.TrackTotal, &item.Disc, &item.DiscTotal,
-			&item.Genres, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
+			&item.Genres, &item.Lyrics, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
 			&item.Added, &item.Modified,
 		)
 		if err != nil {
@@ -412,7 +413,7 @@ func (db *DB) GetItemByID(ctx context.Context, id int64) (*Item, error) {
 	query := `SELECT
 		id, title, artist, artist_sort, album, album_id, albumartist,
 		path, length, bitrate, format, year, month, day,
-		track, tracktotal, disc, disctotal, genres,
+		track, tracktotal, disc, disctotal, genres, lyrics,
 		mb_trackid, mb_albumid, added, mtime
 	FROM items WHERE id = ?`
 
@@ -558,7 +559,7 @@ func (db *DB) GetItemsByAlbumID(ctx context.Context, albumID int64) ([]Item, err
 	query := `SELECT
 		id, title, artist, artist_sort, album, album_id, albumartist,
 		path, length, bitrate, format, year, month, day,
-		track, tracktotal, disc, disctotal, genres,
+		track, tracktotal, disc, disctotal, genres, lyrics,
 		mb_trackid, mb_albumid, added, mtime
 	FROM items
 	WHERE album_id = ?
@@ -583,7 +584,7 @@ func (db *DB) GetItemsByAlbumID(ctx context.Context, albumID int64) ([]Item, err
 			&pathBytes, &item.Length, &item.Bitrate, &item.Format,
 			&item.Year, &item.Month, &item.Day,
 			&item.Track, &item.TrackTotal, &item.Disc, &item.DiscTotal,
-			&item.Genres, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
+			&item.Genres, &item.Lyrics, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
 			&item.Added, &item.Modified,
 		)
 		if err != nil {
@@ -679,7 +680,7 @@ func (db *DB) SearchItems(ctx context.Context, query string, limit int) ([]Item,
 			&pathBytes, &item.Length, &item.Bitrate, &item.Format,
 			&item.Year, &item.Month, &item.Day,
 			&item.Track, &item.TrackTotal, &item.Disc, &item.DiscTotal,
-			&item.Genres, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
+			&item.Genres, &item.Lyrics, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
 			&item.Added, &item.Modified,
 		)
 		if err != nil {
@@ -853,5 +854,68 @@ func FetchLyricsForItem(ctx context.Context, itemID int64) error {
 		return fmt.Errorf("error fetching lyrics: %w", err)
 	}
 
+	return nil
+}
+
+// DeleteAlbum deletes an album and optionally its files
+func DeleteAlbum(ctx context.Context, albumID int64, deleteFiles bool) error {
+	query := fmt.Sprintf("id:%d", albumID)
+	log.Info().Int64("album_id", albumID).Bool("delete_files", deleteFiles).Msg("Deleting album")
+
+	args := []string{"remove", "-a"}
+	if deleteFiles {
+		args = append(args, "-d")
+	}
+	args = append(args, query)
+
+	output, err := ExecBeetCommand(ctx, args[0], args[1:]...)
+	if err != nil {
+		log.Error().Err(err).Str("output", output).Msg("Failed to delete album")
+		return fmt.Errorf("error deleting album: %w", err)
+	}
+
+	log.Info().Str("output", output).Msg("Album deleted successfully")
+	return nil
+}
+
+// DeleteItem deletes an item/track and optionally its file
+func DeleteItem(ctx context.Context, itemID int64, deleteFiles bool) error {
+	query := fmt.Sprintf("id:%d", itemID)
+	log.Info().Int64("item_id", itemID).Bool("delete_files", deleteFiles).Msg("Deleting item")
+
+	args := []string{"remove"}
+	if deleteFiles {
+		args = append(args, "-d")
+	}
+	args = append(args, query)
+
+	output, err := ExecBeetCommand(ctx, args[0], args[1:]...)
+	if err != nil {
+		log.Error().Err(err).Str("output", output).Msg("Failed to delete item")
+		return fmt.Errorf("error deleting item: %w", err)
+	}
+
+	log.Info().Str("output", output).Msg("Item deleted successfully")
+	return nil
+}
+
+// DeleteArtist deletes all albums by an artist and optionally their files
+func DeleteArtist(ctx context.Context, artistName string, deleteFiles bool) error {
+	query := fmt.Sprintf("albumartist:%s", artistName)
+	log.Info().Str("artist", artistName).Bool("delete_files", deleteFiles).Msg("Deleting artist")
+
+	args := []string{"remove", "-a"}
+	if deleteFiles {
+		args = append(args, "-d")
+	}
+	args = append(args, query)
+
+	output, err := ExecBeetCommand(ctx, args[0], args[1:]...)
+	if err != nil {
+		log.Error().Err(err).Str("output", output).Msg("Failed to delete artist")
+		return fmt.Errorf("error deleting artist: %w", err)
+	}
+
+	log.Info().Str("output", output).Msg("Artist deleted successfully")
 	return nil
 }

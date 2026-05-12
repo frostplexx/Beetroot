@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { ConfirmDialog } from '../common/ConfirmDialog'
+import { AlertDialog } from '../common/AlertDialog'
 
 export function PreviewPanel({ track, onClose, setPreviewTrack }) {
   const audioRef = useRef(null)
@@ -8,6 +10,8 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
   const [fetchingLyrics, setFetchingLyrics] = useState(false)
   const [lyricsError, setLyricsError] = useState(null)
   const [lyricsSuccess, setLyricsSuccess] = useState(false)
+  const [deleteDialog, setDeleteDialog] = useState({ isOpen: false })
+  const [alertDialog, setAlertDialog] = useState({ isOpen: false })
   const [formData, setFormData] = useState({
     title: '',
     artist: '',
@@ -129,7 +133,7 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
         throw new Error('Track not found after fetching lyrics')
       }
 
-      if (updatedTrack.lyrics && updatedTrack.lyrics.trim().length > 0) {
+      if (updatedTrack.lyrics?.Valid && updatedTrack.lyrics?.String?.trim().length > 0) {
         setPreviewTrack(updatedTrack)
         setLyricsSuccess(true)
         setTimeout(() => setLyricsSuccess(false), 3000)
@@ -145,6 +149,87 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
     } finally {
       setFetchingLyrics(false)
     }
+  }
+
+  const handleDeleteTrack = () => {
+    setDeleteDialog({
+      isOpen: true,
+      title: 'Delete Track',
+      message: `Delete "${getDisplayTitle(track)}" by ${track.artist}?\n\nChoose how you want to delete this track:`,
+      buttons: [
+        {
+          label: 'Cancel',
+          variant: 'secondary',
+          onClick: () => {}
+        },
+        {
+          label: 'Library Only',
+          variant: 'primary',
+          onClick: () => performDeleteTrack(false)
+        },
+        {
+          label: 'Delete File',
+          variant: 'danger',
+          onClick: () => performDeleteTrack(true)
+        }
+      ]
+    })
+  }
+
+  const performDeleteTrack = async (deleteFiles) => {
+    try {
+      const response = await fetch('/api/beets/delete/item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item_id: track.id,
+          delete_files: deleteFiles
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to delete track')
+
+      setAlertDialog({
+        isOpen: true,
+        title: 'Success',
+        message: 'Track deleted successfully!',
+        variant: 'success'
+      })
+
+      setTimeout(() => window.location.reload(), 1500)
+    } catch (err) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Error',
+        message: err.message,
+        variant: 'error'
+      })
+    }
+  }
+
+  const parseLyrics = (lyricsText) => {
+    if (!lyricsText) return []
+
+    const lines = lyricsText.split('\n')
+    const lrcPattern = /^\[(\d{2}):(\d{2}\.\d{2})\](.*)$/
+
+    return lines.map((line, index) => {
+      const match = line.match(lrcPattern)
+      if (match) {
+        const [, minutes, seconds, text] = match
+        const timestamp = `${minutes}:${seconds}`
+        return { timestamp, text: text.trim(), hasTimestamp: true }
+      }
+      return { text: line, hasTimestamp: false }
+    }).filter(line => line.text || line.hasTimestamp)
+  }
+
+  const getDisplayTitle = (track) => {
+    if (track.title?.match(/^#?\d+\s+Missing Track$/i)) {
+      const filename = track.path.split('/').pop().replace(/\.[^.]+$/, '')
+      return filename
+    }
+    return track.title
   }
 
   if (!track) return null
@@ -165,16 +250,25 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
           <div className="space-y-6">
             <div className="flex items-start justify-between pr-12">
               <div>
-                <h2 className="text-3xl font-light text-neutral-100 mb-2">{track.title}</h2>
+                <h2 className="text-3xl font-light text-neutral-100 mb-2">{getDisplayTitle(track)}</h2>
                 <p className="text-lg text-neutral-400">{track.artist}</p>
               </div>
-              <button
-                onClick={() => setEditMode(true)}
-                className="px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-rose-500 hover:text-rose-500 transition-colors"
-              >
-                <i className="fa-solid fa-pen mr-1"></i>
-                Edit
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditMode(true)}
+                  className="px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-rose-500 hover:text-rose-500 transition-colors"
+                >
+                  <i className="fa-solid fa-pen mr-1"></i>
+                  Edit
+                </button>
+                <button
+                  onClick={handleDeleteTrack}
+                  className="px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-red-500 hover:text-red-500 transition-colors"
+                >
+                  <i className="fa-solid fa-trash mr-1"></i>
+                  Delete
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
@@ -221,7 +315,7 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
             <div className="pt-6 border-t border-neutral-800">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-medium text-neutral-400 uppercase tracking-wider">Lyrics</h3>
-                {!track.lyrics && (
+                {(!track.lyrics?.Valid || !track.lyrics?.String) && (
                   <button
                     onClick={handleFetchLyrics}
                     disabled={fetchingLyrics}
@@ -264,9 +358,22 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
                 </div>
               )}
 
-              <div className="text-sm text-neutral-400 leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">
-                {track.lyrics ? (
-                  track.lyrics
+              <div className="text-sm leading-relaxed max-h-96 overflow-y-auto">
+                {track.lyrics?.Valid && track.lyrics?.String ? (
+                  <div className="space-y-1">
+                    {parseLyrics(track.lyrics.String).map((line, index) => (
+                      <div key={index} className="flex gap-3 items-start">
+                        {line.hasTimestamp && (
+                          <span className="text-neutral-600 font-mono text-xs flex-shrink-0 w-14 text-right select-none">
+                            {line.timestamp}
+                          </span>
+                        )}
+                        <span className={`${line.hasTimestamp ? 'text-neutral-300' : 'text-neutral-500'} flex-1`}>
+                          {line.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <div className="text-center py-8">
                     <i className="fa-solid fa-music text-3xl text-neutral-700 mb-3"></i>
@@ -353,6 +460,22 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
           <p className="text-xs text-neutral-600 font-mono break-all">{track.path}</p>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={() => setDeleteDialog({ isOpen: false })}
+        title={deleteDialog.title}
+        message={deleteDialog.message}
+        buttons={deleteDialog.buttons || []}
+      />
+
+      <AlertDialog
+        isOpen={alertDialog.isOpen}
+        onClose={() => setAlertDialog({ isOpen: false })}
+        title={alertDialog.title}
+        message={alertDialog.message}
+        variant={alertDialog.variant}
+      />
     </div>
   )
 }

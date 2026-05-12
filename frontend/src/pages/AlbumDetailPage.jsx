@@ -6,6 +6,8 @@ import { formatDuration } from '../utils/formatters'
 import { usePreview } from '../contexts/PreviewContext'
 import { PreviewPanel } from '../components/tracks/PreviewPanel'
 import { EditMetadataModal } from '../components/albums/EditMetadataModal'
+import { ConfirmDialog } from '../components/common/ConfirmDialog'
+import { AlertDialog } from '../components/common/AlertDialog'
 
 export function AlbumDetailPage() {
   const { id } = useParams()
@@ -20,6 +22,8 @@ export function AlbumDetailPage() {
   const [refetchingArt, setRefetchingArt] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [dominantColor, setDominantColor] = useState(null)
+  const [deleteDialog, setDeleteDialog] = useState({ isOpen: false })
+  const [alertDialog, setAlertDialog] = useState({ isOpen: false })
 
   useEffect(() => {
     loadAlbumData()
@@ -42,10 +46,16 @@ export function AlbumDetailPage() {
       })
   }
 
+  const getDisplayTitle = (track) => {
+    if (track.title?.match(/^#?\d+\s+Missing Track$/i)) {
+      const filename = track.path.split('/').pop().replace(/\.[^.]+$/, '')
+      return filename
+    }
+    return track.title
+  }
+
 
   const handleRefetchArt = async () => {
-    if (!confirm('Refetch album art? This will search for and download cover art.')) return
-
     setRefetchingArt(true)
     try {
       const response = await fetch('/api/beets/refetch-art', {
@@ -58,14 +68,79 @@ export function AlbumDetailPage() {
 
       setArtError(false)
       setArtTimestamp(Date.now())
+      setAlertDialog({
+        isOpen: true,
+        title: 'Success',
+        message: 'Album art fetched successfully!',
+        variant: 'success'
+      })
     } catch (err) {
-      alert('Error: ' + err.message)
+      setAlertDialog({
+        isOpen: true,
+        title: 'Error',
+        message: err.message,
+        variant: 'error'
+      })
     } finally {
       setRefetchingArt(false)
     }
   }
 
+  const handleDeleteAlbum = () => {
+    setDeleteDialog({
+      isOpen: true,
+      title: 'Delete Album',
+      message: `Delete "${album.album}" by ${album.albumartist}?\n\nChoose how you want to delete this album:`,
+      buttons: [
+        {
+          label: 'Cancel',
+          variant: 'secondary',
+          onClick: () => {}
+        },
+        {
+          label: 'Library Only',
+          variant: 'primary',
+          onClick: () => performDeleteAlbum(false)
+        },
+        {
+          label: 'Delete Files',
+          variant: 'danger',
+          onClick: () => performDeleteAlbum(true)
+        }
+      ]
+    })
+  }
 
+  const performDeleteAlbum = async (deleteFiles) => {
+    try {
+      const response = await fetch('/api/beets/delete/album', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          album_id: parseInt(id),
+          delete_files: deleteFiles
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to delete album')
+
+      setAlertDialog({
+        isOpen: true,
+        title: 'Success',
+        message: 'Album deleted successfully!',
+        variant: 'success'
+      })
+
+      setTimeout(() => navigate('/'), 1500)
+    } catch (err) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Error',
+        message: err.message,
+        variant: 'error'
+      })
+    }
+  }
 
   const extractDominantColor = (imgElement) => {
     try {
@@ -186,6 +261,45 @@ export function AlbumDetailPage() {
                     />
                   </label>
                 </div>
+
+                {/* External Links */}
+                <div className="mt-4 pt-4 border-t border-neutral-800">
+                  <p className="text-xs text-neutral-500 uppercase tracking-wider mb-3">Quick Links</p>
+                  <div className="flex gap-2">
+                    {album.mb_albumid?.Valid && album.mb_albumid?.String && (
+                      <a
+                        href={`https://musicbrainz.org/release/${album.mb_albumid.String}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 px-3 py-2 text-xs bg-neutral-900/50 border border-neutral-800 rounded text-neutral-400 hover:bg-neutral-800 hover:border-neutral-700 transition-all flex flex-col items-center gap-1"
+                        title="View on MusicBrainz"
+                      >
+                        <i className="fa-solid fa-database text-base"></i>
+                        <span>MusicBrainz</span>
+                      </a>
+                    )}
+                    <a
+                      href={`https://www.last.fm/music/${encodeURIComponent(album.albumartist)}/${encodeURIComponent(album.album)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 px-3 py-2 text-xs bg-neutral-900/50 border border-neutral-800 rounded text-neutral-400 hover:bg-neutral-800 hover:border-neutral-700 transition-all flex flex-col items-center gap-1"
+                      title="View on Last.fm"
+                    >
+                      <i className="fa-brands fa-lastfm text-base"></i>
+                      <span>Last.fm</span>
+                    </a>
+                    <a
+                      href={`https://open.spotify.com/search/${encodeURIComponent(album.albumartist + ' ' + album.album)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 px-3 py-2 text-xs bg-neutral-900/50 border border-neutral-800 rounded text-neutral-400 hover:bg-neutral-800 hover:border-neutral-700 transition-all flex flex-col items-center gap-1"
+                      title="Search on Spotify"
+                    >
+                      <i className="fa-brands fa-spotify text-base"></i>
+                      <span>Spotify</span>
+                    </a>
+                  </div>
+                </div>
               </div>
 
               {/* Album Info */}
@@ -200,6 +314,12 @@ export function AlbumDetailPage() {
                     className="px-3 py-1.5 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-rose-500 hover:text-rose-500 transition-colors"
                   >
                     Edit Metadata
+                  </button>
+                  <button
+                    onClick={handleDeleteAlbum}
+                    className="px-3 py-1.5 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-red-500 hover:text-red-500 transition-colors"
+                  >
+                    Delete Album
                   </button>
                 </div>
 
@@ -278,7 +398,7 @@ export function AlbumDetailPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-neutral-200 group-hover:text-rose-400">
-                          {track.title}
+                          {getDisplayTitle(track)}
                         </td>
                         <td className="px-4 py-3 text-sm text-neutral-400">{track.artist}</td>
                         <td className="px-4 py-3 text-sm text-neutral-500 font-mono text-right">
@@ -297,6 +417,22 @@ export function AlbumDetailPage() {
               isOpen={showEditModal}
               onClose={() => setShowEditModal(false)}
               onSave={loadAlbumData}
+            />
+
+            <ConfirmDialog
+              isOpen={deleteDialog.isOpen}
+              onClose={() => setDeleteDialog({ isOpen: false })}
+              title={deleteDialog.title}
+              message={deleteDialog.message}
+              buttons={deleteDialog.buttons || []}
+            />
+
+            <AlertDialog
+              isOpen={alertDialog.isOpen}
+              onClose={() => setAlertDialog({ isOpen: false })}
+              title={alertDialog.title}
+              message={alertDialog.message}
+              variant={alertDialog.variant}
             />
           </div>
 

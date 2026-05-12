@@ -1,58 +1,139 @@
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, Route, Routes } from 'react-router-dom'
 import { Header } from '../components/common/Header'
+import { DuplicatesTool } from '../components/tools/DuplicatesTool'
+import { MissingArtTool } from '../components/tools/MissingArtTool'
+import { FetchLyricsTool } from '../components/tools/FetchLyricsTool'
+import { ReplayGainTool } from '../components/tools/ReplayGainTool'
 
 export function ToolsPage() {
+  return (
+    <Routes>
+      <Route index element={<ToolsGallery />} />
+      <Route path="duplicates" element={<DuplicatesTool />} />
+      <Route path="missing-art" element={<MissingArtTool />} />
+      <Route path="lyrics" element={<FetchLyricsTool />} />
+      <Route path="replaygain" element={<ReplayGainTool />} />
+    </Routes>
+  )
+}
+
+function ToolsGallery() {
+  const navigate = useNavigate()
+  const [config, setConfig] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/beets/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data.is_valid !== false) {
+          setConfig(data.config)
+        }
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [])
+
   const tools = [
+    {
+      id: 'duplicates',
+      name: 'Find Duplicates',
+      description: 'Find and merge duplicate albums across different editions',
+      icon: 'fa-clone',
+      plugin: 'duplicates',
+      path: '/tools/duplicates'
+    },
     {
       id: 'missing-art',
       name: 'Missing Album Art',
       description: 'Find albums without cover art',
-      icon: 'image',
+      icon: 'fa-image',
+      plugin: 'fetchart',
       path: '/tools/missing-art'
     },
     {
-      id: 'missing-tracks',
-      name: 'Missing Tracks',
-      description: 'Find albums with incomplete tracks',
-      icon: 'list-check',
-      path: '/tools/missing-tracks'
+      id: 'lyrics',
+      name: 'Fetch Lyrics',
+      description: 'Download and embed lyrics for songs in your library',
+      icon: 'fa-file-lines',
+      plugin: 'lyrics',
+      path: '/tools/lyrics'
     },
     {
-      id: 'duplicates',
-      name: 'Find Duplicates',
-      description: 'Identify duplicate albums',
-      icon: 'copy',
-      path: '/tools/duplicates'
+      id: 'replaygain',
+      name: 'ReplayGain',
+      description: 'Calculate and apply ReplayGain tags for volume normalization',
+      icon: 'fa-volume-high',
+      plugin: 'replaygain',
+      path: '/tools/replaygain'
     }
   ]
+
+  const isPluginAvailable = (pluginName) => {
+    if (!pluginName) return true
+    if (!config || !config.plugins) return false
+    const pluginsStr = config.plugins.replace(/[\[\]]/g, '').trim()
+    const plugins = pluginsStr.split(/\s+/).filter(p => p)
+    return plugins.includes(pluginName)
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-neutral-950">
+        <Header />
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="text-center py-12">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-solid border-rose-500 border-r-transparent"></div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-neutral-950">
       <Header />
-
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <h1 className="text-3xl font-light text-neutral-100 mb-8">Library Tools</h1>
+        <div className="mb-8">
+          <h1 className="text-2xl font-light text-neutral-200 mb-2">Tools</h1>
+          <p className="text-sm text-neutral-400">
+            Manage and organize your music library with these beets-powered tools
+          </p>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {tools.map((tool) => (
-            <Link
-              key={tool.id}
-              to={tool.path}
-              className="border border-neutral-800 rounded-lg p-6 hover:border-rose-500 transition-colors group"
-            >
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-lg bg-neutral-900 flex items-center justify-center group-hover:bg-rose-500/10 transition-colors">
-                  <i className={`fa-solid fa-${tool.icon} text-xl text-neutral-500 group-hover:text-rose-500`}></i>
+          {tools.map((tool) => {
+            const available = isPluginAvailable(tool.plugin)
+            return (
+              <button
+                key={tool.id}
+                onClick={() => available && navigate(tool.path)}
+                disabled={!available}
+                className={`text-left p-6 border rounded-lg transition-all ${
+                  available
+                    ? 'bg-neutral-900 border-neutral-800 hover:border-rose-500 cursor-pointer'
+                    : 'bg-neutral-900/50 border-neutral-900 opacity-50 cursor-not-allowed'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <i className={`fa-solid ${tool.icon} text-3xl ${available ? 'text-rose-500' : 'text-neutral-700'}`}></i>
+                  {!available && (
+                    <span className="px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-500">
+                      Plugin Required
+                    </span>
+                  )}
                 </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-medium text-neutral-200 group-hover:text-rose-500 mb-1">
-                    {tool.name}
-                  </h3>
-                  <p className="text-sm text-neutral-500">{tool.description}</p>
-                </div>
-              </div>
-            </Link>
-          ))}
+                <h3 className="text-lg font-medium text-neutral-200 mb-2">{tool.name}</h3>
+                <p className="text-sm text-neutral-400 mb-3">{tool.description}</p>
+                {tool.plugin && (
+                  <div className="text-xs text-neutral-600">
+                    Requires: <code className="text-neutral-500">{tool.plugin}</code> plugin
+                  </div>
+                )}
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>
