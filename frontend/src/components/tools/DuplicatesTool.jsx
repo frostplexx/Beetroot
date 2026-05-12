@@ -95,18 +95,42 @@ export function DuplicatesTool() {
             {duplicates.map((dup, index) => (
               <div
                 key={index}
-                className="p-4 bg-neutral-900 border border-neutral-800 rounded flex items-center justify-between"
+                className="p-5 bg-neutral-900 border border-neutral-800 rounded"
               >
-                <div>
-                  <p className="text-neutral-200">{dup.info}</p>
-                  <p className="text-xs text-neutral-500 mt-1">Potential duplicate detected</p>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <p className="text-neutral-200 font-medium">{dup.info.split(' - ')[0]}</p>
+                    <div className="mt-2 space-y-1 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-neutral-400">{dup.album1}</span>
+                        <span className="text-xs text-neutral-600">•</span>
+                        <span className="text-neutral-500">{dup.tracks1} track{dup.tracks1 !== 1 ? 's' : ''}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-neutral-400">{dup.album2}</span>
+                        <span className="text-xs text-neutral-600">•</span>
+                        <span className="text-neutral-500">{dup.tracks2} track{dup.tracks2 !== 1 ? 's' : ''}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="text-xs text-neutral-500">
+                      {Math.round(dup.similarity * 100)}% similar
+                    </div>
+                    <button
+                      onClick={() => handleMerge(dup.info)}
+                      className="px-4 py-2 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-300 hover:border-rose-500 hover:text-rose-500 transition-colors"
+                    >
+                      Merge Albums
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={() => handleMerge(dup.info)}
-                  className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded text-sm text-neutral-300 hover:border-rose-500 hover:text-rose-500"
-                >
-                  Merge
-                </button>
+                {dup.tracks1 !== dup.tracks2 && (
+                  <div className="mt-3 pt-3 border-t border-neutral-800 text-xs text-amber-400 flex items-center gap-2">
+                    <i className="fa-solid fa-exclamation-triangle"></i>
+                    <span>Different track counts - likely partial imports</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>

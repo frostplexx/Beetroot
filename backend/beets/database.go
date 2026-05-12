@@ -192,33 +192,167 @@ func ModifyAlbumMetadata(ctx context.Context, albumID int64, updates map[string]
 
 // FindDuplicateAlbums finds potential duplicate albums
 func FindDuplicateAlbums(ctx context.Context) ([]map[string]interface{}, error) {
-	log.Debug().Msg("Finding duplicate albums")
+	log.Debug().Msg("Finding duplicate albums using similarity matching")
 
-	// Use keys to find albums with same artist and similar album name
-	// This will catch split albums like "Album" and "Album (Deluxe Edition)"
-	output, err := ExecBeetCommand(ctx, "duplicates", "-a", "-k", "albumartist", "-k", "album")
+	// Get database path from config
+	config, _, err := ParseBeetsConfig(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error finding duplicates: %w", err)
+		return nil, fmt.Errorf("error parsing beets config: %w", err)
 	}
 
-	if output == "" {
-		return []map[string]interface{}{}, nil
+	dbPath, ok := config["library"]
+	if !ok {
+		return nil, fmt.Errorf("library path not found in beets config")
 	}
 
-	// Parse output - format is typically "Artist - Album"
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	duplicates := make([]map[string]interface{}, 0)
+	db, err := OpenDB(ctx, dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("error opening database: %w", err)
+	}
+	defer db.Close()
 
-	for _, line := range lines {
-		if line == "" {
+	// Get all albums grouped by artist
+	query := `
+		SELECT id, album, albumartist,
+		       (SELECT COUNT(*) FROM items WHERE items.album_id = albums.id) as track_count
+		FROM albums
+		ORDER BY albumartist, album
+	`
+
+	rows, err := db.conn.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("error querying albums: %w", err)
+	}
+	defer rows.Close()
+
+	type albumInfo struct {
+		id          int64
+		album       string
+		albumartist string
+		trackCount  int
+	}
+
+	albums := make([]albumInfo, 0)
+	for rows.Next() {
+		var a albumInfo
+		if err := rows.Scan(&a.id, &a.album, &a.albumartist, &a.trackCount); err != nil {
 			continue
 		}
-		duplicates = append(duplicates, map[string]interface{}{
-			"info": line,
-		})
+		albums = append(albums, a)
+	}
+
+	// Find similar albums by the same artist
+	duplicates := make([]map[string]interface{}, 0)
+	seen := make(map[string]bool)
+
+	for i := 0; i < len(albums); i++ {
+		for j := i + 1; j < len(albums); j++ {
+			// Must be same artist
+			if albums[i].albumartist != albums[j].albumartist {
+				continue
+			}
+
+			// Calculate similarity
+			similarity := stringSimilarity(albums[i].album, albums[j].album)
+
+			// Flag as potential duplicate if similar enough (70% threshold)
+			if similarity >= 0.70 {
+				key := fmt.Sprintf("%s|%s|%s", albums[i].albumartist, albums[i].album, albums[j].album)
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+
+				duplicates = append(duplicates, map[string]interface{}{
+					"info":        fmt.Sprintf("%s - %s / %s", albums[i].albumartist, albums[i].album, albums[j].album),
+					"album1_id":   albums[i].id,
+					"album1":      albums[i].album,
+					"album2_id":   albums[j].id,
+					"album2":      albums[j].album,
+					"tracks1":     albums[i].trackCount,
+					"tracks2":     albums[j].trackCount,
+					"similarity":  similarity,
+				})
+			}
+		}
 	}
 
 	return duplicates, nil
+}
+
+// stringSimilarity calculates similarity between two strings using normalized edit distance
+func stringSimilarity(s1, s2 string) float64 {
+	s1 = strings.ToLower(strings.TrimSpace(s1))
+	s2 = strings.ToLower(strings.TrimSpace(s2))
+
+	if s1 == s2 {
+		return 1.0
+	}
+
+	// Calculate Levenshtein distance
+	distance := levenshteinDistance(s1, s2)
+	maxLen := max(len(s1), len(s2))
+
+	if maxLen == 0 {
+		return 1.0
+	}
+
+	return 1.0 - float64(distance)/float64(maxLen)
+}
+
+// levenshteinDistance calculates the Levenshtein distance between two strings
+func levenshteinDistance(s1, s2 string) int {
+	if len(s1) == 0 {
+		return len(s2)
+	}
+	if len(s2) == 0 {
+		return len(s1)
+	}
+
+	matrix := make([][]int, len(s1)+1)
+	for i := range matrix {
+		matrix[i] = make([]int, len(s2)+1)
+		matrix[i][0] = i
+	}
+	for j := range matrix[0] {
+		matrix[0][j] = j
+	}
+
+	for i := 1; i <= len(s1); i++ {
+		for j := 1; j <= len(s2); j++ {
+			cost := 1
+			if s1[i-1] == s2[j-1] {
+				cost = 0
+			}
+			matrix[i][j] = min(
+				matrix[i-1][j]+1,      // deletion
+				matrix[i][j-1]+1,      // insertion
+				matrix[i-1][j-1]+cost, // substitution
+			)
+		}
+	}
+
+	return matrix[len(s1)][len(s2)]
+}
+
+func min(a, b, c int) int {
+	if a < b {
+		if a < c {
+			return a
+		}
+		return c
+	}
+	if b < c {
+		return b
+	}
+	return c
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // MergeDuplicateAlbums merges duplicate albums

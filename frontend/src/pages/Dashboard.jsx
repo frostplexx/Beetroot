@@ -183,9 +183,9 @@ export function Dashboard() {
         handleSearch={handleSearch}
       />
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex gap-8">
-          <div className={previewTrack ? 'flex-1' : 'flex-1'}>
+      <div className="mx-auto px-6 py-8" style={{ maxWidth: 'min(1400px, calc(100vw - 512px))' }}>
+        <div className="w-full">
+          <div>
             {activeTab === 'stats' && stats && (
               <div>
                 <h2 className="text-sm font-medium text-neutral-400 mb-4 uppercase tracking-wider">
@@ -224,15 +224,16 @@ export function Dashboard() {
             )}
           </div>
 
-          {previewTrack && (
-            <div className="w-[480px] border-l border-neutral-800 bg-neutral-900/50">
+          <div className={`fixed top-32 right-0 w-[480px] h-[calc(100vh-8rem)] border-l border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-200 ${previewTrack ? 'translate-x-0' : 'translate-x-full'}`}>
+            {previewTrack && (
               <PreviewPanel
+                key={previewTrack.id}
                 track={previewTrack}
                 onClose={() => setPreviewTrack(null)}
                 setPreviewTrack={setPreviewTrack}
               />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

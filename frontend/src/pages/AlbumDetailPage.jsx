@@ -207,9 +207,9 @@ export function AlbumDetailPage() {
     >
       <Header />
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex gap-8">
-          <div className="flex-1">
+      <div className="mx-auto px-6 py-8" style={{ maxWidth: 'min(1400px, calc(100vw - 512px))' }}>
+        <div className="w-full">
+          <div>
             <button
               onClick={() => navigate('/')}
               className="mb-6 text-sm text-neutral-500 hover:text-neutral-300 flex items-center gap-2"
@@ -436,15 +436,16 @@ export function AlbumDetailPage() {
             />
           </div>
 
-          {previewTrack && (
-            <div className="w-[480px] border-l border-neutral-800 bg-neutral-900/50">
+          <div className={`fixed top-16 right-0 w-[480px] h-[calc(100vh-4rem)] border-l border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-200 ${previewTrack ? 'translate-x-0' : 'translate-x-full'}`}>
+            {previewTrack && (
               <PreviewPanel
+                key={previewTrack.id}
                 track={previewTrack}
                 onClose={() => setPreviewTrack(null)}
                 setPreviewTrack={setPreviewTrack}
               />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
