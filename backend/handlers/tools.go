@@ -39,7 +39,8 @@ func MergeDuplicatesHandler() http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		var req struct {
-			Query string `json:"query"`
+			KeepAlbumID    int64 `json:"keep_album_id"`
+			DiscardAlbumID int64 `json:"discard_album_id"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -51,7 +52,7 @@ func MergeDuplicatesHandler() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 		defer cancel()
 
-		if err := beets.MergeDuplicateAlbums(ctx, req.Query); err != nil {
+		if err := beets.MergeDuplicateAlbums(ctx, req.KeepAlbumID, req.DiscardAlbumID); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return

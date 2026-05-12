@@ -7,6 +7,8 @@ export function DuplicatesTool() {
   const [duplicates, setDuplicates] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [mergeDialog, setMergeDialog] = useState(null)
+  const [merging, setMerging] = useState(false)
 
   useEffect(() => {
     loadDuplicates()
@@ -30,22 +32,55 @@ export function DuplicatesTool() {
     }
   }
 
-  const handleMerge = async (query) => {
-    if (!confirm(`Merge duplicates matching: ${query}?\n\nThis will combine the albums into one.`)) return
+  const handleMerge = async (duplicate) => {
+    try {
+      // Fetch full details about both albums
+      const [album1Res, album2Res, tracks1Res, tracks2Res] = await Promise.all([
+        fetch(`/api/beets/albums/by-id/${duplicate.album1_id}`),
+        fetch(`/api/beets/albums/by-id/${duplicate.album2_id}`),
+        fetch(`/api/beets/items/by-album/${duplicate.album1_id}`),
+        fetch(`/api/beets/items/by-album/${duplicate.album2_id}`)
+      ])
 
+      const [album1, album2, tracks1, tracks2] = await Promise.all([
+        album1Res.json(),
+        album2Res.json(),
+        tracks1Res.json(),
+        tracks2Res.json()
+      ])
+
+      setMergeDialog({
+        album1,
+        album2,
+        tracks1,
+        tracks2,
+        duplicate
+      })
+    } catch (err) {
+      alert('Error loading album details: ' + err.message)
+    }
+  }
+
+  const performMerge = async (keepAlbumId, discardAlbumId) => {
+    setMerging(true)
     try {
       const response = await fetch('/api/beets/duplicates/merge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })
+        body: JSON.stringify({
+          keep_album_id: keepAlbumId,
+          discard_album_id: discardAlbumId
+        })
       })
 
-      if (!response.ok) throw new Error('Failed to merge duplicates')
+      if (!response.ok) throw new Error('Failed to merge albums')
 
-      alert('Duplicates merged successfully!')
+      setMergeDialog(null)
       loadDuplicates()
     } catch (err) {
       alert('Error: ' + err.message)
+    } finally {
+      setMerging(false)
     }
   }
 
@@ -118,7 +153,7 @@ export function DuplicatesTool() {
                       {Math.round(dup.similarity * 100)}% similar
                     </div>
                     <button
-                      onClick={() => handleMerge(dup.info)}
+                      onClick={() => handleMerge(dup)}
                       className="px-4 py-2 bg-neutral-800 border border-neutral-700 rounded text-sm text-neutral-300 hover:border-rose-500 hover:text-rose-500 transition-colors"
                     >
                       Merge Albums
@@ -145,6 +180,84 @@ export function DuplicatesTool() {
             <li>• Merging combines tracks and metadata from both albums</li>
           </ul>
         </div>
+
+        {/* Merge Dialog */}
+        {mergeDialog && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => !merging && setMergeDialog(null)}>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6 border-b border-neutral-800">
+                <h2 className="text-xl font-medium text-neutral-200 mb-2">Merge Albums</h2>
+                <p className="text-sm text-neutral-400">Choose which album to keep. All tracks will be moved to the selected album.</p>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="grid grid-cols-2 gap-6">
+                  {/* Album 1 */}
+                  <div className="border border-neutral-800 rounded-lg p-4 bg-neutral-950">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-medium text-neutral-200">{mergeDialog.album1.album}</h3>
+                        <p className="text-sm text-neutral-400">{mergeDialog.album1.albumartist}</p>
+                        <p className="text-xs text-neutral-500 mt-1">{mergeDialog.tracks1.length} tracks</p>
+                      </div>
+                    </div>
+                    <div className="space-y-1 mb-4">
+                      {mergeDialog.tracks1.map(track => (
+                        <div key={track.id} className="text-xs text-neutral-400 flex gap-2">
+                          <span className="text-neutral-600">{track.track?.Valid ? track.track.Int64 : '-'}</span>
+                          <span className="flex-1 truncate">{track.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => performMerge(mergeDialog.album1.id, mergeDialog.album2.id)}
+                      disabled={merging}
+                      className="w-full px-4 py-2 bg-rose-500 text-white rounded hover:bg-rose-600 disabled:opacity-50 text-sm font-medium transition-colors"
+                    >
+                      Keep This Album
+                    </button>
+                  </div>
+
+                  {/* Album 2 */}
+                  <div className="border border-neutral-800 rounded-lg p-4 bg-neutral-950">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-medium text-neutral-200">{mergeDialog.album2.album}</h3>
+                        <p className="text-sm text-neutral-400">{mergeDialog.album2.albumartist}</p>
+                        <p className="text-xs text-neutral-500 mt-1">{mergeDialog.tracks2.length} tracks</p>
+                      </div>
+                    </div>
+                    <div className="space-y-1 mb-4">
+                      {mergeDialog.tracks2.map(track => (
+                        <div key={track.id} className="text-xs text-neutral-400 flex gap-2">
+                          <span className="text-neutral-600">{track.track?.Valid ? track.track.Int64 : '-'}</span>
+                          <span className="flex-1 truncate">{track.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => performMerge(mergeDialog.album2.id, mergeDialog.album1.id)}
+                      disabled={merging}
+                      className="w-full px-4 py-2 bg-rose-500 text-white rounded hover:bg-rose-600 disabled:opacity-50 text-sm font-medium transition-colors"
+                    >
+                      Keep This Album
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-neutral-800 flex justify-end">
+                <button
+                  onClick={() => setMergeDialog(null)}
+                  disabled={merging}
+                  className="px-4 py-2 bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700 disabled:opacity-50 text-sm font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -355,15 +355,54 @@ func max(a, b int) int {
 	return b
 }
 
-// MergeDuplicateAlbums merges duplicate albums
-func MergeDuplicateAlbums(ctx context.Context, query string) error {
-	log.Info().Str("query", query).Msg("Merging duplicate albums")
+// MergeDuplicateAlbums merges two albums by moving all tracks from discard to keep album
+func MergeDuplicateAlbums(ctx context.Context, keepAlbumID, discardAlbumID int64) error {
+	log.Info().Int64("keep", keepAlbumID).Int64("discard", discardAlbumID).Msg("Merging duplicate albums")
 
-	_, err := ExecBeetCommand(ctx, "duplicates", "-a", "-M", query)
+	// Get database path from config
+	config, _, err := ParseBeetsConfig(ctx)
 	if err != nil {
-		return fmt.Errorf("error merging duplicates: %w", err)
+		return fmt.Errorf("error parsing beets config: %w", err)
 	}
 
+	dbPath, ok := config["library"]
+	if !ok {
+		return fmt.Errorf("library path not found in beets config")
+	}
+
+	// Open database in read-write mode for merging
+	connStr := fmt.Sprintf("file:%s?mode=rw", dbPath)
+	conn, err := sql.Open("sqlite", connStr)
+	if err != nil {
+		return fmt.Errorf("error opening database: %w", err)
+	}
+	defer conn.Close()
+
+	// Start transaction
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("error starting transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Update all items from discard album to point to keep album
+	_, err = tx.ExecContext(ctx, "UPDATE items SET album_id = ? WHERE album_id = ?", keepAlbumID, discardAlbumID)
+	if err != nil {
+		return fmt.Errorf("error updating items: %w", err)
+	}
+
+	// Delete the discard album
+	_, err = tx.ExecContext(ctx, "DELETE FROM albums WHERE id = ?", discardAlbumID)
+	if err != nil {
+		return fmt.Errorf("error deleting album: %w", err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("error committing transaction: %w", err)
+	}
+
+	log.Info().Int64("keep", keepAlbumID).Int64("discard", discardAlbumID).Msg("Successfully merged albums")
 	return nil
 }
 
