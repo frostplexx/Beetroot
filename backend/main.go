@@ -90,6 +90,10 @@ func main() {
 	mux.HandleFunc("/api/beets/tools/replaygain", handlers.ReplayGainHandler())
 	mux.HandleFunc("/api/beets/fetch-lyrics", handlers.FetchLyricsHandler())
 
+	// Upload & Import endpoints
+	mux.HandleFunc("/api/beets/upload", handlers.UploadHandler())
+	mux.HandleFunc("/api/beets/import", handlers.ImportHandler())
+
 	// Logs endpoints
 	mux.HandleFunc("/api/logs", handlers.LogsHandler())
 	mux.HandleFunc("/api/logs/clear", handlers.ClearLogsHandler())

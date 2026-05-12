@@ -6,82 +6,119 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
   const isAlbumPage = location.pathname.startsWith('/album/')
 
   return (
-    <header className="border-b border-neutral-800 bg-neutral-950 sticky top-0 z-50">
+    <header className="border-b border-neutral-800/50 bg-neutral-950/95 backdrop-blur-lg sticky top-0 z-50 shadow-lg shadow-black/5">
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-8">
-            <Link to="/" className="flex items-center gap-2">
-              <div className="text-2xl">🫜</div>
-              <span className="text-lg font-semibold bg-clip-text bg-white text-transparent">Beetroot</span>
+          <div className="flex items-center gap-10">
+            {/* Logo */}
+            <Link to="/" className="flex items-center gap-3 group">
+              <div className="w-8 h-8 bg-gradient-to-br from-rose-500 to-rose-600 rounded-lg flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:shadow-rose-500/40 transition-shadow">
+                <span className="text-lg">🫜</span>
+              </div>
+              <span className="text-xl font-bold bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
+                Beetroot
+              </span>
             </Link>
 
-            <nav className="flex items-center gap-1">
-              {activeTab !== undefined ? (
-                <>
+            {/* Navigation */}
+            <nav className="flex items-center gap-2">
+              {/* Library section with nested sub-tabs */}
+              <div
+                className={`flex items-center rounded-lg transition-colors ${
+                  activeTab !== undefined
+                    ? 'bg-neutral-900/30 border border-neutral-800/50 pr-2'
+                    : ''
+                }`}
+                style={{ width: '460px' }}
+              >
+                <Link
+                  to="/"
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                    (!isToolsPage && location.pathname !== '/upload' && location.pathname !== '/logs')
+                      ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
+                      : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
+                  }`}
+                >
+                  <i className="fa-solid fa-house"></i>
+                  <span>Library</span>
+                </Link>
+
+                {/* Sub-tabs for Library page */}
+                <div className={`flex items-center gap-1 ml-2 pl-2 border-l border-neutral-800 transition-opacity duration-200 ${
+                  activeTab !== undefined ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}>
                   <button
-                    onClick={() => setActiveTab('albums')}
-                    className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    onClick={() => activeTab !== undefined && setActiveTab('albums')}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
                       activeTab === 'albums'
-                        ? 'bg-rose-500/10 text-rose-500'
-                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
+                        ? 'bg-rose-500/10 text-rose-400'
+                        : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/30'
                     }`}
                   >
-                    Albums
+                    <i className="fa-solid fa-compact-disc text-xs"></i>
+                    <span className="text-xs">Albums</span>
                   </button>
                   <button
-                    onClick={() => setActiveTab('tracks')}
-                    className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    onClick={() => activeTab !== undefined && setActiveTab('tracks')}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
                       activeTab === 'tracks'
-                        ? 'bg-rose-500/10 text-rose-500'
-                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
+                        ? 'bg-rose-500/10 text-rose-400'
+                        : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/30'
                     }`}
                   >
-                    Tracks
+                    <i className="fa-solid fa-music text-xs"></i>
+                    <span className="text-xs">Tracks</span>
                   </button>
                   <button
-                    onClick={() => setActiveTab('stats')}
-                    className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    onClick={() => activeTab !== undefined && setActiveTab('stats')}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
                       activeTab === 'stats'
-                        ? 'bg-rose-500/10 text-rose-500'
-                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
+                        ? 'bg-rose-500/10 text-rose-400'
+                        : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/30'
                     }`}
                   >
-                    Stats
+                    <i className="fa-solid fa-chart-simple text-xs"></i>
+                    <span className="text-xs">Stats</span>
                   </button>
-                </>
-              ) : (
-                <>
-                  <Link
-                    to="/"
-                    className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                      !isToolsPage && !isAlbumPage
-                        ? 'bg-rose-500/10 text-rose-500'
-                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
-                    }`}
-                  >
-                    Library
-                  </Link>
-                </>
-              )}
+                </div>
+              </div>
+
+              <div className="w-px h-6 bg-neutral-800"></div>
+
+              <Link
+                to="/upload"
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  location.pathname === '/upload'
+                    ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
+                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
+                }`}
+              >
+                <i className="fa-solid fa-cloud-arrow-up"></i>
+                <span>Upload</span>
+              </Link>
+
               <Link
                 to="/tools"
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                   isToolsPage
-                    ? 'bg-rose-500/10 text-rose-500'
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
+                    ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
+                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
                 }`}
               >
-                Tools
+                <i className="fa-solid fa-wrench"></i>
+                <span>Tools</span>
               </Link>
+
               <Link
                 to="/logs"
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                   location.pathname === '/logs'
-                    ? 'bg-rose-500/10 text-rose-500'
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
+                    ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
+                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
                 }`}
               >
-                Logs
+                <i className="fa-solid fa-file-lines"></i>
+                <span>Logs</span>
               </Link>
             </nav>
           </div>

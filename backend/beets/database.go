@@ -1092,3 +1092,21 @@ func DeleteArtist(ctx context.Context, artistName string, deleteFiles bool) erro
 	log.Info().Str("output", output).Msg("Artist deleted successfully")
 	return nil
 }
+
+// ImportPath imports music files from a given path
+func ImportPath(ctx context.Context, path string) error {
+	log.Info().Str("path", path).Msg("Importing music from path")
+
+	// Use beet import with auto-tagging
+	// -A: auto-tag (don't ask for confirmation)
+	// -q: quiet mode
+	// --noincremental: don't skip already-imported albums
+	output, err := ExecBeetCommand(ctx, "import", "-A", "-q", "--noincremental", path)
+	if err != nil {
+		log.Error().Err(err).Str("output", output).Msg("Failed to import path")
+		return fmt.Errorf("error importing path: %w", err)
+	}
+
+	log.Info().Str("output", output).Msg("Import completed successfully")
+	return nil
+}
