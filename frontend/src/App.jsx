@@ -1,10 +1,353 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, createContext, useContext } from 'react'
 import { BrowserRouter as Router, Routes, Route, useNavigate, useParams, Link, useLocation } from 'react-router-dom'
 import './App.css'
+
+// Preview panel context
+const PreviewContext = createContext(null)
+
+function PreviewPanel({ track, onClose, setPreviewTrack }) {
+  const audioRef = useRef(null)
+  const panelRef = useRef(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [editMode, setEditMode] = useState(false)
+  const [fetchingLyrics, setFetchingLyrics] = useState(false)
+  const [lyricsError, setLyricsError] = useState(null)
+  const [formData, setFormData] = useState({
+    title: '',
+    artist: '',
+    album: '',
+    track: '',
+    genre: ''
+  })
+
+  useEffect(() => {
+    if (track) {
+      setFormData({
+        title: track.title || '',
+        artist: track.artist || '',
+        album: track.album || '',
+        track: track.track?.Valid ? track.track.Int64.toString() : '',
+        genre: track.genres?.Valid ? track.genres.String : ''
+      })
+    }
+  }, [track])
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (panelRef.current && !panelRef.current.contains(event.target)) {
+        onClose()
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [onClose])
+
+  const handlePlay = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      } else {
+        audioRef.current.currentTime = 0
+        audioRef.current.play()
+        setIsPlaying(true)
+
+        // Stop after 30 seconds
+        setTimeout(() => {
+          if (audioRef.current) {
+            audioRef.current.pause()
+            setIsPlaying(false)
+          }
+        }, 30000)
+      }
+    }
+  }
+
+  const handleSave = async () => {
+    const updates = {}
+    if (formData.title !== track.title) updates.title = formData.title
+    if (formData.artist !== track.artist) updates.artist = formData.artist
+    if (formData.album !== track.album) updates.album = formData.album
+    if (formData.track) updates.track = formData.track
+    if (formData.genre) updates.genre = formData.genre
+
+    if (Object.keys(updates).length === 0) {
+      setEditMode(false)
+      return
+    }
+
+    try {
+      const response = await fetch('/api/beets/modify-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: track.id, updates })
+      })
+
+      if (!response.ok) throw new Error('Failed to update track')
+
+      setEditMode(false)
+      onClose()
+    } catch (err) {
+      alert('Error: ' + err.message)
+    }
+  }
+
+  if (!track) return null
+
+  const handleFetchLyrics = async () => {
+    setFetchingLyrics(true)
+    setLyricsError(null)
+    try {
+      const response = await fetch('/api/beets/fetch-lyrics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: track.id })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to fetch lyrics')
+      }
+
+      // Wait a moment for beets to write to database
+      await new Promise(resolve => setTimeout(resolve, 500))
+
+      // Refetch the track to get updated lyrics
+      const itemResponse = await fetch(`/api/beets/items`)
+      const items = await itemResponse.json()
+      const updatedTrack = items.find(item => item.id === track.id)
+
+      if (updatedTrack && updatedTrack.lyrics) {
+        // Update the preview track with new data (without closing)
+        setPreviewTrack(updatedTrack)
+      } else {
+        setLyricsError('No lyrics found for this track')
+      }
+    } catch (err) {
+      setLyricsError(err.message)
+    } finally {
+      setFetchingLyrics(false)
+    }
+  }
+
+  return (
+    <div ref={panelRef} className="w-1/2 h-full overflow-y-auto border-l border-neutral-800/50">
+      <audio ref={audioRef} src={`/api/beets/items/${track.id}/stream`} />
+
+      <div className="p-8 space-y-8 relative">
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full hover:bg-neutral-800/50 text-neutral-500 hover:text-neutral-300 transition-colors z-10"
+        >
+          <i className="fa-solid fa-xmark text-sm"></i>
+        </button>
+
+        {/* Metadata */}
+        {!editMode ? (
+          <div className="space-y-6">
+            <div className="flex items-start justify-between pr-12">
+              <div>
+                <h2 className="text-3xl font-light text-neutral-100 mb-2">{track.title}</h2>
+                <p className="text-lg text-neutral-400">{track.artist}</p>
+              </div>
+              <button
+                onClick={() => setEditMode(true)}
+                className="px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-rose-500 hover:text-rose-500 transition-colors"
+              >
+                <i className="fa-solid fa-pen mr-1"></i>
+                Edit
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+              <div>
+                <span className="text-neutral-500 text-xs uppercase tracking-wider">Album</span>
+                <p className="text-neutral-200 mt-1">{track.album}</p>
+              </div>
+              {track.track?.Valid && (
+                <div>
+                  <span className="text-neutral-500 text-xs uppercase tracking-wider">Track</span>
+                  <p className="text-neutral-200 mt-1">#{track.track.Int64}</p>
+                </div>
+              )}
+              {track.genres?.Valid && (
+                <div>
+                  <span className="text-neutral-500 text-xs uppercase tracking-wider">Genre</span>
+                  <p className="text-neutral-200 mt-1">{track.genres.String.split('\0').filter(g => g.trim()).join(', ')}</p>
+                </div>
+              )}
+              {track.year?.Valid && (
+                <div>
+                  <span className="text-neutral-500 text-xs uppercase tracking-wider">Year</span>
+                  <p className="text-neutral-200 mt-1">{track.year.Int64}</p>
+                </div>
+              )}
+              <div>
+                <span className="text-neutral-500 text-xs uppercase tracking-wider">Format</span>
+                <p className="text-neutral-200 mt-1 font-mono text-xs">{track.format?.toUpperCase()} • {Math.round(track.bitrate / 1000)} kbps</p>
+              </div>
+              <div>
+                <span className="text-neutral-500 text-xs uppercase tracking-wider">Duration</span>
+                <p className="text-neutral-200 mt-1">{track.length ? `${Math.floor(track.length / 60)}:${Math.floor(track.length % 60).toString().padStart(2, '0')}` : '-'}</p>
+              </div>
+            </div>
+
+            {/* Play button */}
+            <button
+              onClick={handlePlay}
+              className="w-full py-3 bg-neutral-800 hover:bg-neutral-750 border border-neutral-700 hover:border-rose-500 rounded-lg flex items-center justify-center gap-3 text-neutral-300 hover:text-rose-400 font-medium transition-all"
+            >
+              <i className={`fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'} text-sm`}></i>
+              {isPlaying ? 'Playing...' : 'Preview (30s)'}
+            </button>
+
+            {/* Lyrics section */}
+            <div className="pt-6 border-t border-neutral-800">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-neutral-400 uppercase tracking-wider">Lyrics</h3>
+                {!track.lyrics && (
+                  <button
+                    onClick={handleFetchLyrics}
+                    disabled={fetchingLyrics}
+                    className="px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-rose-500 hover:text-rose-500 disabled:opacity-50 transition-colors"
+                  >
+                    {fetchingLyrics ? 'Fetching...' : 'Fetch Lyrics'}
+                  </button>
+                )}
+              </div>
+              {lyricsError && (
+                <div className="mb-4 p-3 bg-red-950/30 border border-red-900/50 rounded text-sm text-red-400">
+                  {lyricsError}
+                </div>
+              )}
+              <div className="text-sm text-neutral-400 leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">
+                {track.lyrics || (
+                  <div className="text-center py-8">
+                    <p className="text-neutral-500 mb-2">No lyrics available</p>
+                    <p className="text-xs text-neutral-600">Click "Fetch Lyrics" to search for lyrics online</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-neutral-200">Edit Track</h3>
+
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1">Title</label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1">Artist</label>
+              <input
+                type="text"
+                value={formData.artist}
+                onChange={(e) => setFormData({ ...formData, artist: e.target.value })}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-neutral-500 mb-1">Album</label>
+              <input
+                type="text"
+                value={formData.album}
+                onChange={(e) => setFormData({ ...formData, album: e.target.value })}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Track #</label>
+                <input
+                  type="text"
+                  value={formData.track}
+                  onChange={(e) => setFormData({ ...formData, track: e.target.value })}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-neutral-500 mb-1">Genre</label>
+                <input
+                  type="text"
+                  value={formData.genre}
+                  onChange={(e) => setFormData({ ...formData, genre: e.target.value })}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={handleSave}
+                className="flex-1 px-4 py-2 bg-rose-500 text-white rounded hover:bg-rose-600 text-sm font-medium"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => setEditMode(false)}
+                className="flex-1 px-4 py-2 bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700 text-sm font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* File info */}
+        <div className="pt-4 border-t border-neutral-800">
+          <p className="text-xs text-neutral-600 font-mono break-all">{track.path}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PreviewProvider({ children }) {
+  const [previewTrack, setPreviewTrack] = useState(null)
+  const [isPanelOpen, setIsPanelOpen] = useState(false)
+  const location = useLocation()
+
+  // Close preview panel when navigating away from track views
+  useEffect(() => {
+    if (location.pathname.startsWith('/tools')) {
+      setPreviewTrack(null)
+      setIsPanelOpen(false)
+    }
+  }, [location.pathname])
+
+  // Track when panel opens/closes
+  useEffect(() => {
+    if (previewTrack && !isPanelOpen) {
+      setIsPanelOpen(true)
+    } else if (!previewTrack && isPanelOpen) {
+      setIsPanelOpen(false)
+    }
+  }, [previewTrack, isPanelOpen])
+
+  return (
+    <PreviewContext.Provider value={{ previewTrack, setPreviewTrack, isPanelOpen }}>
+      {children}
+    </PreviewContext.Provider>
+  )
+}
 
 function AlbumDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { previewTrack, setPreviewTrack, isPanelOpen } = useContext(PreviewContext)
   const [album, setAlbum] = useState(null)
   const [tracks, setTracks] = useState([])
   const [loading, setLoading] = useState(true)
@@ -276,7 +619,9 @@ function AlbumDetail() {
       }}
     >
       <Header />
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="flex">
+        <div className={`transition-all duration-300 ${previewTrack ? 'w-1/2' : 'w-full'}`}>
+          <div className="max-w-7xl mx-auto px-6 py-8">
         <button onClick={() => navigate(-1)} className="text-sm text-neutral-400 hover:text-rose-500 mb-6">
           ← Back
         </button>
@@ -414,13 +759,19 @@ function AlbumDetail() {
                 {completeTrackList.map((track, index) => (
                   <tr
                     key={track.id || `missing-${track.track.Int64}`}
-                    className={track.missing ? 'opacity-40' : 'hover:bg-neutral-900/30'}
+                    onClick={() => !track.missing && setPreviewTrack(track)}
+                    className={track.missing ? 'opacity-40' : 'hover:bg-neutral-900/30 cursor-pointer group'}
                   >
-                    <td className="px-4 py-3 text-sm text-neutral-500 font-mono">
-                      {track.track && track.track.Valid ? track.track.Int64 : '-'}
+                    <td className="px-4 py-3 text-sm font-mono relative">
+                      {!track.missing && (
+                        <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-opacity absolute left-4 text-rose-500"></i>
+                      )}
+                      <span className={`transition-opacity ${!track.missing ? 'group-hover:opacity-0' : ''} ${previewTrack?.id === track.id && !track.missing ? 'text-rose-500' : 'text-neutral-500'}`}>
+                        {track.track && track.track.Valid ? track.track.Int64 : '-'}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <span className={track.missing ? 'text-neutral-600 italic' : 'text-neutral-200'}>
+                      <span className={track.missing ? 'text-neutral-600 italic' : 'text-neutral-200 group-hover:text-rose-400 transition-colors'}>
                         {track.title}
                       </span>
                     </td>
@@ -449,6 +800,21 @@ function AlbumDetail() {
           isOpen={showDiffModal}
           onClose={() => setShowDiffModal(false)}
         />
+          </div>
+        </div>
+
+        {previewTrack && (
+          <div
+            className={`w-1/2 sticky top-16 h-[calc(100vh-4rem)] self-start ${!isPanelOpen ? 'animate-slide-in' : ''}`}
+            key="preview-panel"
+          >
+            <PreviewPanel
+              track={previewTrack}
+              onClose={() => setPreviewTrack(null)}
+              setPreviewTrack={setPreviewTrack}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -934,6 +1300,7 @@ function DuplicatesFinder() {
 }
 
 function Dashboard() {
+  const { previewTrack, setPreviewTrack, isPanelOpen } = useContext(PreviewContext)
   const [stats, setStats] = useState(null)
   const [albums, setAlbums] = useState([])
   const [items, setItems] = useState([])
@@ -1043,7 +1410,9 @@ function Dashboard() {
         handleSearch={handleSearch}
       />
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="flex">
+        <div className={`transition-all duration-300 ${previewTrack ? 'w-1/2' : 'w-full'}`}>
+          <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Search Results Info */}
         {searchQuery && (
           <div className="mb-6 flex items-center justify-between">
@@ -1138,9 +1507,18 @@ function Dashboard() {
                     </thead>
                     <tbody className="divide-y divide-neutral-900">
                       {items.map((item, index) => (
-                        <tr key={item.id} className="hover:bg-neutral-900/30">
-                          <td className="px-4 py-3 text-sm text-neutral-500 font-mono">{index + 1}</td>
-                          <td className="px-4 py-3 text-sm text-neutral-200">{item.title}</td>
+                        <tr
+                          key={item.id}
+                          onClick={() => setPreviewTrack(item)}
+                          className="hover:bg-neutral-900/30 cursor-pointer group"
+                        >
+                          <td className="px-4 py-3 text-sm font-mono relative">
+                            <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-opacity absolute left-4 text-rose-500"></i>
+                            <span className={`group-hover:opacity-0 transition-opacity ${previewTrack?.id === item.id ? 'text-rose-500' : 'text-neutral-500'}`}>
+                              {index + 1}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-neutral-200 group-hover:text-rose-400 transition-colors">{item.title}</td>
                           <td className="px-4 py-3 text-sm text-neutral-400">{item.artist}</td>
                           <td className="px-4 py-3 text-sm text-neutral-500">{item.album}</td>
                           <td className="px-4 py-3 text-sm text-neutral-500">
@@ -1161,6 +1539,21 @@ function Dashboard() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+          </div>
+        </div>
+
+        {previewTrack && (
+          <div
+            className={`w-1/2 sticky top-16 h-[calc(100vh-4rem)] self-start bg-neutral-950 ${!isPanelOpen ? 'animate-slide-in' : ''}`}
+            key="preview-panel"
+          >
+            <PreviewPanel
+              track={previewTrack}
+              onClose={() => setPreviewTrack(null)}
+              setPreviewTrack={setPreviewTrack}
+            />
           </div>
         )}
       </div>
@@ -1832,17 +2225,19 @@ function ReplayGainTool() {
 function App() {
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/album/:id" element={<AlbumDetail />} />
-        <Route path="/tools" element={<ToolsGallery />} />
-        <Route path="/tools/duplicates" element={<DuplicatesFinder />} />
-        <Route path="/tools/missing" element={<MissingTracksTool />} />
-        <Route path="/tools/fetchart" element={<FetchArtTool />} />
-        <Route path="/tools/lyrics" element={<LyricsTool />} />
-        <Route path="/tools/convert" element={<ConvertTool />} />
-        <Route path="/tools/replaygain" element={<ReplayGainTool />} />
-      </Routes>
+      <PreviewProvider>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/album/:id" element={<AlbumDetail />} />
+          <Route path="/tools" element={<ToolsGallery />} />
+          <Route path="/tools/duplicates" element={<DuplicatesFinder />} />
+          <Route path="/tools/missing" element={<MissingTracksTool />} />
+          <Route path="/tools/fetchart" element={<FetchArtTool />} />
+          <Route path="/tools/lyrics" element={<LyricsTool />} />
+          <Route path="/tools/convert" element={<ConvertTool />} />
+          <Route path="/tools/replaygain" element={<ReplayGainTool />} />
+        </Routes>
+      </PreviewProvider>
     </Router>
   )
 }

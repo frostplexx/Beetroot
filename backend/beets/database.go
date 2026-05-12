@@ -791,3 +791,37 @@ func ApplyReplayGain(ctx context.Context, query string, album bool) error {
 
 	return nil
 }
+
+// ModifyItemMetadata modifies track/item metadata
+func ModifyItemMetadata(ctx context.Context, itemID int64, updates map[string]string) error {
+	query := fmt.Sprintf("id:%d", itemID)
+
+	// Build field=value arguments
+	args := []string{query}
+	for field, value := range updates {
+		args = append(args, fmt.Sprintf("%s=%s", field, value))
+	}
+
+	log.Info().Int64("item_id", itemID).Interface("updates", updates).Msg("Modifying item metadata")
+
+	_, err := ExecBeetCommand(ctx, "modify", append([]string{"-y"}, args...)...)
+	if err != nil {
+		return fmt.Errorf("error modifying item metadata: %w", err)
+	}
+
+	return nil
+}
+
+// FetchLyricsForItem fetches lyrics for a specific item using beet lyrics command
+func FetchLyricsForItem(ctx context.Context, itemID int64) error {
+	query := fmt.Sprintf("id:%d", itemID)
+
+	log.Info().Int64("item_id", itemID).Msg("Fetching lyrics for item")
+
+	_, err := ExecBeetCommand(ctx, "lyrics", "-f", query)
+	if err != nil {
+		return fmt.Errorf("error fetching lyrics: %w", err)
+	}
+
+	return nil
+}

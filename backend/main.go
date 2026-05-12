@@ -108,10 +108,13 @@ func main() {
 		mux.HandleFunc("/api/beets/refetch", makeRefetchMetadataHandler())
 		mux.HandleFunc("/api/beets/refetch-art", makeRefetchArtHandler())
 		mux.HandleFunc("/api/beets/modify", makeModifyMetadataHandler())
+		mux.HandleFunc("/api/beets/modify-item", makeModifyItemHandler())
+		mux.HandleFunc("/api/beets/fetch-lyrics", makeFetchLyricsHandler())
 		mux.HandleFunc("/api/beets/duplicates", makeDuplicatesHandler())
 		mux.HandleFunc("/api/beets/duplicates/merge", makeMergeDuplicatesHandler())
 
 		mux.HandleFunc("/api/beets/albums/", makeAlbumArtHandler(db))
+		mux.HandleFunc("/api/beets/items/", makeStreamAudioHandler(db))
 
 		// Tool endpoints
 		mux.HandleFunc("/api/beets/tools/missing-art", makeMissingArtHandler(db))
@@ -579,5 +582,142 @@ func makeReplayGainHandler() http.HandlerFunc {
 		}
 
 		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	}
+}
+
+func makeModifyItemHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		var req struct {
+			ItemID  int64             `json:"item_id"`
+			Updates map[string]string `json:"updates"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request"})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+
+		if err := beets.ModifyItemMetadata(ctx, req.ItemID, req.Updates); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	}
+}
+
+func makeFetchLyricsHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		var req struct {
+			ItemID int64 `json:"item_id"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request"})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+
+		if err := beets.FetchLyricsForItem(ctx, req.ItemID); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	}
+}
+
+func makeStreamAudioHandler(db *beets.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract item ID from URL path: /api/beets/items/{id}/stream
+		path := strings.TrimPrefix(r.URL.Path, "/api/beets/items/")
+		parts := strings.Split(path, "/")
+		if len(parts) < 2 || parts[1] != "stream" {
+			http.NotFound(w, r)
+			return
+		}
+
+		itemIDStr := parts[0]
+		itemID, err := strconv.ParseInt(itemIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid item ID", http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		item, err := db.GetItemByID(ctx, itemID)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Get music directory from config
+		config, err := beets.ParseBeetsConfig(ctx)
+		if err != nil {
+			http.Error(w, "Failed to get config", http.StatusInternalServerError)
+			return
+		}
+
+		musicDir := config["directory"]
+		if musicDir == "" {
+			http.Error(w, "Music directory not configured", http.StatusInternalServerError)
+			return
+		}
+
+		// Build absolute path to audio file
+		audioPath := item.Path
+		if !filepath.IsAbs(audioPath) {
+			audioPath = filepath.Join(musicDir, audioPath)
+		}
+
+		if _, err := os.Stat(audioPath); os.IsNotExist(err) {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Set content type based on format
+		contentType := "audio/mpeg"
+		switch strings.ToLower(item.Format) {
+		case "mp3":
+			contentType = "audio/mpeg"
+		case "flac":
+			contentType = "audio/flac"
+		case "m4a", "aac":
+			contentType = "audio/mp4"
+		case "ogg":
+			contentType = "audio/ogg"
+		case "wav":
+			contentType = "audio/wav"
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Accept-Ranges", "bytes")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		http.ServeFile(w, r, audioPath)
 	}
 }
