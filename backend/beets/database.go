@@ -273,11 +273,12 @@ func (db *DB) QueryAlbums(ctx context.Context, query string) ([]Album, error) {
 }
 
 // GetDatabasePath retrieves the database path from config or uses default
-func GetDatabasePath(ctx context.Context) (string, error) {
-	config, err := ParseBeetsConfig(ctx)
+func (db *DB) GetDatabasePath(ctx context.Context) (string, error) {
+	config, _, err := ParseBeetsConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("error parsing beets config: %w", err)
 	}
+
 
 	if dbPath, ok := config["library"]; ok {
 		return expandPath(dbPath), nil

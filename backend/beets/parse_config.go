@@ -10,21 +10,21 @@ import (
 )
 
 // ParseBeetsConfig parses the beets config which is yaml and returns a map of config keys and values.
-func ParseBeetsConfig(ctx context.Context) (map[string]string, error) {
+func ParseBeetsConfig(ctx context.Context) (map[string]string, string, error) {
 	output, err := ExecBeetCommand(ctx, "config")
 	if err != nil {
-		return nil, fmt.Errorf("error executing beets config command: %w", err)
+		return nil, output, fmt.Errorf("error executing beets config command: %w", err)
 	}
 
 	var configMap map[string]interface{}
 	err = yaml.Unmarshal([]byte(output), &configMap)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing beets config output: %w", err)
+		return nil, output, fmt.Errorf("error parsing beets config output: %w", err)
 	}
 	
 	flatConfig := make(map[string]string)
 	flattenConfig("", configMap, flatConfig)
-	return flatConfig, nil
+	return flatConfig, output, nil
 }
 
 func flattenConfig(prefix string, data map[string]interface{}, result map[string]string) {

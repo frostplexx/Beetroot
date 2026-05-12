@@ -57,16 +57,22 @@ func beetsConfigHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	config, err := beets.ParseBeetsConfig(ctx)
+	config, raw, err := beets.ParseBeetsConfig(ctx)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": err.Error(),
+		w.WriteHeader(http.StatusOK) // Return 200 so the frontend can handle the error data
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":      err.Error(),
+			"raw_config": raw,
+			"is_valid":   false,
 		})
 		return
 	}
 
-	json.NewEncoder(w).Encode(config)
+	response := map[string]interface{}{
+		"config":   config,
+		"is_valid": true,
+	}
+	json.NewEncoder(w).Encode(response)
 }
 
 func main() {
@@ -415,7 +421,7 @@ func makeAlbumArtHandler(db *beets.DB) http.HandlerFunc {
 		}
 
 		// Get music directory from config
-		config, err := beets.ParseBeetsConfig(ctx)
+		config, _, err := beets.ParseBeetsConfig(ctx)
 		if err != nil {
 			http.Error(w, "Failed to get config", http.StatusInternalServerError)
 			return
@@ -677,7 +683,7 @@ func makeStreamAudioHandler(db *beets.DB) http.HandlerFunc {
 		}
 
 		// Get music directory from config
-		config, err := beets.ParseBeetsConfig(ctx)
+		config, _, err := beets.ParseBeetsConfig(ctx)
 		if err != nil {
 			http.Error(w, "Failed to get config", http.StatusInternalServerError)
 			return

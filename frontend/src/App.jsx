@@ -4,6 +4,38 @@ import './App.css'
 
 // Preview panel context
 const PreviewContext = createContext(null)
+const ConfigErrorContext = createContext(null)
+
+function ConfigErrorToast() {
+  const { configError } = useContext(ConfigErrorContext)
+  if (!configError) return null
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 animate-slide-in">
+      <div className="bg-rose-950 border border-rose-900 rounded-lg p-4 shadow-2xl max-w-md backdrop-blur-sm">
+        <div className="flex items-start gap-3">
+          <div className="text-rose-500 mt-0.5">
+            <i className="fa-solid fa-triangle-exclamation"></i>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-medium text-rose-200 mb-1">Configuration Error</h3>
+            <p className="text-xs text-rose-300/80 leading-relaxed mb-3 line-clamp-2">
+              {configError.error}
+            </p>
+            <div className="flex gap-2">
+              <Link 
+                to="/tools" 
+                className="text-[10px] font-bold uppercase tracking-wider text-rose-200 hover:text-white bg-rose-900/50 px-2 py-1 rounded"
+              >
+                View Details
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function PreviewPanel({ track, onClose, setPreviewTrack }) {
   const audioRef = useRef(null)
@@ -1063,18 +1095,60 @@ function EditMetadataModal({ album, isOpen, onClose, onSave }) {
 
 function ToolsGallery() {
   const navigate = useNavigate()
+  const { setConfigError } = useContext(ConfigErrorContext)
   const [config, setConfig] = useState(null)
+  const [rawConfig, setRawConfig] = useState(null)
+  const [localError, setLocalError] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch('/api/beets/config')
       .then(res => res.json())
       .then(data => {
-        setConfig(data)
+        if (data.is_valid === false) {
+          setConfigError({
+            error: data.error,
+            raw: data.raw_config
+          })
+          setLocalError(data.error)
+          setRawConfig(data.raw_config)
+        } else {
+          setConfig(data.config)
+          setConfigError(null)
+        }
         setLoading(false)
       })
-      .catch(() => setLoading(false))
-  }, [])
+      .catch((err) => {
+        console.error('Config fetch failed:', err)
+        setLoading(false)
+      })
+  }, [setConfigError])
+
+  const highlightErrorLine = (raw, errorMsg) => {
+    if (!raw) return null
+    
+    // Attempt to extract line number from yaml error message
+    // Format usually: "line X, column Y"
+    const match = errorMsg.match(/line (\d+)/)
+    const errorLine = match ? parseInt(match[1]) : null
+    
+    return (
+      <div className="bg-neutral-900 rounded p-4 font-mono text-xs overflow-x-auto whitespace-pre border border-neutral-800">
+        {raw.split('\n').map((line, i) => {
+          const isErrorLine = (i + 1) === errorLine
+          return (
+            <div 
+              key={i} 
+              className={`${isErrorLine ? 'bg-rose-950/50 text-rose-200 -mx-2 px-2 border-l-2 border-rose-500' : 'text-neutral-500'}`}
+            >
+              <span className="inline-block w-8 select-none text-neutral-700">{i + 1}</span>
+              {line}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   const tools = [
     {
@@ -1159,6 +1233,26 @@ function ToolsGallery() {
             Manage and organize your music library with these beets-powered tools
           </p>
         </div>
+
+        {localError && (
+          <div className="mb-10 bg-rose-950/20 border border-rose-900/50 rounded-lg p-6 animate-slide-in">
+            <div className="flex items-center gap-3 mb-4 text-rose-500">
+              <i className="fa-solid fa-triangle-exclamation text-xl"></i>
+              <h2 className="text-lg font-medium text-rose-200">Configuration Error Detected</h2>
+            </div>
+            <p className="text-neutral-400 text-sm mb-6 leading-relaxed">
+              Your <code className="text-rose-400 bg-rose-950/40 px-1.5 py-0.5 rounded">config.yaml</code> has a syntax error that prevents Beets from starting correctly. 
+              Some management tools may be unavailable until this is fixed.
+            </p>
+            <div className="bg-black/40 rounded-lg p-4 mb-4">
+              <p className="text-rose-400 font-mono text-xs mb-3">{localError}</p>
+              {highlightErrorLine(rawConfig, localError)}
+            </div>
+            <p className="text-neutral-500 text-xs italic">
+              Tip: Check for inconsistent indentation or missing colons in your config file.
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {tools.map((tool) => {
@@ -2269,22 +2363,34 @@ function ReplayGainTool() {
   )
 }
 
+function ConfigErrorProvider({ children }) {
+  const [configError, setConfigError] = useState(null)
+  return (
+    <ConfigErrorContext.Provider value={{ configError, setConfigError }}>
+      {children}
+    </ConfigErrorContext.Provider>
+  )
+}
+
 function App() {
   return (
     <Router>
-      <PreviewProvider>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/album/:id" element={<AlbumDetail />} />
-          <Route path="/tools" element={<ToolsGallery />} />
-          <Route path="/tools/duplicates" element={<DuplicatesFinder />} />
-          <Route path="/tools/missing" element={<MissingTracksTool />} />
-          <Route path="/tools/fetchart" element={<FetchArtTool />} />
-          <Route path="/tools/lyrics" element={<LyricsTool />} />
-          <Route path="/tools/convert" element={<ConvertTool />} />
-          <Route path="/tools/replaygain" element={<ReplayGainTool />} />
-        </Routes>
-      </PreviewProvider>
+      <ConfigErrorProvider>
+        <PreviewProvider>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/album/:id" element={<AlbumDetail />} />
+            <Route path="/tools" element={<ToolsGallery />} />
+            <Route path="/tools/duplicates" element={<DuplicatesFinder />} />
+            <Route path="/tools/missing" element={<MissingTracksTool />} />
+            <Route path="/tools/fetchart" element={<FetchArtTool />} />
+            <Route path="/tools/lyrics" element={<LyricsTool />} />
+            <Route path="/tools/convert" element={<ConvertTool />} />
+            <Route path="/tools/replaygain" element={<ReplayGainTool />} />
+          </Routes>
+          <ConfigErrorToast />
+        </PreviewProvider>
+      </ConfigErrorProvider>
     </Router>
   )
 }
