@@ -6,8 +6,14 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
@@ -62,48 +68,66 @@
           # Wait for both processes
           wait $BACKEND_PID $FRONTEND_PID
         '';
-      in {
+
+        rebuild-backend-script = pkgs.writeShellScriptBin "rebuild-backend" ''
+          set -e
+          echo "🔨 Rebuilding Go backend..."
+          cd backend
+          GOPATH="$HOME/go" \
+          GOMODCACHE="$HOME/go/pkg/mod" \
+          go build -o ./tmp/main .
+          echo "✅ Backend rebuilt successfully!"
+          echo ""
+          echo "💡 Restart the dev server to use the new build"
+        '';
+      in
+      {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             # Backend
             go
             gopls
             golangci-lint
-            delve        # debugger
-            air          # live reload
+            delve # debugger
+            air # live reload
 
             # Frontend
             nodejs_22
             pnpm
 
-            # Dev script
+            # Dev scripts
             dev-script
+            rebuild-backend-script
 
             # beets excluded — nixpkgs beets pulls in aacgain which fails to
             # build on macOS; use your system beet instead (pip/pipx install)
+            python3
+            pipx
           ];
 
-          env = {
-            GOPATH = "${builtins.getEnv "HOME"}/go";
-          };
-
           shellHook = ''
-            source .venv/bin/activate.fish
+            export GOPATH="$HOME/go"
+            export GOMODCACHE="$HOME/go/pkg/mod"
+
             echo "Go $(go version | awk '{print $3}')"
             echo "Node $(node --version)"
             echo "npm $(npm --version)"
-            echo "uv $(python --version)"
             echo ""
-            echo "💡 Run 'dev' to start both backend and frontend"
+            echo "💡 Commands:"
+            echo "   dev              - Start both backend and frontend"
+            echo "   rebuild-backend  - Manually rebuild the Go backend"
 
             BEET_BIN=$(command -v beet 2>/dev/null)
             if [ -n "$BEET_BIN" ]; then
               export BEET_BIN
+              echo ""
               echo "beet $($BEET_BIN version)"
             else
+              echo ""
               echo "warn: beet not found in PATH — install via: pipx install beets"
             fi
           '';
         };
-      });
+      }
+    );
 }
