@@ -223,6 +223,24 @@ func AlbumArtHandler(db *beets.DB) http.HandlerFunc {
 			return
 		}
 
+		// Get file info for modification time
+		fileInfo, err := os.Stat(artPath)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Generate ETag based on album ID and file modification time
+		etag := fmt.Sprintf(`"%d-%d"`, albumID, fileInfo.ModTime().Unix())
+
+		// Check If-None-Match header for conditional requests
+		if match := r.Header.Get("If-None-Match"); match != "" {
+			if match == etag {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
+
 		// Determine content type based on file extension
 		ext := strings.ToLower(filepath.Ext(artPath))
 		contentType := "application/octet-stream"
@@ -238,8 +256,8 @@ func AlbumArtHandler(db *beets.DB) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
-		w.Header().Set("ETag", fmt.Sprintf(`"%d-%d"`, albumID, time.Now().Unix()/86400))
+		w.Header().Set("Cache-Control", "public, max-age=2592000")
+		w.Header().Set("ETag", etag)
 		http.ServeFile(w, r, artPath)
 	}
 }

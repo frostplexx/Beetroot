@@ -18,7 +18,7 @@ export function AlbumDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [artError, setArtError] = useState(false)
-  const [artTimestamp, setArtTimestamp] = useState(Date.now())
+  const [artTimestamp, setArtTimestamp] = useState(null)
   const [refetchingArt, setRefetchingArt] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [dominantColor, setDominantColor] = useState(null)

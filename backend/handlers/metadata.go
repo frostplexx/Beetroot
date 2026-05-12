@@ -184,8 +184,8 @@ func GetMusicBrainzRecommendationsHandler(db *beets.DB) http.HandlerFunc {
 
 		mbID := album.MusicBrainzAlbumID.String
 
-		// Query MusicBrainz API
-		mbURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?inc=recordings+artist-credits+labels+genres&fmt=json", mbID)
+		// Query MusicBrainz API (include both genres and tags since MB often stores genre data in tags)
+		mbURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?inc=recordings+artist-credits+labels+genres+tags&fmt=json", mbID)
 		req, err := http.NewRequestWithContext(ctx, "GET", mbURL, nil)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -259,8 +259,11 @@ func GetMusicBrainzRecommendationsHandler(db *beets.DB) http.HandlerFunc {
 			}
 		}
 
+		// Try to get genres from both "genres" and "tags" fields
+		genreNames := []string{}
+
+		// First try the genres field
 		if genres, ok := mbData["genres"].([]interface{}); ok && len(genres) > 0 {
-			genreNames := []string{}
 			for _, g := range genres {
 				if genreObj, ok := g.(map[string]interface{}); ok {
 					if name, ok := genreObj["name"].(string); ok {
@@ -268,17 +271,36 @@ func GetMusicBrainzRecommendationsHandler(db *beets.DB) http.HandlerFunc {
 					}
 				}
 			}
-			if len(genreNames) > 0 {
-				// Join with comma-space like the frontend expects
-				genreStr := ""
-				for i, name := range genreNames {
-					if i > 0 {
-						genreStr += ", "
-					}
-					genreStr += name
+		}
+
+		// If no genres, try tags (MusicBrainz often stores genre info here)
+		if len(genreNames) == 0 {
+			if tags, ok := mbData["tags"].([]interface{}); ok && len(tags) > 0 {
+				// Only take the top 3 tags as genres
+				maxTags := 3
+				if len(tags) < maxTags {
+					maxTags = len(tags)
 				}
-				recommendations["genre"] = genreStr
+				for i := 0; i < maxTags; i++ {
+					if tagObj, ok := tags[i].(map[string]interface{}); ok {
+						if name, ok := tagObj["name"].(string); ok {
+							genreNames = append(genreNames, name)
+						}
+					}
+				}
 			}
+		}
+
+		if len(genreNames) > 0 {
+			// Join with comma-space like the frontend expects
+			genreStr := ""
+			for i, name := range genreNames {
+				if i > 0 {
+					genreStr += ", "
+				}
+				genreStr += name
+			}
+			recommendations["genre"] = genreStr
 		}
 
 		json.NewEncoder(w).Encode(map[string]interface{}{

@@ -11,6 +11,7 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
   })
   const [recommendations, setRecommendations] = useState(null)
   const [loadingRecommendations, setLoadingRecommendations] = useState(false)
+  const [recommendationsError, setRecommendationsError] = useState(null)
 
   useEffect(() => {
     if (album && isOpen) {
@@ -36,17 +37,29 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
     if (!album) return
 
     setLoadingRecommendations(true)
+    setRecommendationsError(null)
     try {
       const response = await fetch(`/api/beets/mb-recommendations?album_id=${album.id}`)
       const data = await response.json()
 
       if (response.ok && data.recommendations) {
+        const recCount = Object.keys(data.recommendations).length
+        if (recCount === 0) {
+          setRecommendationsError('MusicBrainz has no metadata for this album')
+        }
         setRecommendations(data.recommendations)
       } else {
+        const errorMsg = data.error || 'Failed to fetch suggestions'
+        if (errorMsg.includes('No MusicBrainz ID')) {
+          setRecommendationsError('No MusicBrainz ID - use beet mbsync first')
+        } else {
+          setRecommendationsError(errorMsg)
+        }
         setRecommendations(null)
       }
     } catch (err) {
       console.error('Failed to fetch recommendations:', err)
+      setRecommendationsError('Network error')
       setRecommendations(null)
     } finally {
       setLoadingRecommendations(false)
@@ -124,7 +137,11 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
   if (!isOpen) return null
 
   const renderField = (label, field, value) => {
-    const hasRecommendation = recommendations && recommendations[field] && recommendations[field] !== value
+    const recValue = recommendations?.[field]
+    const hasRecommendation = recValue &&
+                              typeof recValue === 'string' &&
+                              recValue.trim() !== '' &&
+                              recValue !== value
 
     return (
       <div>
@@ -133,11 +150,11 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
           {hasRecommendation && (
             <button
               type="button"
-              onClick={() => applyRecommendation(field, recommendations[field])}
-              className="text-xs px-2 py-0.5 bg-rose-500/20 text-rose-400 rounded hover:bg-rose-500/30 flex items-center gap-1"
-              title={`Suggestion: ${recommendations[field]}`}
+              onClick={() => applyRecommendation(field, recValue)}
+              className="text-xs px-2 py-0.5 bg-rose-500/20 text-rose-400 rounded hover:bg-rose-500/30 flex items-center gap-1 transition-colors"
+              title={`Apply suggestion: ${recValue}`}
             >
-              <span className="truncate max-w-[120px]">{recommendations[field]}</span>
+              <span className="truncate max-w-[120px]">{recValue}</span>
               <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
@@ -160,7 +177,20 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-medium text-neutral-200">Edit Metadata</h2>
           {loadingRecommendations && (
-            <span className="text-xs text-neutral-500">Loading suggestions...</span>
+            <span className="text-xs text-neutral-500 flex items-center gap-2">
+              <div className="w-3 h-3 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin"></div>
+              Loading suggestions...
+            </span>
+          )}
+          {!loadingRecommendations && recommendationsError && (
+            <span className="text-xs text-neutral-500" title={recommendationsError}>
+              <i className="fa-solid fa-circle-exclamation text-amber-500"></i> {recommendationsError}
+            </span>
+          )}
+          {!loadingRecommendations && !recommendationsError && recommendations && Object.keys(recommendations).length > 0 && (
+            <span className="text-xs text-rose-400">
+              <i className="fa-solid fa-sparkles"></i> {Object.keys(recommendations).length} suggestion{Object.keys(recommendations).length !== 1 ? 's' : ''}
+            </span>
           )}
         </div>
 
