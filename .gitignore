@@ -1,0 +1,18 @@
+# Backend
+backend/tmp/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# Nix
+.direnv/
+result
