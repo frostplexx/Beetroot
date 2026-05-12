@@ -40,7 +40,7 @@
           trap cleanup SIGINT SIGTERM
 
           # Start backend
-          echo "🔧 Starting Go backend on http://localhost:8080..."
+          echo "🔧 Starting Go backend on http://localhost:4433..."
           cd backend
           air > ../backend.log 2>&1 &
           BACKEND_PID=$!
@@ -55,7 +55,7 @@
 
           echo ""
           echo "✅ Servers started!"
-          echo "   Backend:  http://localhost:8080"
+          echo "   Backend:  http://localhost:4433"
           echo "   Frontend: http://localhost:5173"
           echo ""
           echo "📋 Logs:"

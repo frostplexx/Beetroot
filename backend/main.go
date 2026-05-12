@@ -103,39 +103,46 @@ func main() {
 	mux.HandleFunc("/api/beets/config", beetsConfigHandler)
 
 	// Database endpoints
-	if db != nil {
-		mux.HandleFunc("/api/beets/albums", makeAlbumsHandler(db))
-		mux.HandleFunc("/api/beets/items", makeItemsHandler(db))
-		mux.HandleFunc("/api/beets/stats", makeStatsHandler(db))
-		mux.HandleFunc("/api/beets/search/albums", makeSearchAlbumsHandler(db))
-		mux.HandleFunc("/api/beets/search/items", makeSearchItemsHandler(db))
+	mux.HandleFunc("/api/beets/albums", makeAlbumsHandler(db))
+	mux.HandleFunc("/api/beets/items", makeItemsHandler(db))
+	mux.HandleFunc("/api/beets/stats", makeStatsHandler(db))
+	mux.HandleFunc("/api/beets/search/albums", makeSearchAlbumsHandler(db))
+	mux.HandleFunc("/api/beets/search/items", makeSearchItemsHandler(db))
 
-		// Metadata tools
-		mux.HandleFunc("/api/beets/refetch", makeRefetchMetadataHandler())
-		mux.HandleFunc("/api/beets/refetch-art", makeRefetchArtHandler())
-		mux.HandleFunc("/api/beets/modify", makeModifyMetadataHandler())
-		mux.HandleFunc("/api/beets/modify-item", makeModifyItemHandler())
-		mux.HandleFunc("/api/beets/fetch-lyrics", makeFetchLyricsHandler())
-		mux.HandleFunc("/api/beets/duplicates", makeDuplicatesHandler())
-		mux.HandleFunc("/api/beets/duplicates/merge", makeMergeDuplicatesHandler())
+	// Metadata tools
+	mux.HandleFunc("/api/beets/refetch", makeRefetchMetadataHandler())
+	mux.HandleFunc("/api/beets/refetch-art", makeRefetchArtHandler())
+	mux.HandleFunc("/api/beets/modify", makeModifyMetadataHandler())
+	mux.HandleFunc("/api/beets/modify-item", makeModifyItemHandler())
+	mux.HandleFunc("/api/beets/fetch-lyrics", makeFetchLyricsHandler())
+	mux.HandleFunc("/api/beets/duplicates", makeDuplicatesHandler())
+	mux.HandleFunc("/api/beets/duplicates/merge", makeMergeDuplicatesHandler())
 
-		mux.HandleFunc("/api/beets/albums/", makeAlbumArtHandler(db))
-		mux.HandleFunc("/api/beets/items/", makeStreamAudioHandler(db))
+	mux.HandleFunc("/api/beets/albums/", makeAlbumArtHandler(db))
+	mux.HandleFunc("/api/beets/items/", makeStreamAudioHandler(db))
 
-		// Tool endpoints
-		mux.HandleFunc("/api/beets/tools/missing-art", makeMissingArtHandler(db))
-		mux.HandleFunc("/api/beets/tools/fetch-art", makeFetchArtHandler())
-		mux.HandleFunc("/api/beets/tools/replaygain", makeReplayGainHandler())
-	}
+	// Tool endpoints
+	mux.HandleFunc("/api/beets/tools/missing-art", makeMissingArtHandler(db))
+	mux.HandleFunc("/api/beets/tools/fetch-art", makeFetchArtHandler())
+	mux.HandleFunc("/api/beets/tools/replaygain", makeReplayGainHandler())
 
 	handler := enableCORS(mux)
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "4433"
 	}
 
-	log.Printf("Server starting on port %s", port)
+	log.Printf("--------------------------------------------------")
+	log.Printf("🚀 Beetroot Backend Starting")
+	log.Printf("📡 Port: %s", port)
+	if db != nil {
+		log.Printf("📂 Database: %s (CONNECTED)", dbPath)
+	} else {
+		log.Printf("⚠️  Database: NOT CONNECTED (Features will be limited)")
+	}
+	log.Printf("--------------------------------------------------")
+
 	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatal(err)
 	}
@@ -144,6 +151,14 @@ func main() {
 func makeAlbumsHandler(db *beets.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Database connection is not available. Please check your beets configuration.",
+			})
+			return
+		}
 
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
@@ -165,6 +180,14 @@ func makeItemsHandler(db *beets.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Database connection is not available. Please check your beets configuration.",
+			})
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
@@ -185,6 +208,14 @@ func makeStatsHandler(db *beets.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Database connection is not available. Please check your beets configuration.",
+			})
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
@@ -204,6 +235,14 @@ func makeStatsHandler(db *beets.DB) http.HandlerFunc {
 func makeSearchAlbumsHandler(db *beets.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Database connection is not available. Please check your beets configuration.",
+			})
+			return
+		}
 
 		query := r.URL.Query().Get("q")
 
@@ -227,6 +266,14 @@ func makeSearchAlbumsHandler(db *beets.DB) http.HandlerFunc {
 func makeSearchItemsHandler(db *beets.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Database connection is not available. Please check your beets configuration.",
+			})
+			return
+		}
 
 		query := r.URL.Query().Get("q")
 
@@ -396,6 +443,10 @@ func makeMergeDuplicatesHandler() http.HandlerFunc {
 
 func makeAlbumArtHandler(db *beets.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			http.Error(w, "Database connection not available", http.StatusServiceUnavailable)
+			return
+		}
 		// Extract album ID from URL path: /api/beets/albums/{id}/art
 		path := strings.TrimPrefix(r.URL.Path, "/api/beets/albums/")
 		parts := strings.Split(path, "/")
@@ -511,6 +562,14 @@ func makeAlbumArtHandler(db *beets.DB) http.HandlerFunc {
 func makeMissingArtHandler(db *beets.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Database connection is not available. Please check your beets configuration.",
+			})
+			return
+		}
 
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
@@ -658,6 +717,10 @@ func makeFetchLyricsHandler() http.HandlerFunc {
 
 func makeStreamAudioHandler(db *beets.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			http.Error(w, "Database connection not available", http.StatusServiceUnavailable)
+			return
+		}
 		// Extract item ID from URL path: /api/beets/items/{id}/stream
 		path := strings.TrimPrefix(r.URL.Path, "/api/beets/items/")
 		parts := strings.Split(path, "/")

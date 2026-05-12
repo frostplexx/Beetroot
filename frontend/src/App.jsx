@@ -1103,7 +1103,10 @@ function ToolsGallery() {
 
   useEffect(() => {
     fetch('/api/beets/config')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`Config: ${res.status} ${res.statusText}`)
+        return res.json()
+      })
       .then(data => {
         if (data.is_valid === false) {
           setConfigError({
@@ -1462,9 +1465,18 @@ function Dashboard() {
   const loadAllData = () => {
     setLoading(true)
     Promise.all([
-      fetch('/api/beets/stats').then(res => res.json()),
-      fetch('/api/beets/albums').then(res => res.json()),
-      fetch('/api/beets/items').then(res => res.json())
+      fetch('/api/beets/stats').then(res => {
+        if (!res.ok) throw new Error(`Stats: ${res.status} ${res.statusText}`)
+        return res.json()
+      }),
+      fetch('/api/beets/albums').then(res => {
+        if (!res.ok) throw new Error(`Albums: ${res.status} ${res.statusText}`)
+        return res.json()
+      }),
+      fetch('/api/beets/items').then(res => {
+        if (!res.ok) throw new Error(`Items: ${res.status} ${res.statusText}`)
+        return res.json()
+      })
     ])
       .then(([statsData, albumsData, itemsData]) => {
         setStats(statsData)
@@ -1487,8 +1499,14 @@ function Dashboard() {
     setSearching(true)
     try {
       const [albumsData, itemsData] = await Promise.all([
-        fetch(`/api/beets/search/albums?q=${encodeURIComponent(query)}`).then(res => res.json()),
-        fetch(`/api/beets/search/items?q=${encodeURIComponent(query)}`).then(res => res.json())
+        fetch(`/api/beets/search/albums?q=${encodeURIComponent(query)}`).then(res => {
+          if (!res.ok) throw new Error(`Search Albums: ${res.status} ${res.statusText}`)
+          return res.json()
+        }),
+        fetch(`/api/beets/search/items?q=${encodeURIComponent(query)}`).then(res => {
+          if (!res.ok) throw new Error(`Search Items: ${res.status} ${res.statusText}`)
+          return res.json()
+        })
       ])
       setAlbums(albumsData || [])
       setItems(itemsData || [])
@@ -1521,10 +1539,50 @@ function Dashboard() {
   }
 
   if (error) {
+    const isConnectionError = error.includes('Failed to fetch') || error.includes('ECONNREFUSED')
+    const isServiceError = error.includes('503') || error.includes('502')
+
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-        <div className="border border-neutral-800 rounded p-6 max-w-md">
-          <p className="text-neutral-400">{error}</p>
+      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6">
+        <div className="border border-red-900/50 bg-red-950/20 rounded-xl p-8 max-w-lg w-full backdrop-blur-sm shadow-2xl">
+          <div className="flex items-center gap-4 mb-6 text-red-500">
+            <div className="h-12 w-12 rounded-full bg-red-950/50 flex items-center justify-center border border-red-900/50">
+              <i className="fa-solid fa-triangle-exclamation text-2xl"></i>
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-red-200">System Error</h2>
+              <p className="text-red-400/60 text-sm">Communication with backend failed</p>
+            </div>
+          </div>
+
+          <div className="bg-black/40 rounded-lg p-4 font-mono text-sm text-red-300 border border-red-900/30 mb-6 break-words">
+            {error}
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-neutral-300 uppercase tracking-wider">Troubleshooting</h3>
+            <ul className="text-sm text-neutral-400 space-y-3">
+              <li className="flex gap-3">
+                <span className="text-rose-500 font-bold">1.</span>
+                <span>Check if the backend is running by looking for <b>"🚀 Beetroot Backend Starting"</b> in your terminal logs.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-rose-500 font-bold">2.</span>
+                <span>Verify your <b>beets configuration</b> is valid and the database path is correct.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-rose-500 font-bold">3.</span>
+                <span>Ensure the backend is listening on <b>port 4433</b> (run <code>lsof -i :4433</code>).</span>
+              </li>
+            </ul>
+          </div>
+
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full mt-8 px-4 py-3 bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-lg hover:border-rose-500 hover:text-rose-500 transition-all font-medium"
+          >
+            Retry Connection
+          </button>
         </div>
       </div>
     )
@@ -1976,8 +2034,14 @@ function MissingTracksTool() {
     setLoading(true)
     try {
       const [albumsData, itemsData] = await Promise.all([
-        fetch('/api/beets/albums').then(res => res.json()),
-        fetch('/api/beets/items').then(res => res.json())
+        fetch('/api/beets/albums').then(res => {
+          if (!res.ok) throw new Error(`Albums: ${res.status} ${res.statusText}`)
+          return res.json()
+        }),
+        fetch('/api/beets/items').then(res => {
+          if (!res.ok) throw new Error(`Items: ${res.status} ${res.statusText}`)
+          return res.json()
+        })
       ])
 
       // Find albums with missing tracks
