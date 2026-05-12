@@ -451,20 +451,14 @@ function AlbumDetail() {
   }, [id])
 
   const loadAlbumData = () => {
+    const albumId = parseInt(id)
     Promise.all([
-      fetch('/api/beets/albums').then(res => res.json()),
-      fetch('/api/beets/items').then(res => res.json())
+      fetch(`/api/beets/albums/by-id/${albumId}`).then(res => res.json()),
+      fetch(`/api/beets/items/by-album/${albumId}`).then(res => res.json())
     ])
-      .then(([albumsData, itemsData]) => {
-        const albumData = albumsData.find(a => a.id === parseInt(id))
-        if (!albumData) {
-          setError('Album not found')
-          setLoading(false)
-          return
-        }
-        const albumTracks = itemsData.filter(item => item.album_id.Valid && item.album_id.Int64 === parseInt(id))
+      .then(([albumData, itemsData]) => {
         setAlbum(albumData)
-        setTracks(albumTracks)
+        setTracks(itemsData)
         setLoading(false)
       })
       .catch(err => {
@@ -491,13 +485,11 @@ function AlbumDetail() {
       if (!response.ok) throw new Error('Failed to refetch metadata')
 
       // Reload data
-      const [albumsData, itemsData] = await Promise.all([
-        fetch('/api/beets/albums').then(res => res.json()),
-        fetch('/api/beets/items').then(res => res.json())
+      const albumId = parseInt(id)
+      const [afterAlbum, afterTracks] = await Promise.all([
+        fetch(`/api/beets/albums/by-id/${albumId}`).then(res => res.json()),
+        fetch(`/api/beets/items/by-album/${albumId}`).then(res => res.json())
       ])
-
-      const afterAlbum = albumsData.find(a => a.id === parseInt(id))
-      const afterTracks = itemsData.filter(item => item.album_id.Valid && item.album_id.Int64 === parseInt(id))
 
       if (!afterAlbum) {
         throw new Error('Album not found after refetch. It may have been removed or merged.')
@@ -1458,36 +1450,97 @@ function Dashboard() {
   const [searching, setSearching] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
 
+  // Pagination state
+  const [albumsPage, setAlbumsPage] = useState(0)
+  const [itemsPage, setItemsPage] = useState(0)
+  const [albumsTotal, setAlbumsTotal] = useState(0)
+  const [itemsTotal, setItemsTotal] = useState(0)
+  const albumsPerPage = 50
+  const itemsPerPage = 100
+
   useEffect(() => {
-    loadAllData()
+    loadStats()
+    loadCounts()
   }, [])
 
-  const loadAllData = () => {
+  useEffect(() => {
+    if (activeTab === 'albums') {
+      loadAlbums(albumsPage)
+    } else if (activeTab === 'tracks') {
+      loadItems(itemsPage)
+    }
+  }, [activeTab, albumsPage, itemsPage])
+
+  const loadStats = async () => {
+    try {
+      const res = await fetch('/api/beets/stats')
+      if (!res.ok) throw new Error(`Stats: ${res.status} ${res.statusText}`)
+      const data = await res.json()
+      setStats(data)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const loadCounts = async () => {
+    try {
+      const [albumsRes, itemsRes] = await Promise.all([
+        fetch('/api/beets/albums/count'),
+        fetch('/api/beets/items/count')
+      ])
+      if (albumsRes.ok) {
+        const data = await albumsRes.json()
+        setAlbumsTotal(data.count)
+      }
+      if (itemsRes.ok) {
+        const data = await itemsRes.json()
+        setItemsTotal(data.count)
+      }
+    } catch (err) {
+      console.error('Error loading counts:', err)
+    }
+  }
+
+  const loadAlbums = async (page) => {
     setLoading(true)
-    Promise.all([
-      fetch('/api/beets/stats').then(res => {
-        if (!res.ok) throw new Error(`Stats: ${res.status} ${res.statusText}`)
-        return res.json()
-      }),
-      fetch('/api/beets/albums').then(res => {
-        if (!res.ok) throw new Error(`Albums: ${res.status} ${res.statusText}`)
-        return res.json()
-      }),
-      fetch('/api/beets/items').then(res => {
-        if (!res.ok) throw new Error(`Items: ${res.status} ${res.statusText}`)
-        return res.json()
-      })
-    ])
-      .then(([statsData, albumsData, itemsData]) => {
-        setStats(statsData)
-        setAlbums(albumsData || [])
-        setItems(itemsData || [])
-        setLoading(false)
-      })
-      .catch(err => {
-        setError(err.message)
-        setLoading(false)
-      })
+    try {
+      const offset = page * albumsPerPage
+      const res = await fetch(`/api/beets/albums?limit=${albumsPerPage}&offset=${offset}`)
+      if (!res.ok) throw new Error(`Albums: ${res.status} ${res.statusText}`)
+      const data = await res.json()
+      setAlbums(data || [])
+      setLoading(false)
+    } catch (err) {
+      setError(err.message)
+      setLoading(false)
+    }
+  }
+
+  const loadItems = async (page) => {
+    setLoading(true)
+    try {
+      const offset = page * itemsPerPage
+      const res = await fetch(`/api/beets/items?limit=${itemsPerPage}&offset=${offset}`)
+      if (!res.ok) throw new Error(`Items: ${res.status} ${res.statusText}`)
+      const data = await res.json()
+      setItems(data || [])
+      setLoading(false)
+    } catch (err) {
+      setError(err.message)
+      setLoading(false)
+    }
+  }
+
+  const loadAllData = () => {
+    setAlbumsPage(0)
+    setItemsPage(0)
+    loadStats()
+    loadCounts()
+    if (activeTab === 'albums') {
+      loadAlbums(0)
+    } else {
+      loadItems(0)
+    }
   }
 
   const handleSearch = async (query) => {
@@ -1651,9 +1704,32 @@ function Dashboard() {
         {/* Albums View */}
         {activeTab === 'albums' && (
           <div>
-            <h2 className="text-sm font-medium text-neutral-400 mb-4 uppercase tracking-wider">
-              Albums ({albums.length})
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-wider">
+                Albums (Showing {albums.length} of {albumsTotal})
+              </h2>
+              {albumsTotal > albumsPerPage && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setAlbumsPage(Math.max(0, albumsPage - 1))}
+                    disabled={albumsPage === 0}
+                    className="px-3 py-1 text-xs bg-neutral-900 border border-neutral-800 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:border-rose-500 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs text-neutral-500">
+                    Page {albumsPage + 1} of {Math.ceil(albumsTotal / albumsPerPage)}
+                  </span>
+                  <button
+                    onClick={() => setAlbumsPage(albumsPage + 1)}
+                    disabled={(albumsPage + 1) * albumsPerPage >= albumsTotal}
+                    className="px-3 py-1 text-xs bg-neutral-900 border border-neutral-800 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:border-rose-500 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </div>
             {albums.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-neutral-500">No albums found</p>
@@ -1671,9 +1747,32 @@ function Dashboard() {
         {/* Tracks View */}
         {activeTab === 'tracks' && (
           <div>
-            <h2 className="text-sm font-medium text-neutral-400 mb-4 uppercase tracking-wider">
-              Tracks ({items.length})
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-wider">
+                Tracks (Showing {items.length} of {itemsTotal})
+              </h2>
+              {itemsTotal > itemsPerPage && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setItemsPage(Math.max(0, itemsPage - 1))}
+                    disabled={itemsPage === 0}
+                    className="px-3 py-1 text-xs bg-neutral-900 border border-neutral-800 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:border-rose-500 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs text-neutral-500">
+                    Page {itemsPage + 1} of {Math.ceil(itemsTotal / itemsPerPage)}
+                  </span>
+                  <button
+                    onClick={() => setItemsPage(itemsPage + 1)}
+                    disabled={(itemsPage + 1) * itemsPerPage >= itemsTotal}
+                    className="px-3 py-1 text-xs bg-neutral-900 border border-neutral-800 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:border-rose-500 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </div>
             {items.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-neutral-500">No tracks found</p>
@@ -1717,7 +1816,7 @@ function Dashboard() {
                           <td className="px-4 py-3 text-sm font-mono relative">
                             <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-opacity absolute left-4 text-rose-500"></i>
                             <span className={`group-hover:opacity-0 transition-opacity ${previewTrack?.id === item.id ? 'text-rose-500' : 'text-neutral-500'}`}>
-                              {index + 1}
+                              {itemsPage * itemsPerPage + index + 1}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-sm text-neutral-200 group-hover:text-rose-400 transition-colors">{item.title}</td>

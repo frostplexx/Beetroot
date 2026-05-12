@@ -433,6 +433,26 @@ func (db *DB) GetItemByID(ctx context.Context, id int64) (*Item, error) {
 	return &item, nil
 }
 
+// GetAlbumsCount returns the total number of albums
+func (db *DB) GetAlbumsCount(ctx context.Context) (int64, error) {
+	var count int64
+	err := db.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM albums").Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("error counting albums: %w", err)
+	}
+	return count, nil
+}
+
+// GetItemsCount returns the total number of items
+func (db *DB) GetItemsCount(ctx context.Context) (int64, error) {
+	var count int64
+	err := db.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM items").Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("error counting items: %w", err)
+	}
+	return count, nil
+}
+
 // GetAlbums retrieves albums from the database
 func (db *DB) GetAlbums(ctx context.Context, opts QueryOptions) ([]Album, error) {
 	query := `SELECT

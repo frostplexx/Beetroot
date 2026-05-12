@@ -104,7 +104,11 @@ func main() {
 
 	// Database endpoints
 	mux.HandleFunc("/api/beets/albums", makeAlbumsHandler(db))
+	mux.HandleFunc("/api/beets/albums/count", makeAlbumsCountHandler(db))
+	mux.HandleFunc("/api/beets/albums/by-id/", makeGetAlbumByIDHandler(db))
 	mux.HandleFunc("/api/beets/items", makeItemsHandler(db))
+	mux.HandleFunc("/api/beets/items/count", makeItemsCountHandler(db))
+	mux.HandleFunc("/api/beets/items/by-album/", makeItemsByAlbumHandler(db))
 	mux.HandleFunc("/api/beets/stats", makeStatsHandler(db))
 	mux.HandleFunc("/api/beets/search/albums", makeSearchAlbumsHandler(db))
 	mux.HandleFunc("/api/beets/search/items", makeSearchItemsHandler(db))
@@ -160,10 +164,29 @@ func makeAlbumsHandler(db *beets.DB) http.HandlerFunc {
 			return
 		}
 
+		// Parse pagination parameters
+		limit := 50 // default page size
+		offset := 0
+
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+			}
+		}
+
+		if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+			if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
+				offset = parsedOffset
+			}
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
-		albums, err := db.GetAlbums(ctx, beets.QueryOptions{})
+		albums, err := db.GetAlbums(ctx, beets.QueryOptions{
+			Limit:  limit,
+			Offset: offset,
+		})
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{
@@ -188,10 +211,154 @@ func makeItemsHandler(db *beets.DB) http.HandlerFunc {
 			return
 		}
 
+		// Parse pagination parameters
+		limit := 100 // default page size
+		offset := 0
+
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+			}
+		}
+
+		if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+			if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
+				offset = parsedOffset
+			}
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
-		items, err := db.GetItems(ctx, beets.QueryOptions{})
+		items, err := db.GetItems(ctx, beets.QueryOptions{
+			Limit:  limit,
+			Offset: offset,
+		})
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(items)
+	}
+}
+
+func makeAlbumsCountHandler(db *beets.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Database connection is not available. Please check your beets configuration.",
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		count, err := db.GetAlbumsCount(ctx)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]int64{"count": count})
+	}
+}
+
+func makeItemsCountHandler(db *beets.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Database connection is not available. Please check your beets configuration.",
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		count, err := db.GetItemsCount(ctx)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": err.Error(),
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]int64{"count": count})
+	}
+}
+
+func makeGetAlbumByIDHandler(db *beets.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Database connection is not available. Please check your beets configuration.",
+			})
+			return
+		}
+
+		// Extract album ID from URL path: /api/beets/albums/by-id/{id}
+		path := strings.TrimPrefix(r.URL.Path, "/api/beets/albums/by-id/")
+		albumID, err := strconv.ParseInt(path, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid album ID", http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		album, err := db.GetAlbumByID(ctx, albumID)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		json.NewEncoder(w).Encode(album)
+	}
+}
+
+func makeItemsByAlbumHandler(db *beets.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if db == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Database connection is not available. Please check your beets configuration.",
+			})
+			return
+		}
+
+		// Extract album ID from URL path: /api/beets/items/by-album/{id}
+		path := strings.TrimPrefix(r.URL.Path, "/api/beets/items/by-album/")
+		albumID, err := strconv.ParseInt(path, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid album ID", http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		items, err := db.GetItemsByAlbumID(ctx, albumID)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{
