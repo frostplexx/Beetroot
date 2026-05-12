@@ -73,6 +73,16 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
               >
                 Tools
               </Link>
+              <Link
+                to="/logs"
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                  location.pathname === '/logs'
+                    ? 'bg-rose-500/10 text-rose-500'
+                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
+                }`}
+              >
+                Logs
+              </Link>
             </nav>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { ConfigErrorToast } from './components/common/ConfigErrorToast'
 import { Dashboard } from './pages/Dashboard'
 import { AlbumDetailPage } from './pages/AlbumDetailPage'
 import { ToolsPage } from './pages/ToolsPage'
+import { LogsPage } from './pages/LogsPage'
 import './App.css'
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
             <Route path="/album/:id" element={<AlbumDetailPage />} />
             <Route path="/tools" element={<ToolsPage />} />
             <Route path="/tools/*" element={<ToolsPage />} />
+            <Route path="/logs" element={<LogsPage />} />
           </Routes>
           <ConfigErrorToast />
         </PreviewProvider>

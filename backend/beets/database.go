@@ -135,14 +135,21 @@ func (db *DB) QueryItems(ctx context.Context, query string) ([]Item, error) {
 // RefetchAlbumMetadata refetches metadata for an album from MusicBrainz
 func RefetchAlbumMetadata(ctx context.Context, albumID int64) error {
 	query := fmt.Sprintf("id:%d", albumID)
-	log.Info().Int64("album_id", albumID).Msg("Refetching album metadata")
+	log.Info().Int64("album_id", albumID).Str("query", query).Msg("Refetching album metadata")
 
-	// Use beet update with -M flag to fetch from MusicBrainz
-	_, err := ExecBeetCommand(ctx, "update", "-M", query)
+	// Use beet import -L to reimport from library
+	// This re-fetches metadata from MusicBrainz using the full matching engine
+	// -L: query from library (not filesystem)
+	// -C: don't copy files
+	// -M: don't move files (keep in place)
+	// -q: quiet mode (non-interactive, uses quiet_fallback config)
+	output, err := ExecBeetCommand(ctx, "import", "-L", "-C", "-M", "-q", query)
 	if err != nil {
+		log.Error().Err(err).Str("output", output).Msg("Failed to refetch metadata")
 		return fmt.Errorf("error refetching metadata: %w", err)
 	}
 
+	log.Info().Str("output", output).Msg("Metadata refetch completed")
 	return nil
 }
 
@@ -151,8 +158,8 @@ func RefetchAlbumArt(ctx context.Context, albumID int64) error {
 	query := fmt.Sprintf("id:%d", albumID)
 	log.Info().Int64("album_id", albumID).Msg("Refetching album art")
 
-	// Use beet fetchart to fetch album art
-	_, err := ExecBeetCommand(ctx, "fetchart", "-q", query)
+	// Use beet fetchart with -a flag for albums
+	_, err := ExecBeetCommand(ctx, "fetchart", "-a", "-q", query)
 	if err != nil {
 		return fmt.Errorf("error refetching album art: %w", err)
 	}
@@ -162,17 +169,19 @@ func RefetchAlbumArt(ctx context.Context, albumID int64) error {
 
 // ModifyAlbumMetadata modifies album metadata
 func ModifyAlbumMetadata(ctx context.Context, albumID int64, updates map[string]string) error {
-	query := fmt.Sprintf("album_id:%d", albumID)
+	// For albums, use "id:" not "album_id:"
+	query := fmt.Sprintf("id:%d", albumID)
 
 	// Build field=value arguments
-	args := []string{query}
+	// Add -a flag to modify albums (not items)
+	args := []string{"-a", "-y", query}
 	for field, value := range updates {
 		args = append(args, fmt.Sprintf("%s=%s", field, value))
 	}
 
 	log.Info().Int64("album_id", albumID).Interface("updates", updates).Msg("Modifying album metadata")
 
-	_, err := ExecBeetCommand(ctx, "modify", append([]string{"-y"}, args...)...)
+	_, err := ExecBeetCommand(ctx, "modify", args...)
 	if err != nil {
 		return fmt.Errorf("error modifying metadata: %w", err)
 	}

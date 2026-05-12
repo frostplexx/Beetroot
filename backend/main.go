@@ -8,11 +8,21 @@ import (
 
 	"backend/beets"
 	"backend/handlers"
+	"backend/logger"
 	"backend/middleware"
+
+	zlog "github.com/rs/zerolog/log"
 )
 
 func main() {
 	ctx := context.Background()
+
+	// Initialize log buffer
+	logger.InitGlobalBuffer(1000)
+
+	// Add hook to capture logs in buffer
+	hook := logger.NewBufferHook(logger.GetGlobalBuffer())
+	zlog.Logger = zlog.Hook(hook)
 
 	// Initialize database connection
 	dbPath, err := beets.GetDatabasePath(ctx)
@@ -65,6 +75,7 @@ func main() {
 	mux.HandleFunc("/api/beets/refetch-art", handlers.RefetchArtHandler())
 	mux.HandleFunc("/api/beets/modify", handlers.ModifyMetadataHandler())
 	mux.HandleFunc("/api/beets/modify-item", handlers.ModifyItemHandler())
+	mux.HandleFunc("/api/beets/mb-recommendations", handlers.GetMusicBrainzRecommendationsHandler(db))
 
 	// Tool endpoints
 	mux.HandleFunc("/api/beets/duplicates", handlers.DuplicatesHandler())
@@ -73,6 +84,10 @@ func main() {
 	mux.HandleFunc("/api/beets/tools/fetch-art", handlers.FetchArtHandler())
 	mux.HandleFunc("/api/beets/tools/replaygain", handlers.ReplayGainHandler())
 	mux.HandleFunc("/api/beets/fetch-lyrics", handlers.FetchLyricsHandler())
+
+	// Logs endpoints
+	mux.HandleFunc("/api/logs", handlers.LogsHandler())
+	mux.HandleFunc("/api/logs/clear", handlers.ClearLogsHandler())
 
 	// Apply middleware
 	handler := middleware.EnableCORS(mux)
