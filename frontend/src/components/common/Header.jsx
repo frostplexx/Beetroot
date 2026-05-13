@@ -13,6 +13,11 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
 
   const isLibraryActive = !isToolsPage && location.pathname !== '/upload' && location.pathname !== '/logs'
 
+  const handleMobileTabClick = (tab) => {
+    setActiveTab(tab)
+    setMobileMenuOpen(false)
+  }
+
   return (
     <header className="border-b border-neutral-800/50 bg-neutral-950/95 backdrop-blur-lg sticky top-0 z-50 shadow-lg shadow-black/5">
       <div className="max-w-7xl mx-auto px-6">
@@ -166,7 +171,7 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
             {activeTab !== undefined && (
               <div className="ml-6 flex flex-col gap-1 border-l border-neutral-800 pl-3">
                 <button
-                  onClick={() => { setActiveTab('albums'); setMobileMenuOpen(false) }}
+                  onClick={() => handleMobileTabClick('albums')}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 w-full text-left ${
                     activeTab === 'albums'
                       ? 'bg-rose-500/10 text-rose-400'
@@ -177,7 +182,7 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
                   <span>Albums</span>
                 </button>
                 <button
-                  onClick={() => { setActiveTab('tracks'); setMobileMenuOpen(false) }}
+                  onClick={() => handleMobileTabClick('tracks')}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 w-full text-left ${
                     activeTab === 'tracks'
                       ? 'bg-rose-500/10 text-rose-400'
@@ -188,7 +193,7 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
                   <span>Tracks</span>
                 </button>
                 <button
-                  onClick={() => { setActiveTab('stats'); setMobileMenuOpen(false) }}
+                  onClick={() => handleMobileTabClick('stats')}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 w-full text-left ${
                     activeTab === 'stats'
                       ? 'bg-rose-500/10 text-rose-400'
