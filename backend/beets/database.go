@@ -44,6 +44,7 @@ type Item struct {
 	Disc               sql.NullInt64   `json:"disc"`
 	DiscTotal          sql.NullInt64   `json:"disctotal"`
 	Genres             sql.NullString  `json:"genres"`
+	Lyrics             sql.NullString  `json:"lyrics"`
 	MusicBrainzTrackID sql.NullString  `json:"mb_trackid"`
 	MusicBrainzAlbumID sql.NullString  `json:"mb_albumid"`
 	Added              float64         `json:"added"`
@@ -135,14 +136,21 @@ func (db *DB) QueryItems(ctx context.Context, query string) ([]Item, error) {
 // RefetchAlbumMetadata refetches metadata for an album from MusicBrainz
 func RefetchAlbumMetadata(ctx context.Context, albumID int64) error {
 	query := fmt.Sprintf("id:%d", albumID)
-	log.Info().Int64("album_id", albumID).Msg("Refetching album metadata")
+	log.Info().Int64("album_id", albumID).Str("query", query).Msg("Refetching album metadata")
 
-	// Use beet update with -M flag to fetch from MusicBrainz
-	_, err := ExecBeetCommand(ctx, "update", "-M", query)
+	// Use beet import -L to reimport from library
+	// This re-fetches metadata from MusicBrainz using the full matching engine
+	// -L: query from library (not filesystem)
+	// -C: don't copy files
+	// -M: don't move files (keep in place)
+	// -q: quiet mode (non-interactive, uses quiet_fallback config)
+	output, err := ExecBeetCommand(ctx, "import", "-L", "-C", "-M", "-q", query)
 	if err != nil {
+		log.Error().Err(err).Str("output", output).Msg("Failed to refetch metadata")
 		return fmt.Errorf("error refetching metadata: %w", err)
 	}
 
+	log.Info().Str("output", output).Msg("Metadata refetch completed")
 	return nil
 }
 
@@ -151,8 +159,8 @@ func RefetchAlbumArt(ctx context.Context, albumID int64) error {
 	query := fmt.Sprintf("id:%d", albumID)
 	log.Info().Int64("album_id", albumID).Msg("Refetching album art")
 
-	// Use beet fetchart to fetch album art
-	_, err := ExecBeetCommand(ctx, "fetchart", "-q", query)
+	// Use beet fetchart with -a flag for albums
+	_, err := ExecBeetCommand(ctx, "fetchart", "-a", "-q", query)
 	if err != nil {
 		return fmt.Errorf("error refetching album art: %w", err)
 	}
@@ -162,17 +170,19 @@ func RefetchAlbumArt(ctx context.Context, albumID int64) error {
 
 // ModifyAlbumMetadata modifies album metadata
 func ModifyAlbumMetadata(ctx context.Context, albumID int64, updates map[string]string) error {
-	query := fmt.Sprintf("album_id:%d", albumID)
+	// For albums, use "id:" not "album_id:"
+	query := fmt.Sprintf("id:%d", albumID)
 
 	// Build field=value arguments
-	args := []string{query}
+	// Add -a flag to modify albums (not items)
+	args := []string{"-a", "-y", query}
 	for field, value := range updates {
 		args = append(args, fmt.Sprintf("%s=%s", field, value))
 	}
 
 	log.Info().Int64("album_id", albumID).Interface("updates", updates).Msg("Modifying album metadata")
 
-	_, err := ExecBeetCommand(ctx, "modify", append([]string{"-y"}, args...)...)
+	_, err := ExecBeetCommand(ctx, "modify", args...)
 	if err != nil {
 		return fmt.Errorf("error modifying metadata: %w", err)
 	}
@@ -182,44 +192,217 @@ func ModifyAlbumMetadata(ctx context.Context, albumID int64, updates map[string]
 
 // FindDuplicateAlbums finds potential duplicate albums
 func FindDuplicateAlbums(ctx context.Context) ([]map[string]interface{}, error) {
-	log.Debug().Msg("Finding duplicate albums")
+	log.Debug().Msg("Finding duplicate albums using similarity matching")
 
-	// Use keys to find albums with same artist and similar album name
-	// This will catch split albums like "Album" and "Album (Deluxe Edition)"
-	output, err := ExecBeetCommand(ctx, "duplicates", "-a", "-k", "albumartist", "-k", "album")
+	// Get database path from config
+	config, _, err := ParseBeetsConfig(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error finding duplicates: %w", err)
+		return nil, fmt.Errorf("error parsing beets config: %w", err)
 	}
 
-	if output == "" {
-		return []map[string]interface{}{}, nil
+	dbPath, ok := config["library"]
+	if !ok {
+		return nil, fmt.Errorf("library path not found in beets config")
 	}
 
-	// Parse output - format is typically "Artist - Album"
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	duplicates := make([]map[string]interface{}, 0)
+	db, err := OpenDB(ctx, dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("error opening database: %w", err)
+	}
+	defer db.Close()
 
-	for _, line := range lines {
-		if line == "" {
+	// Get all albums grouped by artist
+	query := `
+		SELECT id, album, albumartist,
+		       (SELECT COUNT(*) FROM items WHERE items.album_id = albums.id) as track_count
+		FROM albums
+		ORDER BY albumartist, album
+	`
+
+	rows, err := db.conn.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("error querying albums: %w", err)
+	}
+	defer rows.Close()
+
+	type albumInfo struct {
+		id          int64
+		album       string
+		albumartist string
+		trackCount  int
+	}
+
+	albums := make([]albumInfo, 0)
+	for rows.Next() {
+		var a albumInfo
+		if err := rows.Scan(&a.id, &a.album, &a.albumartist, &a.trackCount); err != nil {
 			continue
 		}
-		duplicates = append(duplicates, map[string]interface{}{
-			"info": line,
-		})
+		albums = append(albums, a)
+	}
+
+	// Find similar albums by the same artist
+	duplicates := make([]map[string]interface{}, 0)
+	seen := make(map[string]bool)
+
+	for i := 0; i < len(albums); i++ {
+		for j := i + 1; j < len(albums); j++ {
+			// Must be same artist
+			if albums[i].albumartist != albums[j].albumartist {
+				continue
+			}
+
+			// Calculate similarity
+			similarity := stringSimilarity(albums[i].album, albums[j].album)
+
+			// Flag as potential duplicate if similar enough (70% threshold)
+			if similarity >= 0.70 {
+				key := fmt.Sprintf("%s|%s|%s", albums[i].albumartist, albums[i].album, albums[j].album)
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+
+				duplicates = append(duplicates, map[string]interface{}{
+					"info":        fmt.Sprintf("%s - %s / %s", albums[i].albumartist, albums[i].album, albums[j].album),
+					"album1_id":   albums[i].id,
+					"album1":      albums[i].album,
+					"album2_id":   albums[j].id,
+					"album2":      albums[j].album,
+					"tracks1":     albums[i].trackCount,
+					"tracks2":     albums[j].trackCount,
+					"similarity":  similarity,
+				})
+			}
+		}
 	}
 
 	return duplicates, nil
 }
 
-// MergeDuplicateAlbums merges duplicate albums
-func MergeDuplicateAlbums(ctx context.Context, query string) error {
-	log.Info().Str("query", query).Msg("Merging duplicate albums")
+// stringSimilarity calculates similarity between two strings using normalized edit distance
+func stringSimilarity(s1, s2 string) float64 {
+	s1 = strings.ToLower(strings.TrimSpace(s1))
+	s2 = strings.ToLower(strings.TrimSpace(s2))
 
-	_, err := ExecBeetCommand(ctx, "duplicates", "-a", "-M", query)
-	if err != nil {
-		return fmt.Errorf("error merging duplicates: %w", err)
+	if s1 == s2 {
+		return 1.0
 	}
 
+	// Calculate Levenshtein distance
+	distance := levenshteinDistance(s1, s2)
+	maxLen := max(len(s1), len(s2))
+
+	if maxLen == 0 {
+		return 1.0
+	}
+
+	return 1.0 - float64(distance)/float64(maxLen)
+}
+
+// levenshteinDistance calculates the Levenshtein distance between two strings
+func levenshteinDistance(s1, s2 string) int {
+	if len(s1) == 0 {
+		return len(s2)
+	}
+	if len(s2) == 0 {
+		return len(s1)
+	}
+
+	matrix := make([][]int, len(s1)+1)
+	for i := range matrix {
+		matrix[i] = make([]int, len(s2)+1)
+		matrix[i][0] = i
+	}
+	for j := range matrix[0] {
+		matrix[0][j] = j
+	}
+
+	for i := 1; i <= len(s1); i++ {
+		for j := 1; j <= len(s2); j++ {
+			cost := 1
+			if s1[i-1] == s2[j-1] {
+				cost = 0
+			}
+			matrix[i][j] = min(
+				matrix[i-1][j]+1,      // deletion
+				matrix[i][j-1]+1,      // insertion
+				matrix[i-1][j-1]+cost, // substitution
+			)
+		}
+	}
+
+	return matrix[len(s1)][len(s2)]
+}
+
+func min(a, b, c int) int {
+	if a < b {
+		if a < c {
+			return a
+		}
+		return c
+	}
+	if b < c {
+		return b
+	}
+	return c
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// MergeDuplicateAlbums merges two albums by moving all tracks from discard to keep album
+func MergeDuplicateAlbums(ctx context.Context, keepAlbumID, discardAlbumID int64) error {
+	log.Info().Int64("keep", keepAlbumID).Int64("discard", discardAlbumID).Msg("Merging duplicate albums")
+
+	// Get database path from config
+	config, _, err := ParseBeetsConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("error parsing beets config: %w", err)
+	}
+
+	dbPath, ok := config["library"]
+	if !ok {
+		return fmt.Errorf("library path not found in beets config")
+	}
+
+	// Open database in read-write mode for merging
+	connStr := fmt.Sprintf("file:%s?mode=rw", dbPath)
+	conn, err := sql.Open("sqlite", connStr)
+	if err != nil {
+		return fmt.Errorf("error opening database: %w", err)
+	}
+	defer conn.Close()
+
+	// Start transaction
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("error starting transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Update all items from discard album to point to keep album
+	_, err = tx.ExecContext(ctx, "UPDATE items SET album_id = ? WHERE album_id = ?", keepAlbumID, discardAlbumID)
+	if err != nil {
+		return fmt.Errorf("error updating items: %w", err)
+	}
+
+	// Delete the discard album
+	_, err = tx.ExecContext(ctx, "DELETE FROM albums WHERE id = ?", discardAlbumID)
+	if err != nil {
+		return fmt.Errorf("error deleting album: %w", err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("error committing transaction: %w", err)
+	}
+
+	log.Info().Int64("keep", keepAlbumID).Int64("discard", discardAlbumID).Msg("Successfully merged albums")
 	return nil
 }
 
@@ -343,7 +526,7 @@ func (db *DB) GetItems(ctx context.Context, opts QueryOptions) ([]Item, error) {
 	query := `SELECT
 		id, title, artist, artist_sort, album, album_id, albumartist,
 		path, length, bitrate, format, year, month, day,
-		track, tracktotal, disc, disctotal, genres,
+		track, tracktotal, disc, disctotal, genres, lyrics,
 		mb_trackid, mb_albumid, added, mtime
 	FROM items`
 
@@ -379,7 +562,7 @@ func (db *DB) GetItems(ctx context.Context, opts QueryOptions) ([]Item, error) {
 			&pathBytes, &item.Length, &item.Bitrate, &item.Format,
 			&item.Year, &item.Month, &item.Day,
 			&item.Track, &item.TrackTotal, &item.Disc, &item.DiscTotal,
-			&item.Genres, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
+			&item.Genres, &item.Lyrics, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
 			&item.Added, &item.Modified,
 		)
 		if err != nil {
@@ -403,7 +586,7 @@ func (db *DB) GetItemByID(ctx context.Context, id int64) (*Item, error) {
 	query := `SELECT
 		id, title, artist, artist_sort, album, album_id, albumartist,
 		path, length, bitrate, format, year, month, day,
-		track, tracktotal, disc, disctotal, genres,
+		track, tracktotal, disc, disctotal, genres, lyrics,
 		mb_trackid, mb_albumid, added, mtime
 	FROM items WHERE id = ?`
 
@@ -549,7 +732,7 @@ func (db *DB) GetItemsByAlbumID(ctx context.Context, albumID int64) ([]Item, err
 	query := `SELECT
 		id, title, artist, artist_sort, album, album_id, albumartist,
 		path, length, bitrate, format, year, month, day,
-		track, tracktotal, disc, disctotal, genres,
+		track, tracktotal, disc, disctotal, genres, lyrics,
 		mb_trackid, mb_albumid, added, mtime
 	FROM items
 	WHERE album_id = ?
@@ -574,7 +757,7 @@ func (db *DB) GetItemsByAlbumID(ctx context.Context, albumID int64) ([]Item, err
 			&pathBytes, &item.Length, &item.Bitrate, &item.Format,
 			&item.Year, &item.Month, &item.Day,
 			&item.Track, &item.TrackTotal, &item.Disc, &item.DiscTotal,
-			&item.Genres, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
+			&item.Genres, &item.Lyrics, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
 			&item.Added, &item.Modified,
 		)
 		if err != nil {
@@ -670,7 +853,7 @@ func (db *DB) SearchItems(ctx context.Context, query string, limit int) ([]Item,
 			&pathBytes, &item.Length, &item.Bitrate, &item.Format,
 			&item.Year, &item.Month, &item.Day,
 			&item.Track, &item.TrackTotal, &item.Disc, &item.DiscTotal,
-			&item.Genres, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
+			&item.Genres, &item.Lyrics, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
 			&item.Added, &item.Modified,
 		)
 		if err != nil {
@@ -844,5 +1027,86 @@ func FetchLyricsForItem(ctx context.Context, itemID int64) error {
 		return fmt.Errorf("error fetching lyrics: %w", err)
 	}
 
+	return nil
+}
+
+// DeleteAlbum deletes an album and optionally its files
+func DeleteAlbum(ctx context.Context, albumID int64, deleteFiles bool) error {
+	query := fmt.Sprintf("id:%d", albumID)
+	log.Info().Int64("album_id", albumID).Bool("delete_files", deleteFiles).Msg("Deleting album")
+
+	args := []string{"remove", "-a"}
+	if deleteFiles {
+		args = append(args, "-d")
+	}
+	args = append(args, query)
+
+	output, err := ExecBeetCommand(ctx, args[0], args[1:]...)
+	if err != nil {
+		log.Error().Err(err).Str("output", output).Msg("Failed to delete album")
+		return fmt.Errorf("error deleting album: %w", err)
+	}
+
+	log.Info().Str("output", output).Msg("Album deleted successfully")
+	return nil
+}
+
+// DeleteItem deletes an item/track and optionally its file
+func DeleteItem(ctx context.Context, itemID int64, deleteFiles bool) error {
+	query := fmt.Sprintf("id:%d", itemID)
+	log.Info().Int64("item_id", itemID).Bool("delete_files", deleteFiles).Msg("Deleting item")
+
+	args := []string{"remove"}
+	if deleteFiles {
+		args = append(args, "-d")
+	}
+	args = append(args, query)
+
+	output, err := ExecBeetCommand(ctx, args[0], args[1:]...)
+	if err != nil {
+		log.Error().Err(err).Str("output", output).Msg("Failed to delete item")
+		return fmt.Errorf("error deleting item: %w", err)
+	}
+
+	log.Info().Str("output", output).Msg("Item deleted successfully")
+	return nil
+}
+
+// DeleteArtist deletes all albums by an artist and optionally their files
+func DeleteArtist(ctx context.Context, artistName string, deleteFiles bool) error {
+	query := fmt.Sprintf("albumartist:%s", artistName)
+	log.Info().Str("artist", artistName).Bool("delete_files", deleteFiles).Msg("Deleting artist")
+
+	args := []string{"remove", "-a"}
+	if deleteFiles {
+		args = append(args, "-d")
+	}
+	args = append(args, query)
+
+	output, err := ExecBeetCommand(ctx, args[0], args[1:]...)
+	if err != nil {
+		log.Error().Err(err).Str("output", output).Msg("Failed to delete artist")
+		return fmt.Errorf("error deleting artist: %w", err)
+	}
+
+	log.Info().Str("output", output).Msg("Artist deleted successfully")
+	return nil
+}
+
+// ImportPath imports music files from a given path
+func ImportPath(ctx context.Context, path string) error {
+	log.Info().Str("path", path).Msg("Importing music from path")
+
+	// Use beet import with auto-tagging
+	// -A: auto-tag (don't ask for confirmation)
+	// -q: quiet mode
+	// --noincremental: don't skip already-imported albums
+	output, err := ExecBeetCommand(ctx, "import", "-A", "-q", "--noincremental", path)
+	if err != nil {
+		log.Error().Err(err).Str("output", output).Msg("Failed to import path")
+		return fmt.Errorf("error importing path: %w", err)
+	}
+
+	log.Info().Str("output", output).Msg("Import completed successfully")
 	return nil
 }
