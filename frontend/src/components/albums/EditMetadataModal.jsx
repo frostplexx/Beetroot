@@ -18,6 +18,7 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
     comp: '0',
   })
   const [recommendations, setRecommendations] = useState(null)
+  const [alternatives, setAlternatives] = useState(null)
   const [sourcesUsed, setSourcesUsed] = useState(0)
   const [loadingRecommendations, setLoadingRecommendations] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState(null)
@@ -56,6 +57,7 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
     setLoadingRecommendations(true)
     setRecommendationsError(null)
     setSourcesUsed(0)
+    setAlternatives(null)
     try {
       const response = await fetch(`/api/beets/mb-recommendations?album_id=${album.id}`)
       const data = await response.json()
@@ -66,17 +68,20 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
           setRecommendationsError('No metadata found from any source')
         }
         setRecommendations(data.recommendations)
+        setAlternatives(data.alternatives || null)
         setSourcesUsed(data.sources_used || 0)
       } else {
         const errorMsg = data.error || 'Failed to fetch suggestions'
         setRecommendationsError(errorMsg)
         setRecommendations(null)
+        setAlternatives(null)
         setSourcesUsed(0)
       }
     } catch (err) {
       console.error('Failed to fetch recommendations:', err)
       setRecommendationsError('Network error')
       setRecommendations(null)
+      setAlternatives(null)
       setSourcesUsed(0)
     } finally {
       setLoadingRecommendations(false)
@@ -192,11 +197,14 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
                               recValue.trim() !== '' &&
                               recValue !== value
 
+    const fieldAlternatives = alternatives?.[field] || []
+    const hasAlternatives = fieldAlternatives.length > 0
+
     return (
       <div>
         <div className="flex items-center justify-between mb-1">
           <label className="block text-sm text-neutral-400">{label}</label>
-          {hasRecommendation && (
+          {hasRecommendation && !hasAlternatives && (
             <button
               type="button"
               onClick={() => applyRecommendation(field, recValue)}
@@ -216,6 +224,38 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
           onChange={(e) => setFormData({ ...formData, [field]: e.target.value })}
           className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
         />
+        {hasAlternatives && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {fieldAlternatives.map((alt, idx) => {
+              const isSelected = alt.value === value
+              const isTopChoice = idx === 0
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => applyRecommendation(field, alt.value)}
+                  disabled={isSelected}
+                  className={`text-xs px-2 py-1 rounded flex items-center gap-1.5 transition-colors ${
+                    isSelected
+                      ? 'bg-rose-500/30 text-rose-300 cursor-default'
+                      : isTopChoice
+                      ? 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/30'
+                      : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
+                  }`}
+                  title={`${alt.sources.join(', ')} (${alt.votes} vote${alt.votes !== 1 ? 's' : ''})`}
+                >
+                  <span className="truncate max-w-[200px]">{alt.value}</span>
+                  {isSelected && (
+                    <i className="fa-solid fa-check text-[10px]"></i>
+                  )}
+                  {!isSelected && isTopChoice && (
+                    <i className="fa-solid fa-star text-[10px]"></i>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
     )
   }

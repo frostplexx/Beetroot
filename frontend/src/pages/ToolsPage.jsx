@@ -5,6 +5,7 @@ import { DuplicatesTool } from '../components/tools/DuplicatesTool'
 import { MissingArtTool } from '../components/tools/MissingArtTool'
 import { FetchLyricsTool } from '../components/tools/FetchLyricsTool'
 import { ReplayGainTool } from '../components/tools/ReplayGainTool'
+import { OrphanedFilesTool } from '../components/tools/OrphanedFilesTool'
 
 export function ToolsPage() {
   return (
@@ -14,6 +15,7 @@ export function ToolsPage() {
       <Route path="missing-art" element={<MissingArtTool />} />
       <Route path="lyrics" element={<FetchLyricsTool />} />
       <Route path="replaygain" element={<ReplayGainTool />} />
+      <Route path="orphaned-files" element={<OrphanedFilesTool />} />
     </Routes>
   )
 }
@@ -51,6 +53,14 @@ function ToolsGallery() {
       icon: 'fa-image',
       plugin: 'fetchart',
       path: '/tools/missing-art'
+    },
+    {
+      id: 'orphaned-files',
+      name: 'Orphaned Files',
+      description: 'Find audio files in your music directory not tracked by beets',
+      icon: 'fa-file-circle-question',
+      plugin: null,
+      path: '/tools/orphaned-files'
     },
     {
       id: 'lyrics',
