@@ -477,7 +477,16 @@ export function AlbumDetailPage() {
             />
           </div>
 
-          <div className={`fixed top-16 right-0 w-[480px] h-[calc(100vh-4rem)] border-l border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-200 ${previewTrack ? 'translate-x-0' : 'translate-x-full'}`}>
+          {/* Mobile backdrop overlay */}
+          {previewTrack && (
+            <div
+              className="fixed inset-0 bg-black/60 z-30 md:hidden transition-opacity duration-300"
+              onClick={() => setPreviewTrack(null)}
+            />
+          )}
+
+          {/* Mobile: bottom sheet, Desktop: right sidebar */}
+          <div className={`fixed bottom-0 left-0 right-0 max-h-[85vh] rounded-t-xl border-t border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-300 ${previewTrack ? 'translate-y-0' : 'translate-y-full'} md:top-16 md:bottom-auto md:right-0 md:left-auto md:w-[480px] md:h-[calc(100vh-4rem)] md:rounded-none md:border-l md:border-t-0 ${previewTrack ? 'md:translate-y-0 md:translate-x-0' : 'md:translate-y-0 md:translate-x-full'}`}>
             {previewTrack && (
               <PreviewPanel
                 key={previewTrack.id}
