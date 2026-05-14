@@ -1112,6 +1112,14 @@ func (db *DB) FindOrphanedFiles(ctx context.Context) ([]OrphanedFile, error) {
 			return nil, fmt.Errorf("error scanning path: %w", err)
 		}
 		path := string(pathBytes)
+
+		// Convert to absolute path if relative
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(musicDir, path)
+		}
+
+		// Clean the path for consistent comparison
+		path = filepath.Clean(path)
 		trackedPaths[path] = true
 	}
 
@@ -1154,8 +1162,11 @@ func (db *DB) FindOrphanedFiles(ctx context.Context) ([]OrphanedFile, error) {
 			return nil
 		}
 
+		// Clean the path for consistent comparison
+		cleanPath := filepath.Clean(path)
+
 		// Check if it's tracked
-		if !trackedPaths[path] {
+		if !trackedPaths[cleanPath] {
 			relPath, _ := filepath.Rel(musicDir, path)
 			orphanedFiles = append(orphanedFiles, OrphanedFile{
 				Path:         path,
