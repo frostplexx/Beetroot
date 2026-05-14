@@ -89,6 +89,8 @@ export function FetchLyricsTool() {
                     <img
                       src={`/api/beets/albums/${album.id}/art`}
                       alt={album.album}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         e.target.style.display = 'none'

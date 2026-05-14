@@ -36,6 +36,8 @@ var (
 	configCache   *configCacheEntry
 	configCacheMu sync.RWMutex
 	configCacheTTL = 1 * time.Minute
+	// Limit concurrent thumbnail generation to prevent CPU spike
+	thumbnailSem = make(chan struct{}, 4) // Max 4 concurrent image operations
 )
 
 // AlbumsHandler returns paginated list of albums
@@ -342,16 +344,21 @@ func ClearThumbnailCache(artPath string) {
 	artCache = sync.Map{}
 }
 
-// convertToWebP converts an image to WebP using ImageMagick
+// convertToWebP converts an image to WebP using ffmpeg (much faster than ImageMagick)
 func convertToWebP(inputPath, outputPath string, size int) error {
-	// Use ImageMagick to resize and convert to WebP
-	cmd := exec.Command("magick", "convert",
-		inputPath,
-		"-resize", fmt.Sprintf("%dx%d>", size, size), // > means only shrink, don't enlarge
-		"-quality", "85",
-		"-define", "webp:method=6", // Best compression
+	// Use ffmpeg to resize and convert to WebP
+	// scale filter maintains aspect ratio and fits within size x size
+	cmd := exec.Command("ffmpeg",
+		"-i", inputPath,
+		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease", size, size),
+		"-compression_level", "6",
+		"-q:v", "85",
+		"-y", // Overwrite output file
 		outputPath,
 	)
+	// Suppress ffmpeg output
+	cmd.Stderr = nil
+	cmd.Stdout = nil
 	return cmd.Run()
 }
 
@@ -402,6 +409,21 @@ func serveAlbumArt(w http.ResponseWriter, r *http.Request, artPath string, album
 		thumbPath := getThumbnailPath(artPath, thumbnailSize)
 
 		// Check if thumbnail exists and is newer than original
+		if thumbInfo, err := os.Stat(thumbPath); err == nil {
+			if thumbInfo.ModTime().After(fileInfo.ModTime()) {
+				w.Header().Set("Content-Type", "image/webp")
+				w.Header().Set("Cache-Control", "public, max-age=2592000")
+				w.Header().Set("ETag", etag)
+				http.ServeFile(w, r, thumbPath)
+				return
+			}
+		}
+
+		// Acquire semaphore to limit concurrent thumbnail generation
+		thumbnailSem <- struct{}{}
+		defer func() { <-thumbnailSem }()
+
+		// Double-check thumbnail after acquiring lock (another request may have created it)
 		if thumbInfo, err := os.Stat(thumbPath); err == nil {
 			if thumbInfo.ModTime().After(fileInfo.ModTime()) {
 				w.Header().Set("Content-Type", "image/webp")
