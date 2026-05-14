@@ -98,6 +98,10 @@ func main() {
 	mux.HandleFunc("/api/logs", handlers.LogsHandler())
 	mux.HandleFunc("/api/logs/clear", handlers.ClearLogsHandler())
 
+	if frontendDistDir := os.Getenv("FRONTEND_DIST_DIR"); frontendDistDir != "" {
+		mux.Handle("/", handlers.FrontendHandler(frontendDistDir))
+	}
+
 	// Apply middleware
 	handler := middleware.EnableCORS(mux)
 

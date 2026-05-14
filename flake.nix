@@ -1,5 +1,5 @@
 {
-  description = "Beetroot Go backend + Vite frontend dev shell";
+  description = "Beetroot Go backend + Vite frontend";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -12,10 +12,206 @@
       nixpkgs,
       flake-utils,
     }:
+    let
+      nixosModule =
+        {
+          config,
+          lib,
+          pkgs,
+          ...
+        }:
+        let
+          cfg = config.services.beetroot;
+        in
+        {
+          options.services.beetroot = {
+            enable = lib.mkEnableOption "Beetroot music library service";
+
+            package = lib.mkOption {
+              type = lib.types.package;
+              default = self.packages.${pkgs.system}.default;
+              defaultText = lib.literalExpression "self.packages.${pkgs.system}.default";
+              description = "Beetroot package to run.";
+            };
+
+            port = lib.mkOption {
+              type = lib.types.port;
+              default = 4433;
+              description = "TCP port used by the Beetroot HTTP server.";
+            };
+
+            stateDirectory = lib.mkOption {
+              type = lib.types.str;
+              default = "/var/lib/beetroot";
+              description = "Directory used for build cache and runtime state.";
+            };
+
+            configDirectory = lib.mkOption {
+              type = lib.types.str;
+              default = "/var/lib/beetroot/config";
+              description = "Directory containing writable beets config and library files.";
+            };
+
+            musicDirectory = lib.mkOption {
+              type = lib.types.str;
+              default = "/var/lib/music";
+              description = "Music directory that beetroot/beets can read and write.";
+            };
+
+            user = lib.mkOption {
+              type = lib.types.str;
+              default = "beetroot";
+              description = "User account used to run Beetroot.";
+            };
+
+            group = lib.mkOption {
+              type = lib.types.str;
+              default = "beetroot";
+              description = "Primary group used to run Beetroot.";
+            };
+
+            extraGroups = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = "Supplementary groups for shared music directories.";
+            };
+
+            openFirewall = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Whether to open the Beetroot port in the firewall.";
+            };
+
+            environment = lib.mkOption {
+              type = lib.types.attrsOf lib.types.str;
+              default = { };
+              description = "Extra environment variables passed to the service.";
+            };
+          };
+
+          config = lib.mkIf cfg.enable {
+            users.groups = lib.mkIf (cfg.group == "beetroot") {
+              beetroot = { };
+            };
+
+            users.users = lib.mkIf (cfg.user == "beetroot") {
+              beetroot = {
+                isSystemUser = true;
+                group = cfg.group;
+                description = "Beetroot service user";
+                home = cfg.stateDirectory;
+                createHome = false;
+              };
+            };
+
+            systemd.tmpfiles.rules = [
+              "d ${cfg.stateDirectory} 0750 ${cfg.user} ${cfg.group} - -"
+              "d ${cfg.configDirectory} 0750 ${cfg.user} ${cfg.group} - -"
+            ];
+
+            systemd.services.beetroot = {
+              description = "Beetroot music library service";
+              after = [ "network-online.target" ];
+              wants = [ "network-online.target" ];
+              wantedBy = [ "multi-user.target" ];
+
+              environment = {
+                PORT = toString cfg.port;
+                BEET_BIN_PATH = "${pkgs.beets}/bin/beet";
+                BEET_WORKING_DIR = cfg.configDirectory;
+                BEETSDIR = cfg.configDirectory;
+                BEETSCONFIG = "${cfg.configDirectory}/config.yaml";
+                BEETROOT_BUILD_DIR = "${cfg.stateDirectory}/build";
+              } // cfg.environment;
+
+              serviceConfig = {
+                ExecStart = "${cfg.package}/bin/beetroot";
+                WorkingDirectory = cfg.configDirectory;
+                User = cfg.user;
+                Group = cfg.group;
+                SupplementaryGroups = cfg.extraGroups;
+                Restart = "on-failure";
+                RestartSec = 5;
+                NoNewPrivileges = true;
+                PrivateTmp = true;
+                ProtectSystem = "strict";
+                ReadWritePaths = [
+                  cfg.stateDirectory
+                  cfg.configDirectory
+                  cfg.musicDirectory
+                ];
+              };
+            };
+
+            networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ cfg.port ];
+          };
+        };
+    in
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        lib = pkgs.lib;
+        sourceId = builtins.baseNameOf (toString self);
+
+        beetrootPackage =
+          if pkgs.stdenv.isLinux then
+            pkgs.writeShellApplication {
+              name = "beetroot";
+              runtimeInputs = with pkgs; [
+                coreutils
+                findutils
+                gawk
+                gnugrep
+                gnused
+                go
+                nodejs_22
+                beets
+              ];
+              text = ''
+                set -euo pipefail
+
+                srcRoot=${self}
+                cacheRoot="''${BEETROOT_BUILD_DIR:-''${XDG_CACHE_HOME:-$HOME/.cache}/beetroot/${sourceId}-${system}}"
+                buildRoot="$cacheRoot/build"
+                frontendSrc="$buildRoot/frontend"
+                backendSrc="$buildRoot/backend"
+                frontendDist="$cacheRoot/frontend-dist"
+                binaryPath="$cacheRoot/beetroot"
+                stampFile="$cacheRoot/source-path"
+                currentSource="$srcRoot"
+
+                if [ ! -x "$binaryPath" ] || [ ! -d "$frontendDist" ] || [ ! -f "$stampFile" ] || [ "$(cat "$stampFile")" != "$currentSource" ]; then
+                  rm -rf "$buildRoot" "$frontendDist" "$binaryPath"
+                  mkdir -p "$buildRoot" "$cacheRoot" "$cacheRoot/home"
+                  export HOME="$cacheRoot/home"
+                  export GOPATH="$cacheRoot/go"
+                  export GOMODCACHE="$cacheRoot/go/pkg/mod"
+                  export npm_config_cache="$cacheRoot/npm"
+
+                  cp -R "$srcRoot/frontend" "$frontendSrc"
+                  cp -R "$srcRoot/backend" "$backendSrc"
+                  chmod -R u+w "$buildRoot"
+
+                  cd "$frontendSrc"
+                  npm ci
+                  npm run build
+                  cp -R dist "$frontendDist"
+
+                  cd "$backendSrc"
+                  go build -o "$binaryPath" .
+
+                  printf '%s' "$currentSource" > "$stampFile"
+                fi
+
+                export FRONTEND_DIST_DIR="$frontendDist"
+                : "''${BEET_BIN_PATH:=${pkgs.beets}/bin/beet}"
+                export BEET_BIN_PATH
+                exec "$binaryPath"
+              '';
+            }
+          else
+            null;
 
         dev-script = pkgs.writeShellScriptBin "dev" ''
           set -e
@@ -23,30 +219,26 @@
           echo "🚀 Starting Beetroot development servers..."
           echo ""
 
-          # Check if node_modules exists
           if [ ! -d "frontend/node_modules" ]; then
             echo "📦 Installing frontend dependencies..."
             cd frontend && npm install && cd ..
             echo ""
           fi
 
-          # Trap SIGINT and SIGTERM to kill both processes
           cleanup() {
             echo ""
             echo "🛑 Shutting down servers..."
-            kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
+            command kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
             exit 0
           }
           trap cleanup SIGINT SIGTERM
 
-          # Start backend
           echo "🔧 Starting Go backend on http://localhost:4433..."
           cd backend
           air > ../backend.log 2>&1 &
           BACKEND_PID=$!
           cd ..
 
-          # Start frontend
           echo "⚛️  Starting Vite frontend on http://localhost:5173..."
           cd frontend
           npm run dev > ../frontend.log 2>&1 &
@@ -65,8 +257,7 @@
           echo "Press Ctrl+C to stop both servers"
           echo ""
 
-          # Wait for both processes
-          wait $BACKEND_PID $FRONTEND_PID
+          wait "$BACKEND_PID" "$FRONTEND_PID"
         '';
 
         rebuild-backend-script = pkgs.writeShellScriptBin "rebuild-backend" ''
@@ -82,6 +273,15 @@
         '';
       in
       {
+        packages = lib.optionalAttrs pkgs.stdenv.isLinux {
+          default = beetrootPackage;
+          beetroot = beetrootPackage;
+        };
+
+        apps = lib.optionalAttrs pkgs.stdenv.isLinux {
+          default = flake-utils.lib.mkApp { drv = beetrootPackage; };
+        };
+
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             # Backend
@@ -129,5 +329,9 @@
           '';
         };
       }
-    );
+    )
+    // {
+      nixosModules.default = nixosModule;
+      nixosModules.beetroot = nixosModule;
+    };
 }

@@ -1,6 +1,5 @@
 // Main harness around beets binary
 
-
 package beets
 
 import (
@@ -8,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -25,7 +23,6 @@ const (
 	CommandConfig = "config"
 )
 
-
 // Execute beets binary.
 // Binary path gets fetched from environment variable BEET_BIN_PATH, if not set, it defaults to "beet".
 // function takes command which is part of enum and arguments which are passed to beets binary.
@@ -37,7 +34,9 @@ func ExecBeetCommand(ctx context.Context, command string, args ...string) (strin
 
 	cmdArgs := append([]string{command}, args...)
 	cmd := exec.CommandContext(ctx, beetBinPath, cmdArgs...)
-	cmd.Dir = filepath.Join(".", "beets")
+	if workingDir := os.Getenv("BEET_WORKING_DIR"); workingDir != "" {
+		cmd.Dir = workingDir
+	}
 
 	log.Debug().Str("command", command).Strs("args", args).Msg("Executing beets command")
 
@@ -51,4 +50,3 @@ func ExecBeetCommand(ctx context.Context, command string, args ...string) (strin
 	log.Debug().Str("output", output).Msg("Beets command executed successfully")
 	return strings.TrimSpace(output), nil
 }
-
