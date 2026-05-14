@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, use, useState } from 'react'
 
 export const PreviewContext = createContext(null)
 
@@ -6,14 +6,15 @@ export function PreviewProvider({ children }) {
   const [previewTrack, setPreviewTrack] = useState(null)
 
   return (
-    <PreviewContext.Provider value={{ previewTrack, setPreviewTrack }}>
+    <PreviewContext value={{ previewTrack, setPreviewTrack }}>
       {children}
-    </PreviewContext.Provider>
+    </PreviewContext>
   )
 }
 
+// React 19: Using the new 'use' hook instead of useContext
 export function usePreview() {
-  const context = useContext(PreviewContext)
+  const context = use(PreviewContext)
   if (!context) {
     throw new Error('usePreview must be used within PreviewProvider')
   }

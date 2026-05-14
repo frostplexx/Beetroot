@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+
   server: {
     port: 5173,
     host: "0.0.0.0",
@@ -12,5 +13,24 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+
+  build: {
+    // Rolldown optimizations
+    target: 'es2022',
+    cssMinify: 'lightningcss', // Better CSS minification (now built-in)
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'router': ['react-router-dom'],
+        },
+      },
+    },
+  },
+
+  // Optimize dependencies
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom'],
   },
 })

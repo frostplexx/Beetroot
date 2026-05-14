@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { usePreview } from '../contexts/PreviewContext'
-import { Header } from '../components/common/Header'
+import { SearchBar } from '../components/common/SearchBar'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
 import { Pagination } from '../components/common/Pagination'
 import { AlbumGrid } from '../components/albums/AlbumGrid'
 import { TrackTable } from '../components/tracks/TrackTable'
 import { PreviewPanel } from '../components/tracks/PreviewPanel'
-import { formatDurationLong } from '../utils/formatters'
 
 export function Dashboard() {
   const { previewTrack, setPreviewTrack } = usePreview()
@@ -191,8 +190,8 @@ export function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950">
-      <Header
+    <>
+      <SearchBar
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         handleSearchSubmit={handleSearchSubmit}
@@ -295,6 +294,6 @@ export function Dashboard() {
           </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }

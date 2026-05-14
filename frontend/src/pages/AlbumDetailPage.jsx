@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Header } from '../components/common/Header'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
 import { formatDuration } from '../utils/formatters'
 import { usePreview } from '../contexts/PreviewContext'
@@ -198,15 +197,13 @@ export function AlbumDetailPage() {
 
   return (
     <div
-      className="min-h-screen transition-colors duration-700"
+      className="transition-colors duration-700"
       style={{
         background: dominantColor
           ? `linear-gradient(to bottom, ${dominantColor} 0%, rgba(10, 10, 10, 0.95) 60%, rgb(10, 10, 10) 100%)`
           : 'rgb(10, 10, 10)'
       }}
     >
-      <Header />
-
       <div className="mx-auto px-3 py-4 md:py-8 w-full max-w-[1800px] lg:max-w-[calc(min(1800px,100vw-512px))]">
         <div className="w-full">
           <div>
