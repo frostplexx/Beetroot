@@ -93,7 +93,7 @@ export function UploadPage() {
 
   const handleImport = async (uploadPath) => {
     setImporting(true)
-    setProgress('Importing to beets library...')
+    setProgress('Importing and matching with MusicBrainz... This may take a minute or two.')
 
     try {
       const response = await fetch('/api/beets/import', {
@@ -107,7 +107,7 @@ export function UploadPage() {
         throw new Error(data.error || 'Import failed')
       }
 
-      setProgress('Import complete! Files added to your library.')
+      setProgress('Import complete! Files added to your library with full metadata.')
       setFiles([])
 
       // Clear success message after 5 seconds
@@ -224,16 +224,23 @@ export function UploadPage() {
           <div className={`mt-6 p-4 rounded-lg border ${
             error ? 'bg-red-950/20 border-red-900/50' : 'bg-neutral-900 border-neutral-800'
           }`}>
-            <div className="flex items-center gap-3">
+            <div className="flex items-start gap-3">
               {!error && (uploading || importing) && (
-                <div className="w-5 h-5 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin"></div>
+                <div className="w-5 h-5 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin flex-shrink-0 mt-0.5"></div>
               )}
               {!error && uploadComplete && (
-                <i className="fa-solid fa-check-circle text-green-500"></i>
+                <i className="fa-solid fa-check-circle text-green-500 flex-shrink-0 mt-0.5"></i>
               )}
-              <p className={`text-sm ${error ? 'text-red-400' : 'text-neutral-300'}`}>
-                {progress}
-              </p>
+              <div className="flex-1">
+                <p className={`text-sm ${error ? 'text-red-400' : 'text-neutral-300'}`}>
+                  {progress}
+                </p>
+                {importing && (
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Beets is analyzing audio, querying MusicBrainz, and downloading album art. Please wait...
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -257,9 +264,11 @@ export function UploadPage() {
           <ul className="text-xs text-neutral-500 space-y-1">
             <li>• Drag and drop FLAC files into the upload area</li>
             <li>• Files are uploaded to a temporary directory on the server</li>
-            <li>• Beets automatically imports and organizes the files</li>
-            <li>• Metadata is fetched from MusicBrainz during import</li>
-            <li>• Files are moved to your music library and added to the database</li>
+            <li>• Beets matches your music with MusicBrainz database</li>
+            <li>• Album art is automatically downloaded from online sources</li>
+            <li>• Full metadata (artist, album, genres, year) is applied</li>
+            <li>• Files are organized and moved to your music library</li>
+            <li>• Import typically takes 1-2 minutes per album</li>
           </ul>
         </div>
       </div>

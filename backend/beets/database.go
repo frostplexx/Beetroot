@@ -159,12 +159,18 @@ func RefetchAlbumArt(ctx context.Context, albumID int64) error {
 	query := fmt.Sprintf("id:%d", albumID)
 	log.Info().Int64("album_id", albumID).Msg("Refetching album art")
 
-	// Use beet fetchart with -a flag for albums
-	_, err := ExecBeetCommand(ctx, "fetchart", "-a", "-q", query)
+	// Use beet fetchart with -f (force) to re-download even if art exists
+	output, err := ExecBeetCommand(ctx, "fetchart", "-f", query)
 	if err != nil {
 		return fmt.Errorf("error refetching album art: %w", err)
 	}
 
+	// Check if beets actually found art
+	if strings.Contains(output, "no art found") {
+		return fmt.Errorf("no album art found for this album")
+	}
+
+	log.Info().Str("output", output).Msg("Album art refetched successfully")
 	return nil
 }
 
@@ -1097,11 +1103,12 @@ func DeleteArtist(ctx context.Context, artistName string, deleteFiles bool) erro
 func ImportPath(ctx context.Context, path string) error {
 	log.Info().Str("path", path).Msg("Importing music from path")
 
-	// Use beet import with auto-tagging
-	// -A: auto-tag (don't ask for confirmation)
-	// -q: quiet mode
-	// --noincremental: don't skip already-imported albums
-	output, err := ExecBeetCommand(ctx, "import", "-A", "-q", "--noincremental", path)
+	// Use beet -v import -q --group-albums
+	// -v: verbose logging (global flag)
+	// import: import command
+	// -q: quiet mode (non-interactive, uses quiet_fallback from config)
+	// --group-albums: group tracks in folder into separate albums
+	output, err := ExecBeetCommandWithFlags(ctx, []string{"-v"}, "import", "-q", "--group-albums", path)
 	if err != nil {
 		log.Error().Err(err).Str("output", output).Msg("Failed to import path")
 		return fmt.Errorf("error importing path: %w", err)
