@@ -117,10 +117,12 @@
               };
             };
 
-            systemd.tmpfiles.rules = [
-              "d ${cfg.stateDirectory} 0750 ${cfg.user} ${cfg.group} - -"
-              "d ${cfg.configDirectory} 0750 ${cfg.user} ${cfg.group} - -"
-            ];
+            systemd.tmpfiles.rules =
+              [
+                "d ${cfg.stateDirectory} 0750 ${cfg.user} ${cfg.group} - -"
+                "d ${cfg.configDirectory} 0750 ${cfg.user} ${cfg.group} - -"
+              ]
+              ++ lib.optional (cfg.databasePath != null) "d ${builtins.dirOf cfg.databasePath} 0750 ${cfg.user} ${cfg.group} - -";
 
             systemd.services.beetroot = {
               description = "Beetroot music library service";
@@ -157,7 +159,7 @@
                   cfg.stateDirectory
                   cfg.configDirectory
                   cfg.musicDirectory
-                ] ++ lib.optional (cfg.databasePath != null) cfg.databasePath;
+                ] ++ lib.optional (cfg.databasePath != null) (builtins.dirOf cfg.databasePath);
               };
             };
 
