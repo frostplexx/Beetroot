@@ -18,11 +18,26 @@ export function SystemPage() {
     apiServer: 'checking'
   })
 
+  // Audit log state
+  const [auditLogs, setAuditLogs] = useState([])
+  const [auditStats, setAuditStats] = useState(null)
+  const [auditPage, setAuditPage] = useState(0)
+  const [auditTotal, setAuditTotal] = useState(0)
+  const [auditFilter, setAuditFilter] = useState({ action: '', target_type: '' })
+  const auditLogsPerPage = 50
+
   useEffect(() => {
     loadStats()
     loadLogs()
     checkSystemHealth()
+    loadAuditStats()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === 'audit') {
+      loadAuditLogs()
+    }
+  }, [activeTab, auditPage, auditFilter])
 
   useEffect(() => {
     if (!autoRefresh) return
@@ -127,6 +142,81 @@ export function SystemPage() {
     }
   }
 
+  // Audit log functions
+  const loadAuditLogs = async () => {
+    try {
+      const offset = auditPage * auditLogsPerPage
+      const params = new URLSearchParams({
+        limit: auditLogsPerPage.toString(),
+        offset: offset.toString(),
+      })
+
+      if (auditFilter.action) params.append('action', auditFilter.action)
+      if (auditFilter.target_type) params.append('target_type', auditFilter.target_type)
+
+      const res = await fetch(`/api/audit/logs?${params}`)
+      if (!res.ok) return
+
+      const data = await res.json()
+      setAuditLogs(data.logs || [])
+      setAuditTotal(data.total || 0)
+    } catch (err) {
+      console.error('Failed to load audit logs:', err)
+    }
+  }
+
+  const loadAuditStats = async () => {
+    try {
+      const res = await fetch('/api/audit/stats')
+      if (res.ok) {
+        const data = await res.json()
+        setAuditStats(data)
+      }
+    } catch (err) {
+      console.error('Failed to load audit stats:', err)
+    }
+  }
+
+  const formatAuditTimestamp = (timestamp) => {
+    const date = new Date(timestamp)
+    return date.toLocaleString()
+  }
+
+  const formatDuration = (ms) => {
+    if (ms < 1000) return `${ms}ms`
+    return `${(ms / 1000).toFixed(2)}s`
+  }
+
+  const getActionIcon = (action) => {
+    const icons = {
+      modify_album: 'fa-pen-to-square',
+      modify_item: 'fa-pen-to-square',
+      refetch_metadata: 'fa-rotate',
+      refetch_art: 'fa-image',
+      fetch_lyrics: 'fa-music',
+      delete_album: 'fa-trash',
+      delete_item: 'fa-trash',
+      upload: 'fa-upload',
+      import: 'fa-file-import',
+      beets_command: 'fa-terminal',
+    }
+    return icons[action] || 'fa-circle'
+  }
+
+  const getActionColor = (action) => {
+    if (action.startsWith('delete')) return 'text-red-400'
+    if (action.startsWith('modify')) return 'text-blue-400'
+    if (action.startsWith('refetch') || action.startsWith('fetch')) return 'text-rose-400'
+    if (action === 'import' || action === 'upload') return 'text-green-400'
+    return 'text-neutral-400'
+  }
+
+  const getActionLabel = (action) => {
+    return action.split('_').map(word =>
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ')
+  }
+
   const formatTimestamp = (timestamp) => {
     const date = new Date(timestamp)
     return date.toLocaleTimeString('en-US', {
@@ -202,6 +292,17 @@ export function SystemPage() {
             >
               <i className="fa-solid fa-file-lines mr-2"></i>
               Logs
+            </button>
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'audit'
+                  ? 'border-rose-500 text-rose-400'
+                  : 'border-transparent text-neutral-400 hover:text-neutral-200'
+              }`}
+            >
+              <i className="fa-solid fa-clipboard-list mr-2"></i>
+              Audit
             </button>
           </div>
         </div>
@@ -392,6 +493,165 @@ export function SystemPage() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Audit Tab */}
+        {activeTab === 'audit' && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-medium text-neutral-200">Audit Log</h2>
+            </div>
+
+            {auditStats && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3">
+                  <div className="text-xs text-neutral-400 mb-1">Total Events</div>
+                  <div className="text-xl font-bold text-neutral-100">{auditStats.total.toLocaleString()}</div>
+                </div>
+                <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3">
+                  <div className="text-xs text-neutral-400 mb-1">Last 24 Hours</div>
+                  <div className="text-xl font-bold text-rose-400">{auditStats.recent_24h.toLocaleString()}</div>
+                </div>
+                <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3">
+                  <div className="text-xs text-neutral-400 mb-1">Modifications</div>
+                  <div className="text-xl font-bold text-blue-400">
+                    {((auditStats.action_counts?.modify_album || 0) + (auditStats.action_counts?.modify_item || 0)).toLocaleString()}
+                  </div>
+                </div>
+                <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3">
+                  <div className="text-xs text-neutral-400 mb-1">Commands</div>
+                  <div className="text-xl font-bold text-neutral-400">{(auditStats.action_counts?.beets_command || 0).toLocaleString()}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Filters */}
+            <div className="flex gap-4 mb-4">
+              <select
+                value={auditFilter.action}
+                onChange={(e) => {
+                  setAuditFilter({ ...auditFilter, action: e.target.value })
+                  setAuditPage(0)
+                }}
+                className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
+              >
+                <option value="">All Actions</option>
+                <option value="modify_album">Modify Album</option>
+                <option value="modify_item">Modify Item</option>
+                <option value="refetch_metadata">Refetch Metadata</option>
+                <option value="refetch_art">Refetch Art</option>
+                <option value="delete_album">Delete Album</option>
+                <option value="beets_command">Beets Command</option>
+              </select>
+
+              <select
+                value={auditFilter.target_type}
+                onChange={(e) => {
+                  setAuditFilter({ ...auditFilter, target_type: e.target.value })
+                  setAuditPage(0)
+                }}
+                className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
+              >
+                <option value="">All Types</option>
+                <option value="album">Album</option>
+                <option value="item">Track</option>
+                <option value="system">System</option>
+              </select>
+
+              {(auditFilter.action || auditFilter.target_type) && (
+                <button
+                  onClick={() => {
+                    setAuditFilter({ action: '', target_type: '' })
+                    setAuditPage(0)
+                  }}
+                  className="text-xs px-3 py-2 bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700 transition-colors"
+                >
+                  <i className="fa-solid fa-xmark mr-1"></i>
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Audit Logs Table */}
+            <div className="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-neutral-950 border-b border-neutral-800">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-neutral-400">Time</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-neutral-400">Action</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-neutral-400">Target</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-neutral-400">Duration</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-neutral-400">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditLogs.map((log) => (
+                      <tr key={log.id} className="border-b border-neutral-800 hover:bg-neutral-800/50">
+                        <td className="px-3 py-2 text-xs text-neutral-400 whitespace-nowrap">
+                          {formatAuditTimestamp(log.timestamp)}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <i className={`fa-solid ${getActionIcon(log.action)} ${getActionColor(log.action)} text-xs`}></i>
+                            <span className="text-xs text-neutral-200">{getActionLabel(log.action)}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="text-xs text-neutral-200 truncate max-w-xs">{log.target_name}</div>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-neutral-400">
+                          {formatDuration(log.duration_ms)}
+                        </td>
+                        <td className="px-3 py-2">
+                          {log.success ? (
+                            <span className="text-xs text-green-400">
+                              <i className="fa-solid fa-circle-check"></i>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-red-400" title={log.error_msg}>
+                              <i className="fa-solid fa-circle-xmark"></i>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {auditLogs.length === 0 && (
+                  <div className="text-center py-8 text-neutral-500 text-sm">
+                    No audit logs found
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Pagination */}
+            {auditTotal > auditLogsPerPage && (
+              <div className="mt-4 flex justify-center">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setAuditPage(Math.max(0, auditPage - 1))}
+                    disabled={auditPage === 0}
+                    className="px-3 py-1 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-rose-500 disabled:opacity-50 disabled:hover:border-neutral-800"
+                  >
+                    <i className="fa-solid fa-chevron-left"></i>
+                  </button>
+                  <span className="text-sm text-neutral-400">
+                    Page {auditPage + 1} of {Math.ceil(auditTotal / auditLogsPerPage)}
+                  </span>
+                  <button
+                    onClick={() => setAuditPage(Math.min(Math.ceil(auditTotal / auditLogsPerPage) - 1, auditPage + 1))}
+                    disabled={auditPage >= Math.ceil(auditTotal / auditLogsPerPage) - 1}
+                    className="px-3 py-1 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-rose-500 disabled:opacity-50 disabled:hover:border-neutral-800"
+                  >
+                    <i className="fa-solid fa-chevron-right"></i>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

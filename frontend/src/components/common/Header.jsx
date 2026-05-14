@@ -15,7 +15,6 @@ export const Header = memo(function Header() {
   const isToolsActive = location.pathname.startsWith('/tools')
   const isUploadActive = location.pathname === '/upload'
   const isSystemActive = location.pathname === '/system'
-  const isAuditActive = location.pathname === '/audit'
 
   return (
     <header className="border-b border-neutral-800/50 bg-neutral-950/95 backdrop-blur-lg sticky top-0 z-50 shadow-lg shadow-black/5">
@@ -79,18 +78,6 @@ export const Header = memo(function Header() {
             >
               <i className="fa-solid fa-chart-line transition-transform duration-200 hover:scale-110"></i>
               <span>System</span>
-            </Link>
-
-            <Link
-              to="/audit"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 hover:scale-105 active:scale-95 ${
-                isAuditActive
-                  ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50 hover:shadow-md'
-              }`}
-            >
-              <i className="fa-solid fa-clipboard-list transition-transform duration-200 hover:scale-110"></i>
-              <span>Audit</span>
             </Link>
           </nav>
 
