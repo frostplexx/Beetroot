@@ -323,6 +323,25 @@ func getThumbnailPath(artPath string, size int) string {
 	return filepath.Join(cacheDir, fmt.Sprintf("%s-%d.webp", hash, size))
 }
 
+// ClearThumbnailCache clears cached thumbnails for a specific art path
+func ClearThumbnailCache(artPath string) {
+	hash := fmt.Sprintf("%x", md5.Sum([]byte(artPath)))
+	cacheDir := filepath.Join(os.TempDir(), "beetroot-thumbs")
+
+	// Remove all cached sizes for this image
+	pattern := filepath.Join(cacheDir, fmt.Sprintf("%s-*", hash))
+	matches, err := filepath.Glob(pattern)
+	if err == nil {
+		for _, match := range matches {
+			os.Remove(match)
+		}
+	}
+
+	// Also clear from in-memory cache by removing all entries
+	// This is a simple approach - clear all cache entries
+	artCache = sync.Map{}
+}
+
 // convertToWebP converts an image to WebP using ImageMagick
 func convertToWebP(inputPath, outputPath string, size int) error {
 	// Use ImageMagick to resize and convert to WebP

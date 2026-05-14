@@ -87,6 +87,9 @@ func RefetchArtHandler() http.HandlerFunc {
 			return
 		}
 
+		// Clear thumbnail cache to force regeneration with new art
+		ClearThumbnailCache("")
+
 		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	}
 }
