@@ -35,18 +35,30 @@ export function Dashboard() {
   const albumsPerPage = 50
   const itemsPerPage = 100
 
-  // Persist active tab to localStorage
+  // Persist active tab to localStorage and scroll to top when changing tabs
   useEffect(() => {
     localStorage.setItem('dashboard-active-tab', activeTab)
+    // Don't scroll to top on initial mount, only when tab changes
+    if (albums.length > 0 || items.length > 0) {
+      window.scrollTo(0, 0)
+    }
   }, [activeTab])
 
-  // Persist pagination to localStorage
+  // Persist pagination to localStorage and scroll to top on page change
   useEffect(() => {
     localStorage.setItem('dashboard-albums-page', albumsPage.toString())
+    // Scroll to top when changing pages (but not on initial mount)
+    if (albums.length > 0) {
+      window.scrollTo(0, 0)
+    }
   }, [albumsPage])
 
   useEffect(() => {
     localStorage.setItem('dashboard-items-page', itemsPage.toString())
+    // Scroll to top when changing pages (but not on initial mount)
+    if (items.length > 0) {
+      window.scrollTo(0, 0)
+    }
   }, [itemsPage])
 
   useEffect(() => {
@@ -61,6 +73,27 @@ export function Dashboard() {
       loadItems(itemsPage)
     }
   }, [activeTab, albumsPage, itemsPage])
+
+  // Save scroll position before unmounting
+  useEffect(() => {
+    return () => {
+      sessionStorage.setItem('dashboard-scroll-position', window.scrollY.toString())
+    }
+  }, [])
+
+  // Restore scroll position after content loads
+  useEffect(() => {
+    if (!loading && (albums.length > 0 || items.length > 0)) {
+      const savedPosition = sessionStorage.getItem('dashboard-scroll-position')
+      if (savedPosition) {
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
+          window.scrollTo(0, parseInt(savedPosition, 10))
+          sessionStorage.removeItem('dashboard-scroll-position')
+        })
+      }
+    }
+  }, [loading, albums, items])
 
   const loadStats = async () => {
     try {
@@ -139,6 +172,9 @@ export function Dashboard() {
       loadAllData()
       return
     }
+
+    // Scroll to top when searching
+    window.scrollTo(0, 0)
 
     setSearching(true)
     try {
