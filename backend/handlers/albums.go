@@ -9,9 +9,29 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"backend/beets"
+)
+
+// Album art path cache with expiration
+type artCacheEntry struct {
+	path      string
+	timestamp time.Time
+}
+
+type configCacheEntry struct {
+	musicDir  string
+	timestamp time.Time
+}
+
+var (
+	artCache      = sync.Map{}
+	artCacheTTL   = 5 * time.Minute
+	configCache   *configCacheEntry
+	configCacheMu sync.RWMutex
+	configCacheTTL = 1 * time.Minute
 )
 
 // AlbumsHandler returns paginated list of albums
@@ -148,6 +168,20 @@ func AlbumArtHandler(db *beets.DB) http.HandlerFunc {
 			return
 		}
 
+		// Check cache first
+		if cached, ok := artCache.Load(albumID); ok {
+			entry := cached.(artCacheEntry)
+			if time.Since(entry.timestamp) < artCacheTTL {
+				// Cache hit - serve directly
+				if _, err := os.Stat(entry.path); err == nil {
+					serveAlbumArt(w, r, entry.path, albumID)
+					return
+				}
+				// File no longer exists, remove from cache
+				artCache.Delete(albumID)
+			}
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 
@@ -157,16 +191,10 @@ func AlbumArtHandler(db *beets.DB) http.HandlerFunc {
 			return
 		}
 
-		// Get music directory from config
-		config, _, err := beets.ParseBeetsConfig(ctx)
+		// Get music directory from config (cached)
+		musicDir, err := getMusicDirectory(ctx)
 		if err != nil {
-			http.Error(w, "Failed to get config", http.StatusInternalServerError)
-			return
-		}
-
-		musicDir := config["directory"]
-		if musicDir == "" {
-			http.Error(w, "Music directory not configured", http.StatusInternalServerError)
+			http.Error(w, "Failed to get music directory: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -241,47 +269,84 @@ func AlbumArtHandler(db *beets.DB) http.HandlerFunc {
 			return
 		}
 
-		// Get file info for modification time
-		fileInfo, err := os.Stat(artPath)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
+		// Cache the resolved path
+		artCache.Store(albumID, artCacheEntry{
+			path:      artPath,
+			timestamp: time.Now(),
+		})
 
-		// Generate ETag based on album ID and file modification time
-		etag := fmt.Sprintf(`"%d-%d"`, albumID, fileInfo.ModTime().Unix())
-
-		// Check If-None-Match header for conditional requests
-		if match := r.Header.Get("If-None-Match"); match != "" {
-			if match == etag {
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
-		}
-
-		// Determine content type based on file extension
-		ext := strings.ToLower(filepath.Ext(artPath))
-		contentType := "application/octet-stream"
-		switch ext {
-		case ".jpg", ".jpeg":
-			contentType = "image/jpeg"
-		case ".png":
-			contentType = "image/png"
-		case ".gif":
-			contentType = "image/gif"
-		case ".webp":
-			contentType = "image/webp"
-		}
-
-		// Final validation before serving
-		if err := validatePathWithinBase(musicDir, artPath); err != nil {
-			http.Error(w, "Invalid file path", http.StatusBadRequest)
-			return
-		}
-
-		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("Cache-Control", "public, max-age=2592000")
-		w.Header().Set("ETag", etag)
-		http.ServeFile(w, r, artPath)
+		// Serve the file
+		serveAlbumArt(w, r, artPath, albumID)
 	}
+}
+
+// getMusicDirectory gets the music directory from config with caching
+func getMusicDirectory(ctx context.Context) (string, error) {
+	configCacheMu.RLock()
+	if configCache != nil && time.Since(configCache.timestamp) < configCacheTTL {
+		musicDir := configCache.musicDir
+		configCacheMu.RUnlock()
+		return musicDir, nil
+	}
+	configCacheMu.RUnlock()
+
+	// Cache miss or expired, refresh
+	config, _, err := beets.ParseBeetsConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	musicDir := config["directory"]
+	if musicDir == "" {
+		return "", fmt.Errorf("music directory not configured")
+	}
+
+	configCacheMu.Lock()
+	configCache = &configCacheEntry{
+		musicDir:  musicDir,
+		timestamp: time.Now(),
+	}
+	configCacheMu.Unlock()
+
+	return musicDir, nil
+}
+
+// serveAlbumArt serves an album art file with proper headers and caching
+func serveAlbumArt(w http.ResponseWriter, r *http.Request, artPath string, albumID int64) {
+	// Get file info for modification time
+	fileInfo, err := os.Stat(artPath)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Generate ETag based on album ID and file modification time
+	etag := fmt.Sprintf(`"%d-%d"`, albumID, fileInfo.ModTime().Unix())
+
+	// Check If-None-Match header for conditional requests
+	if match := r.Header.Get("If-None-Match"); match != "" {
+		if match == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+
+	// Determine content type based on file extension
+	ext := strings.ToLower(filepath.Ext(artPath))
+	contentType := "application/octet-stream"
+	switch ext {
+	case ".jpg", ".jpeg":
+		contentType = "image/jpeg"
+	case ".png":
+		contentType = "image/png"
+	case ".gif":
+		contentType = "image/gif"
+	case ".webp":
+		contentType = "image/webp"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=2592000")
+	w.Header().Set("ETag", etag)
+	http.ServeFile(w, r, artPath)
 }
