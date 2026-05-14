@@ -6,6 +6,8 @@ export function OrphanedFilesTool() {
   const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedFiles, setSelectedFiles] = useState(new Set())
+  const [importing, setImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState('')
 
   useEffect(() => {
     loadOrphanedFiles()
@@ -53,6 +55,61 @@ export function OrphanedFilesTool() {
   const selectedSize = files
     .filter(f => selectedFiles.has(f.path))
     .reduce((sum, file) => sum + file.size, 0)
+
+  const handleImport = async () => {
+    if (selectedFiles.size === 0) return
+
+    setImporting(true)
+    setImportProgress(`Importing ${selectedFiles.size} file(s)...`)
+
+    try {
+      // Get the selected file paths
+      const filePaths = Array.from(selectedFiles)
+
+      // Import each file
+      let successCount = 0
+      let errorCount = 0
+
+      for (const filePath of filePaths) {
+        try {
+          const response = await fetch('/api/beets/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: filePath })
+          })
+
+          if (response.ok) {
+            successCount++
+            setImportProgress(`Imported ${successCount}/${filePaths.length} files...`)
+          } else {
+            errorCount++
+          }
+        } catch (err) {
+          console.error('Import error:', err)
+          errorCount++
+        }
+      }
+
+      // Show results
+      if (errorCount === 0) {
+        setImportProgress(`Successfully imported ${successCount} file(s)!`)
+      } else {
+        setImportProgress(`Imported ${successCount} file(s), ${errorCount} failed`)
+      }
+
+      // Wait a moment, then reload the list
+      setTimeout(() => {
+        setImportProgress('')
+        setSelectedFiles(new Set())
+        loadOrphanedFiles()
+      }, 2000)
+    } catch (err) {
+      setImportProgress(`Error: ${err.message}`)
+      setTimeout(() => setImportProgress(''), 3000)
+    } finally {
+      setImporting(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -111,11 +168,21 @@ export function OrphanedFilesTool() {
               {selectedFiles.size > 0 && (
                 <div className="flex gap-2">
                   <button
-                    onClick={() => alert('Import functionality coming soon')}
-                    className="px-4 py-2 text-sm bg-rose-500 text-white rounded hover:bg-rose-600 transition-colors"
+                    onClick={handleImport}
+                    disabled={importing}
+                    className="px-4 py-2 text-sm bg-rose-500 text-white rounded hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    <i className="fa-solid fa-file-import mr-2"></i>
-                    Import Selected
+                    {importing ? (
+                      <>
+                        <i className="fa-solid fa-spinner fa-spin mr-2"></i>
+                        Importing...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-solid fa-file-import mr-2"></i>
+                        Import Selected
+                      </>
+                    )}
                   </button>
                   <button
                     onClick={() => {
@@ -123,7 +190,8 @@ export function OrphanedFilesTool() {
                         alert('Delete functionality coming soon')
                       }
                     }}
-                    className="px-4 py-2 text-sm bg-neutral-800 text-neutral-300 border border-neutral-700 rounded hover:border-rose-500 hover:text-rose-400 transition-colors"
+                    disabled={importing}
+                    className="px-4 py-2 text-sm bg-neutral-800 text-neutral-300 border border-neutral-700 rounded hover:border-rose-500 hover:text-rose-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     <i className="fa-solid fa-trash mr-2"></i>
                     Delete Selected
@@ -173,6 +241,18 @@ export function OrphanedFilesTool() {
                 </tbody>
               </table>
             </div>
+
+            {/* Import Progress */}
+            {importProgress && (
+              <div className="mt-4 p-4 bg-neutral-900 border border-neutral-800 rounded">
+                <div className="flex items-center gap-3">
+                  {importing && (
+                    <div className="w-5 h-5 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin"></div>
+                  )}
+                  <span className="text-sm text-neutral-300">{importProgress}</span>
+                </div>
+              </div>
+            )}
           </>
         )}
 
