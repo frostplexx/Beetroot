@@ -88,6 +88,7 @@ func main() {
 	mux.HandleFunc("/api/beets/tools/missing-art", handlers.MissingArtHandler(db))
 	mux.HandleFunc("/api/beets/tools/fetch-art", handlers.FetchArtHandler())
 	mux.HandleFunc("/api/beets/tools/replaygain", handlers.ReplayGainHandler())
+	mux.HandleFunc("/api/beets/tools/orphaned-files", handlers.OrphanedFilesHandler(db))
 	mux.HandleFunc("/api/beets/fetch-lyrics", handlers.FetchLyricsHandler())
 
 	// Upload & Import endpoints

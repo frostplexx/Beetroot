@@ -1045,6 +1045,111 @@ func FetchLyricsForItem(ctx context.Context, itemID int64) error {
 	return nil
 }
 
+// OrphanedFile represents a file in the music directory that's not tracked by beets
+type OrphanedFile struct {
+	Path         string `json:"path"`
+	RelativePath string `json:"relative_path"`
+	Size         int64  `json:"size"`
+}
+
+// FindOrphanedFiles finds audio files in the music directory that aren't tracked by beets
+func (db *DB) FindOrphanedFiles(ctx context.Context) ([]OrphanedFile, error) {
+	log.Info().Msg("Finding orphaned files in music directory")
+
+	// Get music directory from beets config
+	config, _, err := ParseBeetsConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing beets config: %w", err)
+	}
+
+	musicDir, ok := config["directory"]
+	if !ok {
+		return nil, fmt.Errorf("directory path not found in beets config")
+	}
+
+	// Expand the music directory path
+	musicDir = expandPath(musicDir)
+
+	log.Debug().Str("music_dir", musicDir).Msg("Music directory")
+
+	// Get all tracked paths from database
+	query := `SELECT path FROM items`
+	rows, err := db.conn.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("error querying tracked files: %w", err)
+	}
+	defer rows.Close()
+
+	trackedPaths := make(map[string]bool)
+	for rows.Next() {
+		var pathBytes []byte
+		if err := rows.Scan(&pathBytes); err != nil {
+			return nil, fmt.Errorf("error scanning path: %w", err)
+		}
+		path := string(pathBytes)
+		trackedPaths[path] = true
+	}
+
+	log.Debug().Int("tracked_count", len(trackedPaths)).Msg("Tracked files in database")
+
+	// Supported audio formats
+	audioExtensions := map[string]bool{
+		".mp3":  true,
+		".flac": true,
+		".m4a":  true,
+		".aac":  true,
+		".ogg":  true,
+		".opus": true,
+		".wma":  true,
+		".wav":  true,
+		".ape":  true,
+		".wv":   true,
+		".mpc":  true,
+		".tta":  true,
+		".aiff": true,
+		".dsf":  true,
+		".dff":  true,
+	}
+
+	// Walk the music directory and find untracked audio files
+	var orphanedFiles []OrphanedFile
+	err = filepath.Walk(musicDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			log.Warn().Err(err).Str("path", path).Msg("Error accessing path")
+			return nil // Continue walking despite errors
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		// Check if it's an audio file
+		ext := strings.ToLower(filepath.Ext(path))
+		if !audioExtensions[ext] {
+			return nil
+		}
+
+		// Check if it's tracked
+		if !trackedPaths[path] {
+			relPath, _ := filepath.Rel(musicDir, path)
+			orphanedFiles = append(orphanedFiles, OrphanedFile{
+				Path:         path,
+				RelativePath: relPath,
+				Size:         info.Size(),
+			})
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("error walking music directory: %w", err)
+	}
+
+	log.Info().Int("orphaned_count", len(orphanedFiles)).Msg("Found orphaned files")
+	return orphanedFiles, nil
+}
+
 // DeleteAlbum deletes an album and optionally its files
 func DeleteAlbum(ctx context.Context, albumID int64, deleteFiles bool) error {
 	query := fmt.Sprintf("id:%d", albumID)
