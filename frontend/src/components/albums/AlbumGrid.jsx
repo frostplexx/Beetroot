@@ -8,9 +8,9 @@ export function AlbumGrid({ albums }) {
           <p className="text-neutral-500">No albums found</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
-          {albums.map((album) => (
-            <AlbumCard key={album.id} album={album} />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
+          {albums.map((album, index) => (
+            <AlbumCard key={album.id} album={album} index={index} />
           ))}
         </div>
       )}

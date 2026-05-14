@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Header } from '../components/common/Header'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
 import { StatCard } from '../components/common/StatCard'
 import { formatDurationLong } from '../utils/formatters'
@@ -167,10 +166,7 @@ export function SystemPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950">
-      <Header />
-
-      <div className="mx-auto px-3 py-4 md:py-8 w-full max-w-[1800px]">
+    <div className="mx-auto px-3 py-4 md:py-8 w-full max-w-[1800px]">
         {/* Tab Navigation */}
         <div className="mb-6 border-b border-neutral-800">
           <div className="flex gap-1">
@@ -399,6 +395,5 @@ export function SystemPage() {
           </div>
         )}
       </div>
-    </div>
   )
 }

@@ -16,19 +16,22 @@ export const SearchBar = memo(function SearchBar({
         {/* Search Bar */}
         <div className="py-4 flex gap-2">
           <form onSubmit={handleSearchSubmit} className="flex-1">
-            <div className="relative">
+            <div className="relative group">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <i className="fa-solid fa-search text-neutral-600 text-xs group-focus-within:text-rose-500 transition-colors duration-200"></i>
+              </div>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search: artist:name, year:2020..2024, genre:rock, ^exclude..."
-                className="w-full bg-neutral-900 border border-neutral-800 rounded px-4 py-2 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-rose-500"
+                placeholder="artist:name, year:2020..2024, genre:rock, ^exclude..."
+                className="w-full bg-neutral-900 border border-neutral-800 rounded-lg pl-9 pr-10 py-2 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-rose-500 focus:shadow-lg focus:shadow-rose-500/10 transition-all duration-200 hover:border-neutral-700"
               />
               {searchQuery && !searching && (
                 <button
                   type="button"
                   onClick={clearSearch}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-rose-400 transition-all duration-200 hover:scale-110 active:scale-95 hover:rotate-90"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -44,10 +47,10 @@ export const SearchBar = memo(function SearchBar({
           </form>
           <button
             onClick={() => setShowHelp(!showHelp)}
-            className="px-3 py-2 bg-neutral-900 border border-neutral-800 rounded text-sm text-neutral-400 hover:text-neutral-300 hover:border-neutral-700"
+            className="px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-lg text-sm text-neutral-400 hover:text-neutral-300 hover:border-rose-500 hover:shadow-lg hover:shadow-rose-500/10 transition-all duration-200 hover:scale-105 active:scale-95"
             title="Query syntax help"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={`w-4 h-4 transition-transform duration-300 ${showHelp ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </button>
@@ -55,7 +58,7 @@ export const SearchBar = memo(function SearchBar({
 
         {/* Search Help */}
         {showHelp && (
-          <div className="pb-4 px-4 bg-neutral-900 border border-neutral-800 rounded text-xs mb-4">
+          <div className="pb-4 px-4 bg-neutral-900 border border-neutral-800 rounded-lg text-xs mb-4 animate-slide-down shadow-xl">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <h3 className="text-neutral-300 font-medium mb-2">Field Queries</h3>

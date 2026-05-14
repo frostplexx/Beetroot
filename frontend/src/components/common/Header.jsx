@@ -22,10 +22,10 @@ export const Header = memo(function Header() {
         <div className="flex items-center justify-between h-14 md:h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-8 h-8 bg-gradient-to-br from-rose-500 to-rose-600 rounded-lg flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:shadow-rose-500/40 transition-shadow">
+            <div className="w-8 h-8 bg-gradient-to-br from-rose-500 to-rose-600 rounded-lg flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:shadow-rose-500/40 transition-all duration-300 group-hover:scale-110 group-hover:rotate-12">
               <span className="text-lg">🫜</span>
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
+            <span className="text-xl font-bold bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent transition-all duration-300 group-hover:tracking-wider">
               Beetroot
             </span>
           </Link>
@@ -34,49 +34,49 @@ export const Header = memo(function Header() {
           <nav className="hidden md:flex items-center gap-2">
             <Link
               to="/"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 hover:scale-105 active:scale-95 ${
                 isLibraryActive
                   ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
+                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50 hover:shadow-md'
               }`}
             >
-              <i className="fa-solid fa-compact-disc"></i>
+              <i className={`fa-solid fa-compact-disc transition-transform duration-300 ${isLibraryActive ? 'animate-spin-slow' : 'group-hover:rotate-180'}`}></i>
               <span>Library</span>
             </Link>
 
             <Link
               to="/upload"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 hover:scale-105 active:scale-95 ${
                 isUploadActive
                   ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
+                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50 hover:shadow-md'
               }`}
             >
-              <i className="fa-solid fa-cloud-arrow-up"></i>
+              <i className="fa-solid fa-cloud-arrow-up transition-transform duration-200 hover:-translate-y-1"></i>
               <span>Upload</span>
             </Link>
 
             <Link
               to="/tools"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 hover:scale-105 active:scale-95 ${
                 isToolsActive
                   ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
+                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50 hover:shadow-md'
               }`}
             >
-              <i className="fa-solid fa-wrench"></i>
+              <i className="fa-solid fa-wrench transition-transform duration-200 hover:rotate-12"></i>
               <span>Tools</span>
             </Link>
 
             <Link
               to="/system"
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 hover:scale-105 active:scale-95 ${
                 isSystemActive
                   ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
+                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50 hover:shadow-md'
               }`}
             >
-              <i className="fa-solid fa-chart-line"></i>
+              <i className="fa-solid fa-chart-line transition-transform duration-200 hover:scale-110"></i>
               <span>System</span>
             </Link>
           </nav>
@@ -84,15 +84,15 @@ export const Header = memo(function Header() {
           {/* Hamburger button (mobile only) */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50 transition-colors"
+            className="md:hidden p-2 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50 transition-all duration-200 hover:scale-110 active:scale-95"
             aria-label="Toggle menu"
           >
             {mobileMenuOpen ? (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 transition-transform duration-300 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             ) : (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             )}
@@ -101,7 +101,7 @@ export const Header = memo(function Header() {
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <nav className="md:hidden pb-4 border-t border-neutral-800/50 pt-3 flex flex-col gap-1">
+          <nav className="md:hidden pb-4 border-t border-neutral-800/50 pt-3 flex flex-col gap-1 animate-slide-down">
             <Link
               to="/"
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${

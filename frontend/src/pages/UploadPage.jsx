@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react'
-import { Header } from '../components/common/Header'
 
 export function UploadPage() {
   const [files, setFiles] = useState([])
@@ -130,10 +129,7 @@ export function UploadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950">
-      <Header />
-
-      <div className="max-w-4xl mx-auto px-6 py-8">
+    <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="mb-8">
           <h1 className="text-2xl font-light text-neutral-200 mb-2">Upload Music</h1>
           <p className="text-sm text-neutral-400">
@@ -272,6 +268,5 @@ export function UploadPage() {
           </ul>
         </div>
       </div>
-    </div>
   )
 }

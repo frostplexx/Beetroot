@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Route, Routes } from 'react-router-dom'
-import { Header } from '../components/common/Header'
 import { DuplicatesTool } from '../components/tools/DuplicatesTool'
 import { MissingArtTool } from '../components/tools/MissingArtTool'
 import { FetchLyricsTool } from '../components/tools/FetchLyricsTool'
@@ -90,21 +89,16 @@ function ToolsGallery() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950">
-        <Header />
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="text-center py-12">
-            <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-solid border-rose-500 border-r-transparent"></div>
-          </div>
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="text-center py-12">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-solid border-rose-500 border-r-transparent"></div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950">
-      <Header />
-      <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-8">
           <h1 className="text-2xl font-light text-neutral-200 mb-2">Tools</h1>
           <p className="text-sm text-neutral-400">
@@ -146,6 +140,5 @@ function ToolsGallery() {
           })}
         </div>
       </div>
-    </div>
   )
 }
