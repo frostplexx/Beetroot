@@ -183,15 +183,15 @@ export function Dashboard() {
         handleSearch={handleSearch}
       />
 
-      <div className="mx-auto px-6 py-8" style={{ maxWidth: 'min(1400px, calc(100vw - 512px))' }}>
+      <div className="mx-auto px-3 py-4 md:py-8 w-full max-w-[1800px] lg:max-w-[calc(min(1800px,100vw-512px))]">
         <div className="w-full">
           <div>
             {activeTab === 'stats' && stats && (
               <div>
-                <h2 className="text-sm font-medium text-neutral-400 mb-4 uppercase tracking-wider">
+                <h2 className="text-sm font-medium text-neutral-400 mb-3 md:mb-4 uppercase tracking-wider">
                   Library Statistics
                 </h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                   <StatCard title="Albums" value={stats.total_albums?.toLocaleString() || 0} />
                   <StatCard title="Tracks" value={stats.total_items?.toLocaleString() || 0} />
                   <StatCard title="Artists" value={stats.total_artists?.toLocaleString() || 0} />
@@ -227,13 +227,13 @@ export function Dashboard() {
           {/* Mobile backdrop overlay */}
           {previewTrack && (
             <div
-              className="fixed inset-0 bg-black/60 z-30 md:hidden transition-opacity duration-300"
+              className="fixed inset-0 bg-black/60 z-30 lg:hidden transition-opacity duration-300"
               onClick={() => setPreviewTrack(null)}
             />
           )}
 
           {/* Mobile: bottom sheet, Desktop: right sidebar */}
-          <div className={`fixed bottom-0 left-0 right-0 max-h-[85vh] rounded-t-xl border-t border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-300 ${previewTrack ? 'translate-y-0' : 'translate-y-full'} md:top-32 md:bottom-auto md:right-0 md:left-auto md:w-[480px] md:h-[calc(100vh-8rem)] md:rounded-none md:border-l md:border-t-0 ${previewTrack ? 'md:translate-y-0 md:translate-x-0' : 'md:translate-y-0 md:translate-x-full'}`}>
+          <div className={`fixed bottom-0 left-0 right-0 max-h-[85vh] rounded-t-xl border-t border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-300 ${previewTrack ? 'translate-y-0' : 'translate-y-full'} lg:top-32 lg:bottom-auto lg:right-0 lg:left-auto lg:w-[480px] lg:h-[calc(100vh-8rem)] lg:rounded-none lg:border-l lg:border-t-0 ${previewTrack ? 'lg:translate-y-0 lg:translate-x-0' : 'lg:translate-y-0 lg:translate-x-full'}`}>
             {previewTrack && (
               <PreviewPanel
                 key={previewTrack.id}

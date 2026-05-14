@@ -207,18 +207,18 @@ export function AlbumDetailPage() {
     >
       <Header />
 
-      <div className="mx-auto px-6 py-8" style={{ maxWidth: 'min(1400px, calc(100vw - 512px))' }}>
+      <div className="mx-auto px-3 py-4 md:py-8 w-full max-w-[1800px] lg:max-w-[calc(min(1800px,100vw-512px))]">
         <div className="w-full">
           <div>
             <button
               onClick={() => navigate('/')}
-              className="mb-6 text-sm text-neutral-500 hover:text-neutral-300 flex items-center gap-2"
+              className="mb-4 md:mb-6 text-sm text-neutral-500 hover:text-neutral-300 flex items-center gap-2"
             >
               <i className="fa-solid fa-arrow-left"></i>
               Back to Library
             </button>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 mb-6 md:mb-8">
               {/* Album Art */}
               <div className="lg:col-span-1">
                 <div className="aspect-square bg-neutral-900 border border-neutral-800 rounded overflow-hidden mb-2 flex items-center justify-center">
@@ -304,26 +304,26 @@ export function AlbumDetailPage() {
 
               {/* Album Info */}
               <div className="lg:col-span-2">
-                <h1 className="text-3xl font-light text-neutral-100 mb-2">{album.album}</h1>
-                <p className="text-xl text-neutral-400 mb-4">{album.albumartist}</p>
+                <h1 className="text-2xl md:text-3xl font-light text-neutral-100 mb-1 md:mb-2">{album.album}</h1>
+                <p className="text-lg md:text-xl text-neutral-400 mb-3 md:mb-4">{album.albumartist}</p>
 
                 {/* Metadata Tools */}
-                <div className="flex gap-2 mb-6">
+                <div className="flex flex-col sm:flex-row gap-2 mb-4 md:mb-6">
                   <button
                     onClick={() => setShowEditModal(true)}
-                    className="px-3 py-1.5 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-rose-500 hover:text-rose-500 transition-colors"
+                    className="px-3 py-2 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-rose-500 hover:text-rose-500 transition-colors"
                   >
                     Edit Metadata
                   </button>
                   <button
                     onClick={handleDeleteAlbum}
-                    className="px-3 py-1.5 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-red-500 hover:text-red-500 transition-colors"
+                    className="px-3 py-2 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-red-500 hover:text-red-500 transition-colors"
                   >
                     Delete Album
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 text-sm mb-6">
+                <div className="grid grid-cols-2 gap-3 md:gap-4 text-sm mb-4 md:mb-6">
                   {/* Date */}
                   {(album.year?.Valid || album.month?.Valid || album.day?.Valid) && (
                     <div>
@@ -412,17 +412,17 @@ export function AlbumDetailPage() {
 
             {/* Track List */}
             <div>
-              <h2 className="text-sm font-medium text-neutral-400 mb-4 uppercase tracking-wider">
+              <h2 className="text-sm font-medium text-neutral-400 mb-3 md:mb-4 uppercase tracking-wider">
                 Tracks
               </h2>
               <div className="border border-neutral-900 rounded overflow-hidden">
                 <table className="w-full">
                   <thead className="bg-neutral-900/50 border-b border-neutral-900">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">#</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">Title</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">Artist</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-neutral-500 uppercase">Duration</th>
+                      <th className="px-2 md:px-4 py-2 md:py-3 text-left text-xs font-medium text-neutral-500 uppercase">#</th>
+                      <th className="px-2 md:px-4 py-2 md:py-3 text-left text-xs font-medium text-neutral-500 uppercase">Title</th>
+                      <th className="px-2 md:px-4 py-2 md:py-3 text-left text-xs font-medium text-neutral-500 uppercase hidden sm:table-cell">Artist</th>
+                      <th className="px-2 md:px-4 py-2 md:py-3 text-right text-xs font-medium text-neutral-500 uppercase">Time</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-900">
@@ -432,17 +432,17 @@ export function AlbumDetailPage() {
                         onClick={() => setPreviewTrack(track)}
                         className="hover:bg-neutral-900/30 cursor-pointer group"
                       >
-                        <td className="px-4 py-3 text-sm font-mono relative">
-                          <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-opacity absolute left-4 text-rose-500"></i>
+                        <td className="px-2 md:px-4 py-2 md:py-3 text-sm font-mono relative w-10">
+                          <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-opacity absolute left-2 md:left-4 text-rose-500"></i>
                           <span className={`group-hover:opacity-0 transition-opacity ${previewTrack?.id === track.id ? 'text-rose-500' : 'text-neutral-500'}`}>
                             {track.track?.Valid ? track.track.Int64 : '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-neutral-200 group-hover:text-rose-400">
+                        <td className="px-2 md:px-4 py-2 md:py-3 text-sm text-neutral-200 group-hover:text-rose-400">
                           {getDisplayTitle(track)}
                         </td>
-                        <td className="px-4 py-3 text-sm text-neutral-400">{track.artist}</td>
-                        <td className="px-4 py-3 text-sm text-neutral-500 font-mono text-right">
+                        <td className="px-2 md:px-4 py-2 md:py-3 text-sm text-neutral-400 hidden sm:table-cell">{track.artist}</td>
+                        <td className="px-2 md:px-4 py-2 md:py-3 text-sm text-neutral-500 font-mono text-right">
                           {track.length ? formatDuration(track.length) : '-'}
                         </td>
                       </tr>
@@ -480,13 +480,13 @@ export function AlbumDetailPage() {
           {/* Mobile backdrop overlay */}
           {previewTrack && (
             <div
-              className="fixed inset-0 bg-black/60 z-30 md:hidden transition-opacity duration-300"
+              className="fixed inset-0 bg-black/60 z-30 lg:hidden transition-opacity duration-300"
               onClick={() => setPreviewTrack(null)}
             />
           )}
 
           {/* Mobile: bottom sheet, Desktop: right sidebar */}
-          <div className={`fixed bottom-0 left-0 right-0 max-h-[85vh] rounded-t-xl border-t border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-300 ${previewTrack ? 'translate-y-0' : 'translate-y-full'} md:top-16 md:bottom-auto md:right-0 md:left-auto md:w-[480px] md:h-[calc(100vh-4rem)] md:rounded-none md:border-l md:border-t-0 ${previewTrack ? 'md:translate-y-0 md:translate-x-0' : 'md:translate-y-0 md:translate-x-full'}`}>
+          <div className={`fixed bottom-0 left-0 right-0 max-h-[85vh] rounded-t-xl border-t border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-300 ${previewTrack ? 'translate-y-0' : 'translate-y-full'} lg:top-16 lg:bottom-auto lg:right-0 lg:left-auto lg:w-[480px] lg:h-[calc(100vh-4rem)] lg:rounded-none lg:border-l lg:border-t-0 ${previewTrack ? 'lg:translate-y-0 lg:translate-x-0' : 'lg:translate-y-0 lg:translate-x-full'}`}>
             {previewTrack && (
               <PreviewPanel
                 key={previewTrack.id}

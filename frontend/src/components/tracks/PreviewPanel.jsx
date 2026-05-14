@@ -238,40 +238,45 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
     <div ref={panelRef} className="w-full h-full">
       <audio ref={audioRef} src={`/api/beets/items/${track.id}/stream`} />
 
-      <div className="p-8 space-y-8 relative">
+      {/* Mobile drag handle */}
+      <div className="lg:hidden flex justify-center pt-2 pb-1">
+        <div className="w-12 h-1 bg-neutral-700 rounded-full"></div>
+      </div>
+
+      <div className="p-4 lg:p-8 space-y-6 lg:space-y-8 relative">
         <button
           onClick={onClose}
-          className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full hover:bg-neutral-800/50 text-neutral-500 hover:text-neutral-300 transition-colors z-10"
+          className="absolute top-1 right-1 lg:top-2 lg:right-2 w-8 h-8 flex items-center justify-center rounded-full hover:bg-neutral-800/50 text-neutral-500 hover:text-neutral-300 transition-colors z-10"
         >
           <i className="fa-solid fa-xmark text-sm"></i>
         </button>
 
         {!editMode ? (
-          <div className="space-y-6">
-            <div className="flex items-start justify-between pr-12">
-              <div>
-                <h2 className="text-3xl font-light text-neutral-100 mb-2">{getDisplayTitle(track)}</h2>
-                <p className="text-lg text-neutral-400">{track.artist}</p>
+          <div className="space-y-4 lg:space-y-6">
+            <div className="flex items-start justify-between pr-8 lg:pr-12">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-xl lg:text-3xl font-light text-neutral-100 mb-1 lg:mb-2 truncate">{getDisplayTitle(track)}</h2>
+                <p className="text-base lg:text-lg text-neutral-400 truncate">{track.artist}</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col lg:flex-row gap-1 lg:gap-2 flex-shrink-0 ml-2">
                 <button
                   onClick={() => setEditMode(true)}
-                  className="px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-rose-500 hover:text-rose-500 transition-colors"
+                  className="px-2 lg:px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-rose-500 hover:text-rose-500 transition-colors"
                 >
-                  <i className="fa-solid fa-pen mr-1"></i>
-                  Edit
+                  <i className="fa-solid fa-pen lg:mr-1"></i>
+                  <span className="hidden lg:inline">Edit</span>
                 </button>
                 <button
                   onClick={handleDeleteTrack}
-                  className="px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-red-500 hover:text-red-500 transition-colors"
+                  className="px-2 lg:px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-red-500 hover:text-red-500 transition-colors"
                 >
-                  <i className="fa-solid fa-trash mr-1"></i>
-                  Delete
+                  <i className="fa-solid fa-trash lg:mr-1"></i>
+                  <span className="hidden lg:inline">Delete</span>
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+            <div className="grid grid-cols-2 gap-x-4 lg:gap-x-6 gap-y-3 lg:gap-y-4 text-sm">
               <div>
                 <span className="text-neutral-500 text-xs uppercase tracking-wider">Album</span>
                 <p className="text-neutral-200 mt-1">{track.album}</p>

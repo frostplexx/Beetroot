@@ -20,8 +20,8 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
 
   return (
     <header className="border-b border-neutral-800/50 bg-neutral-950/95 backdrop-blur-lg sticky top-0 z-50 shadow-lg shadow-black/5">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="flex items-center justify-between h-16">
+      <div className="max-w-7xl mx-auto px-4 md:px-6">
+        <div className="flex items-center justify-between h-14 md:h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group">
             <div className="w-8 h-8 bg-gradient-to-br from-rose-500 to-rose-600 rounded-lg flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:shadow-rose-500/40 transition-shadow">
