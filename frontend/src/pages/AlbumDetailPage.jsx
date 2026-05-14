@@ -381,7 +381,7 @@ export function AlbumDetailPage() {
                     </div>
                   )}
                   {album.genres?.Valid && album.genres.String && (
-                    <div className="col-span-2">
+                    <div style={{ gridColumn: '1 / -1' }}>
                       <span className="text-neutral-500 block mb-1">Genres</span>
                       <div className="flex flex-wrap gap-1">
                         {album.genres.String.split(String.fromCharCode(0)).filter(g => g.trim()).map((genre, i) => (

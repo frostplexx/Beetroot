@@ -21,9 +21,15 @@ export default defineConfig({
     cssMinify: 'lightningcss', // Better CSS minification (now built-in)
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'router': ['react-router-dom'],
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react-vendor'
+            }
+            if (id.includes('react-router-dom')) {
+              return 'router'
+            }
+          }
         },
       },
     },
