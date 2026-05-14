@@ -42,6 +42,9 @@ func ExecBeetCommandWithFlags(ctx context.Context, globalFlags []string, command
 	if len(globalFlags) > 0 {
 		cmdArgs = append(cmdArgs, globalFlags...)
 	}
+	if libraryPath := strings.TrimSpace(os.Getenv("BEET_LIBRARY_PATH")); libraryPath != "" && !containsLibraryFlag(globalFlags) {
+		cmdArgs = append(cmdArgs, "-l", libraryPath)
+	}
 	cmdArgs = append(cmdArgs, command)
 	cmdArgs = append(cmdArgs, args...)
 
@@ -61,4 +64,13 @@ func ExecBeetCommandWithFlags(ctx context.Context, globalFlags []string, command
 
 	log.Debug().Str("output", output).Msg("Beets command executed successfully")
 	return strings.TrimSpace(output), nil
+}
+
+func containsLibraryFlag(flags []string) bool {
+	for _, flag := range flags {
+		if flag == "-l" || flag == "--library" || strings.HasPrefix(flag, "--library=") {
+			return true
+		}
+	}
+	return false
 }

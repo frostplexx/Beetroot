@@ -44,8 +44,10 @@ This flake exports `nixosModules.default`, so you can use it as an input and ena
           services.beetroot = {
             enable = true;
             openFirewall = true;
+            frontendPort = 4433;
             musicDirectory = "/srv/music";
             configDirectory = "/var/lib/beetroot/config";
+            databasePath = "/srv/beets/library.db";
             extraGroups = [ "media" ];
           };
         }
@@ -58,8 +60,10 @@ This flake exports `nixosModules.default`, so you can use it as an input and ena
 ### Service behavior
 
 - `services.beetroot.enable = true;` runs Beetroot as a systemd service.
-- The module sets writable paths for `musicDirectory`, `configDirectory`, and `stateDirectory`.
-- beets is executed with `BEETSCONFIG=<configDirectory>/config.yaml`, so config and library remain writable in that directory.
+- The module sets writable paths for `musicDirectory`, `configDirectory`, `stateDirectory`, and (if set) `databasePath`.
+- `services.beetroot.frontendPort` controls the HTTP port the bundled frontend/API is reachable on (`services.beetroot.port` remains available for compatibility).
+- `services.beetroot.databasePath` lets you keep the beets `library.db` outside `configDirectory`.
+- beets is executed with `BEETSCONFIG=<configDirectory>/config.yaml`.
 
 ### First start note
 
