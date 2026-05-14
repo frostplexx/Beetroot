@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"backend/beets"
@@ -365,4 +366,149 @@ func GetMusicBrainzRecommendationsHandler(db *beets.DB) http.HandlerFunc {
 			"recommendations": recommendations,
 		})
 	}
+}
+
+// SearchMusicBrainzHandler searches MusicBrainz for album matches
+func SearchMusicBrainzHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		artist := r.URL.Query().Get("artist")
+		album := r.URL.Query().Get("album")
+
+		if artist == "" || album == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Artist and album parameters are required",
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+
+		// Search MusicBrainz
+		results, err := searchMusicBrainz(ctx, artist, album)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": fmt.Sprintf("MusicBrainz search failed: %v", err),
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"results": results,
+		})
+	}
+}
+
+type MusicBrainzSearchResult struct {
+	ID           string   `json:"id"`
+	Title        string   `json:"title"`
+	Artist       string   `json:"artist"`
+	Date         string   `json:"date"`
+	Country      string   `json:"country"`
+	Label        string   `json:"label"`
+	CatalogNum   string   `json:"catalog_num"`
+	Barcode      string   `json:"barcode"`
+	TrackCount   int      `json:"track_count"`
+	Format       string   `json:"format"`
+	Status       string   `json:"status"`
+	ReleaseGroup string   `json:"release_group"`
+	Score        int      `json:"score"`
+}
+
+func searchMusicBrainz(ctx context.Context, artist, album string) ([]MusicBrainzSearchResult, error) {
+	// Build MusicBrainz search query
+	query := fmt.Sprintf(`artist:"%s" AND release:"%s"`, artist, album)
+	searchURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release?query=%s&fmt=json&limit=10",
+		url.QueryEscape(query))
+
+	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", "Beetroot/1.0 (https://github.com/yourusername/beetroot)")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("MusicBrainz returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var mbResp struct {
+		Releases []struct {
+			ID    string `json:"id"`
+			Title string `json:"title"`
+			Score int    `json:"score"`
+			Date  string `json:"date"`
+			Country string `json:"country"`
+			Status  string `json:"status"`
+			ArtistCredit []struct {
+				Name string `json:"name"`
+			} `json:"artist-credit"`
+			LabelInfo []struct {
+				Label struct {
+					Name string `json:"name"`
+				} `json:"label"`
+				CatalogNumber string `json:"catalog-number"`
+			} `json:"label-info"`
+			Barcode string `json:"barcode"`
+			Media []struct {
+				Format     string `json:"format"`
+				TrackCount int    `json:"track-count"`
+			} `json:"media"`
+			ReleaseGroup struct {
+				ID string `json:"id"`
+			} `json:"release-group"`
+		} `json:"releases"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&mbResp); err != nil {
+		return nil, err
+	}
+
+	results := make([]MusicBrainzSearchResult, 0, len(mbResp.Releases))
+	for _, rel := range mbResp.Releases {
+		result := MusicBrainzSearchResult{
+			ID:           rel.ID,
+			Title:        rel.Title,
+			Date:         rel.Date,
+			Country:      rel.Country,
+			Status:       rel.Status,
+			Barcode:      rel.Barcode,
+			ReleaseGroup: rel.ReleaseGroup.ID,
+			Score:        rel.Score,
+		}
+
+		// Extract artist name
+		if len(rel.ArtistCredit) > 0 {
+			result.Artist = rel.ArtistCredit[0].Name
+		}
+
+		// Extract label and catalog number
+		if len(rel.LabelInfo) > 0 {
+			result.Label = rel.LabelInfo[0].Label.Name
+			result.CatalogNum = rel.LabelInfo[0].CatalogNumber
+		}
+
+		// Extract format and track count
+		if len(rel.Media) > 0 {
+			result.Format = rel.Media[0].Format
+			result.TrackCount = rel.Media[0].TrackCount
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
 }

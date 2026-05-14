@@ -22,6 +22,10 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
   const [sourcesUsed, setSourcesUsed] = useState(0)
   const [loadingRecommendations, setLoadingRecommendations] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState(null)
+  const [showMBSearch, setShowMBSearch] = useState(false)
+  const [mbSearchResults, setMbSearchResults] = useState([])
+  const [loadingMBSearch, setLoadingMBSearch] = useState(false)
+  const [mbSearchError, setMbSearchError] = useState(null)
 
   useEffect(() => {
     if (album && isOpen) {
@@ -90,6 +94,58 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
 
   const applyRecommendation = (field, value) => {
     setFormData({ ...formData, [field]: value })
+  }
+
+  const searchMusicBrainz = async () => {
+    setLoadingMBSearch(true)
+    setMbSearchError(null)
+    try {
+      const response = await fetch(`/api/beets/mb-search?artist=${encodeURIComponent(album.albumartist)}&album=${encodeURIComponent(album.album)}`)
+      const data = await response.json()
+
+      if (response.ok && data.results) {
+        setMbSearchResults(data.results)
+        if (data.results.length === 0) {
+          setMbSearchError('No matches found on MusicBrainz')
+        }
+      } else {
+        setMbSearchError(data.error || 'Search failed')
+        setMbSearchResults([])
+      }
+    } catch (err) {
+      console.error('MB search error:', err)
+      setMbSearchError('Network error')
+      setMbSearchResults([])
+    } finally {
+      setLoadingMBSearch(false)
+    }
+  }
+
+  const selectMBRelease = async (mbId) => {
+    try {
+      // Update the album with the selected MusicBrainz ID
+      const response = await fetch('/api/beets/modify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          album_id: album.id,
+          updates: { mb_albumid: mbId }
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update MusicBrainz ID')
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500))
+
+      alert('MusicBrainz ID updated! You can now refetch metadata.')
+      setShowMBSearch(false)
+      onSave()
+      onClose()
+    } catch (err) {
+      alert('Error: ' + err.message)
+    }
   }
 
   const handleSubmit = async (e) => {
@@ -284,6 +340,104 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+          {/* MusicBrainz ID Section */}
+          <div className="bg-neutral-950 border border-neutral-800 rounded p-3">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm text-neutral-400">MusicBrainz Release ID</label>
+              {!album.mb_albumid?.Valid || !album.mb_albumid.String ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMBSearch(!showMBSearch)
+                    if (!showMBSearch && mbSearchResults.length === 0) {
+                      searchMusicBrainz()
+                    }
+                  }}
+                  className="text-xs px-2 py-1 bg-rose-500/20 text-rose-400 rounded hover:bg-rose-500/30 transition-colors"
+                >
+                  <i className="fa-solid fa-magnifying-glass mr-1"></i>
+                  Find MB ID
+                </button>
+              ) : (
+                <a
+                  href={`https://musicbrainz.org/release/${album.mb_albumid.String}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-rose-400 hover:text-rose-300"
+                >
+                  View on MusicBrainz <i className="fa-solid fa-external-link text-[10px]"></i>
+                </a>
+              )}
+            </div>
+            <div className="text-xs text-neutral-500 font-mono">
+              {album.mb_albumid?.Valid && album.mb_albumid.String ? (
+                album.mb_albumid.String
+              ) : (
+                <span className="italic">No MusicBrainz ID assigned</span>
+              )}
+            </div>
+
+            {/* MusicBrainz Search Results */}
+            {showMBSearch && (
+              <div className="mt-3 pt-3 border-t border-neutral-800">
+                {loadingMBSearch && (
+                  <div className="text-center py-4">
+                    <div className="w-4 h-4 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin mx-auto"></div>
+                    <p className="text-xs text-neutral-500 mt-2">Searching MusicBrainz...</p>
+                  </div>
+                )}
+
+                {mbSearchError && (
+                  <div className="text-xs text-amber-400 py-2">
+                    <i className="fa-solid fa-circle-exclamation mr-1"></i>
+                    {mbSearchError}
+                  </div>
+                )}
+
+                {!loadingMBSearch && mbSearchResults.length > 0 && (
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    <p className="text-xs text-neutral-400 mb-2">
+                      Found {mbSearchResults.length} matches. Click to select:
+                    </p>
+                    {mbSearchResults.map((result) => (
+                      <button
+                        key={result.id}
+                        type="button"
+                        onClick={() => selectMBRelease(result.id)}
+                        className="w-full text-left p-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-rose-500/50 rounded text-xs transition-colors"
+                      >
+                        <div className="font-medium text-neutral-200">
+                          {result.title}
+                          {result.score && (
+                            <span className="ml-2 text-rose-400">({result.score}%)</span>
+                          )}
+                        </div>
+                        <div className="text-neutral-400 mt-0.5">
+                          {result.artist}
+                          {result.date && ` • ${result.date}`}
+                          {result.country && ` • ${result.country}`}
+                        </div>
+                        {result.label && (
+                          <div className="text-neutral-500 mt-0.5">
+                            {result.label}
+                            {result.catalog_num && ` [${result.catalog_num}]`}
+                          </div>
+                        )}
+                        {result.format && (
+                          <div className="text-neutral-600 mt-0.5">
+                            {result.format}
+                            {result.track_count && ` • ${result.track_count} tracks`}
+                            {result.status && ` • ${result.status}`}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             {renderField('Album', 'album', formData.album)}
             {renderField('Album Artist', 'albumartist', formData.albumartist)}

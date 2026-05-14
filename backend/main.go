@@ -77,6 +77,7 @@ func main() {
 	mux.HandleFunc("/api/beets/modify-item", handlers.ModifyItemHandler())
 	mux.HandleFunc("/api/beets/mb-recommendations", handlers.GetMetadataRecommendationsHandler(db))
 	mux.HandleFunc("/api/beets/mb-tracklist", handlers.GetCompleteTracklistHandler(db))
+	mux.HandleFunc("/api/beets/mb-search", handlers.SearchMusicBrainzHandler())
 
 	// Delete endpoints
 	mux.HandleFunc("/api/beets/delete/album", handlers.DeleteAlbumHandler())
