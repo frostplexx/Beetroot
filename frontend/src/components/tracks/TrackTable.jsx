@@ -1,23 +1,11 @@
 import { formatDuration } from '../../utils/formatters'
 import { usePreview } from '../../contexts/PreviewContext'
-import { Pagination } from '../common/Pagination'
 
-export function TrackTable({ items, currentPage, totalItems, itemsPerPage, onPageChange }) {
+export function TrackTable({ items, currentPage, itemsPerPage }) {
   const { previewTrack, setPreviewTrack } = usePreview()
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-wider">
-          Tracks (Showing {items.length} of {totalItems})
-        </h2>
-        <Pagination
-          currentPage={currentPage}
-          totalItems={totalItems}
-          itemsPerPage={itemsPerPage}
-          onPageChange={onPageChange}
-        />
-      </div>
       {items.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-neutral-500">No tracks found</p>
@@ -56,25 +44,31 @@ export function TrackTable({ items, currentPage, totalItems, itemsPerPage, onPag
                   <tr
                     key={item.id}
                     onClick={() => setPreviewTrack(item)}
-                    className="hover:bg-neutral-900/30 cursor-pointer group"
+                    className={`hover:bg-neutral-900/30 cursor-pointer group transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] opacity-0 animate-fade-in ${
+                      previewTrack?.id === item.id ? 'bg-rose-500/5 border-l-2 border-l-rose-500' : ''
+                    }`}
+                    style={{
+                      animationDelay: `${index * 20}ms`,
+                      animationFillMode: 'forwards'
+                    }}
                   >
                     <td className="px-4 py-3 text-sm font-mono relative">
-                      <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-opacity absolute left-4 text-rose-500"></i>
-                      <span className={`group-hover:opacity-0 transition-opacity ${previewTrack?.id === item.id ? 'text-rose-500' : 'text-neutral-500'}`}>
+                      <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-all duration-200 absolute left-4 text-rose-500 transform scale-75 group-hover:scale-100"></i>
+                      <span className={`group-hover:opacity-0 transition-opacity duration-200 ${previewTrack?.id === item.id ? 'text-rose-500' : 'text-neutral-500'}`}>
                         {currentPage * itemsPerPage + index + 1}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-neutral-200 group-hover:text-rose-400 transition-colors">{item.title}</td>
-                    <td className="px-4 py-3 text-sm text-neutral-400">{item.artist}</td>
-                    <td className="px-4 py-3 text-sm text-neutral-500">{item.album}</td>
-                    <td className="px-4 py-3 text-sm text-neutral-500">
+                    <td className="px-4 py-3 text-sm text-neutral-200 group-hover:text-rose-400 transition-all duration-200 group-hover:translate-x-1">{item.title}</td>
+                    <td className="px-4 py-3 text-sm text-neutral-400 transition-colors duration-200 group-hover:text-neutral-300">{item.artist}</td>
+                    <td className="px-4 py-3 text-sm text-neutral-500 transition-colors duration-200 group-hover:text-neutral-400">{item.album}</td>
+                    <td className="px-4 py-3 text-sm text-neutral-500 transition-colors duration-200 group-hover:text-neutral-400">
                       {item.year && item.year.Valid ? item.year.Int64 : '-'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-neutral-500 font-mono">
+                    <td className="px-4 py-3 text-sm text-neutral-500 font-mono transition-colors duration-200 group-hover:text-neutral-400">
                       {item.length ? formatDuration(item.length) : '-'}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <span className="text-neutral-500 font-mono text-xs">
+                      <span className="text-neutral-500 font-mono text-xs transition-all duration-200 group-hover:text-neutral-400 group-hover:font-semibold">
                         {item.format?.toUpperCase() || 'N/A'}
                       </span>
                     </td>

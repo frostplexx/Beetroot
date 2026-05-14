@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Header } from '../components/common/Header'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
 import { formatDuration } from '../utils/formatters'
 import { usePreview } from '../contexts/PreviewContext'
@@ -15,6 +14,7 @@ export function AlbumDetailPage() {
   const { previewTrack, setPreviewTrack } = usePreview()
   const [album, setAlbum] = useState(null)
   const [tracks, setTracks] = useState([])
+  const [mbTracklist, setMbTracklist] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [artError, setArtError] = useState(false)
@@ -27,7 +27,16 @@ export function AlbumDetailPage() {
 
   useEffect(() => {
     loadAlbumData()
+    loadMusicBrainzTracklist()
   }, [id])
+
+  // Rebuild track list when MusicBrainz tracklist is loaded
+  const [rawTracks, setRawTracks] = useState([])
+  useEffect(() => {
+    if (rawTracks.length > 0) {
+      setTracks(buildCompleteTrackList(rawTracks, mbTracklist))
+    }
+  }, [mbTracklist, rawTracks])
 
   const loadAlbumData = () => {
     const albumId = parseInt(id)
@@ -37,13 +46,72 @@ export function AlbumDetailPage() {
     ])
       .then(([albumData, itemsData]) => {
         setAlbum(albumData)
-        setTracks(itemsData)
+        setRawTracks(itemsData)
+        setTracks(buildCompleteTrackList(itemsData, mbTracklist))
         setLoading(false)
       })
       .catch(err => {
         setError(err.message)
         setLoading(false)
       })
+  }
+
+  const loadMusicBrainzTracklist = async () => {
+    try {
+      const res = await fetch(`/api/beets/mb-tracklist?album_id=${id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setMbTracklist(data.tracks || [])
+      }
+    } catch (err) {
+      console.log('Could not load MusicBrainz tracklist:', err)
+    }
+  }
+
+  // Build complete track list including missing tracks
+  const buildCompleteTrackList = (tracks, mbTracks = []) => {
+    if (!tracks || tracks.length === 0) return []
+
+    // Get expected total from tracktotal field or max track number
+    const trackTotal = tracks.find(t => t.tracktotal?.Valid)?.tracktotal?.Int64
+    const maxTrackNum = Math.max(...tracks.filter(t => t.track?.Valid).map(t => t.track.Int64))
+    const expectedTotal = trackTotal || maxTrackNum || mbTracks.length
+
+    if (!expectedTotal) return tracks.map(t => ({ ...t, missing: false }))
+
+    // Create a map of track numbers to tracks
+    const trackMap = new Map()
+    tracks.forEach(track => {
+      if (track.track?.Valid) {
+        trackMap.set(track.track.Int64, track)
+      }
+    })
+
+    // Create a map of MusicBrainz tracks by position
+    const mbTrackMap = new Map()
+    mbTracks.forEach(track => {
+      mbTrackMap.set(track.position, track)
+    })
+
+    // Build complete list with missing tracks
+    const completeList = []
+    for (let i = 1; i <= expectedTotal; i++) {
+      if (trackMap.has(i)) {
+        completeList.push({ ...trackMap.get(i), missing: false })
+      } else {
+        // Use MusicBrainz track name if available, otherwise generic message
+        const mbTrack = mbTrackMap.get(i)
+        completeList.push({
+          missing: true,
+          track: { Valid: true, Int64: i },
+          title: mbTrack?.title || `Missing Track ${i}`,
+          artist: '',
+          length: mbTrack?.length ? mbTrack.length / 1000 : 0 // Convert ms to seconds
+        })
+      }
+    }
+
+    return completeList
   }
 
   const getDisplayTitle = (track) => {
@@ -198,33 +266,31 @@ export function AlbumDetailPage() {
 
   return (
     <div
-      className="min-h-screen transition-colors duration-700"
+      className="transition-colors duration-700"
       style={{
         background: dominantColor
           ? `linear-gradient(to bottom, ${dominantColor} 0%, rgba(10, 10, 10, 0.95) 60%, rgb(10, 10, 10) 100%)`
           : 'rgb(10, 10, 10)'
       }}
     >
-      <Header />
-
-      <div className="mx-auto px-6 py-8" style={{ maxWidth: 'min(1400px, calc(100vw - 512px))' }}>
+      <div className="mx-auto px-3 py-4 md:py-8 w-full max-w-[1800px] lg:max-w-[calc(min(1800px,100vw-512px))]">
         <div className="w-full">
           <div>
             <button
               onClick={() => navigate('/')}
-              className="mb-6 text-sm text-neutral-500 hover:text-neutral-300 flex items-center gap-2"
+              className="mb-4 md:mb-6 text-sm text-neutral-500 hover:text-neutral-300 flex items-center gap-2"
             >
               <i className="fa-solid fa-arrow-left"></i>
               Back to Library
             </button>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 mb-6 md:mb-8">
               {/* Album Art */}
               <div className="lg:col-span-1">
                 <div className="aspect-square bg-neutral-900 border border-neutral-800 rounded overflow-hidden mb-2 flex items-center justify-center">
                   {!artError ? (
                     <img
-                      src={`/api/beets/albums/${album.id}/art${artTimestamp ? `?t=${artTimestamp}` : ''}`}
+                      src={`/api/beets/albums/${album.id}/art?size=800${artTimestamp ? `&t=${artTimestamp}` : ''}`}
                       alt={album.album}
                       className="w-full h-full object-cover"
                       crossOrigin="anonymous"
@@ -304,26 +370,26 @@ export function AlbumDetailPage() {
 
               {/* Album Info */}
               <div className="lg:col-span-2">
-                <h1 className="text-3xl font-light text-neutral-100 mb-2">{album.album}</h1>
-                <p className="text-xl text-neutral-400 mb-4">{album.albumartist}</p>
+                <h1 className="text-2xl md:text-3xl font-light text-neutral-100 mb-1 md:mb-2">{album.album}</h1>
+                <p className="text-lg md:text-xl text-neutral-400 mb-3 md:mb-4">{album.albumartist}</p>
 
                 {/* Metadata Tools */}
-                <div className="flex gap-2 mb-6">
+                <div className="flex flex-col sm:flex-row gap-2 mb-4 md:mb-6">
                   <button
                     onClick={() => setShowEditModal(true)}
-                    className="px-3 py-1.5 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-rose-500 hover:text-rose-500 transition-colors"
+                    className="px-3 py-2 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-rose-500 hover:text-rose-500 transition-colors"
                   >
                     Edit Metadata
                   </button>
                   <button
                     onClick={handleDeleteAlbum}
-                    className="px-3 py-1.5 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-red-500 hover:text-red-500 transition-colors"
+                    className="px-3 py-2 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-red-500 hover:text-red-500 transition-colors"
                   >
                     Delete Album
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 text-sm mb-6">
+                <div className="grid grid-cols-2 gap-3 md:gap-4 text-sm mb-4 md:mb-6">
                   {/* Date */}
                   {(album.year?.Valid || album.month?.Valid || album.day?.Valid) && (
                     <div>
@@ -384,7 +450,7 @@ export function AlbumDetailPage() {
                     </div>
                   )}
                   {album.genres?.Valid && album.genres.String && (
-                    <div className="col-span-2">
+                    <div style={{ gridColumn: '1 / -1' }}>
                       <span className="text-neutral-500 block mb-1">Genres</span>
                       <div className="flex flex-wrap gap-1">
                         {album.genres.String.split(String.fromCharCode(0)).filter(g => g.trim()).map((genre, i) => (
@@ -412,37 +478,41 @@ export function AlbumDetailPage() {
 
             {/* Track List */}
             <div>
-              <h2 className="text-sm font-medium text-neutral-400 mb-4 uppercase tracking-wider">
+              <h2 className="text-sm font-medium text-neutral-400 mb-3 md:mb-4 uppercase tracking-wider">
                 Tracks
               </h2>
               <div className="border border-neutral-900 rounded overflow-hidden">
                 <table className="w-full">
                   <thead className="bg-neutral-900/50 border-b border-neutral-900">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">#</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">Title</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase">Artist</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-neutral-500 uppercase">Duration</th>
+                      <th className="px-2 md:px-4 py-2 md:py-3 text-left text-xs font-medium text-neutral-500 uppercase">#</th>
+                      <th className="px-2 md:px-4 py-2 md:py-3 text-left text-xs font-medium text-neutral-500 uppercase">Title</th>
+                      <th className="px-2 md:px-4 py-2 md:py-3 text-left text-xs font-medium text-neutral-500 uppercase hidden sm:table-cell">Artist</th>
+                      <th className="px-2 md:px-4 py-2 md:py-3 text-right text-xs font-medium text-neutral-500 uppercase">Time</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-900">
                     {tracks.map((track) => (
                       <tr
-                        key={track.id}
-                        onClick={() => setPreviewTrack(track)}
-                        className="hover:bg-neutral-900/30 cursor-pointer group"
+                        key={track.id || `missing-${track.track.Int64}`}
+                        onClick={() => !track.missing && setPreviewTrack(track)}
+                        className={track.missing ? 'opacity-40' : 'hover:bg-neutral-900/30 cursor-pointer group'}
                       >
-                        <td className="px-4 py-3 text-sm font-mono relative">
-                          <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-opacity absolute left-4 text-rose-500"></i>
-                          <span className={`group-hover:opacity-0 transition-opacity ${previewTrack?.id === track.id ? 'text-rose-500' : 'text-neutral-500'}`}>
+                        <td className="px-2 md:px-4 py-2 md:py-3 text-sm font-mono relative w-10">
+                          {!track.missing && (
+                            <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-opacity absolute left-2 md:left-4 text-rose-500"></i>
+                          )}
+                          <span className={`transition-opacity ${!track.missing ? 'group-hover:opacity-0' : ''} ${previewTrack?.id === track.id && !track.missing ? 'text-rose-500' : 'text-neutral-500'}`}>
                             {track.track?.Valid ? track.track.Int64 : '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-neutral-200 group-hover:text-rose-400">
-                          {getDisplayTitle(track)}
+                        <td className="px-2 md:px-4 py-2 md:py-3 text-sm">
+                          <span className={track.missing ? 'text-neutral-600 italic' : 'text-neutral-200 group-hover:text-rose-400 transition-colors'}>
+                            {getDisplayTitle(track)}
+                          </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-neutral-400">{track.artist}</td>
-                        <td className="px-4 py-3 text-sm text-neutral-500 font-mono text-right">
+                        <td className="px-2 md:px-4 py-2 md:py-3 text-sm text-neutral-400 hidden sm:table-cell">{track.artist}</td>
+                        <td className="px-2 md:px-4 py-2 md:py-3 text-sm text-neutral-500 font-mono text-right">
                           {track.length ? formatDuration(track.length) : '-'}
                         </td>
                       </tr>
@@ -477,7 +547,16 @@ export function AlbumDetailPage() {
             />
           </div>
 
-          <div className={`fixed top-16 right-0 w-[480px] h-[calc(100vh-4rem)] border-l border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-200 ${previewTrack ? 'translate-x-0' : 'translate-x-full'}`}>
+          {/* Mobile backdrop overlay */}
+          {previewTrack && (
+            <div
+              className="fixed inset-0 bg-black/60 z-30 lg:hidden transition-opacity duration-300"
+              onClick={() => setPreviewTrack(null)}
+            />
+          )}
+
+          {/* Mobile: bottom sheet, Desktop: right sidebar */}
+          <div className={`fixed bottom-0 left-0 right-0 max-h-[85vh] rounded-t-xl border-t border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-300 ${previewTrack ? 'translate-y-0' : 'translate-y-full'} lg:top-16 lg:bottom-auto lg:right-0 lg:left-auto lg:w-[480px] lg:h-[calc(100vh-4rem)] lg:rounded-none lg:border-l lg:border-t-0 ${previewTrack ? 'lg:translate-y-0 lg:translate-x-0' : 'lg:translate-y-0 lg:translate-x-full'}`}>
             {previewTrack && (
               <PreviewPanel
                 key={previewTrack.id}

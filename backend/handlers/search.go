@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"backend/beets"
@@ -24,6 +25,14 @@ func SearchAlbumsHandler(db *beets.DB) http.HandlerFunc {
 
 		query := r.URL.Query().Get("q")
 
+		// Default limit to prevent loading thousands of results
+		limit := 200
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+			}
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 
@@ -35,6 +44,11 @@ func SearchAlbumsHandler(db *beets.DB) http.HandlerFunc {
 				"error": err.Error(),
 			})
 			return
+		}
+
+		// Apply limit to results
+		if len(albums) > limit {
+			albums = albums[:limit]
 		}
 
 		json.NewEncoder(w).Encode(albums)
@@ -56,6 +70,14 @@ func SearchItemsHandler(db *beets.DB) http.HandlerFunc {
 
 		query := r.URL.Query().Get("q")
 
+		// Default limit to prevent loading thousands of results
+		limit := 500
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+			}
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 
@@ -67,6 +89,11 @@ func SearchItemsHandler(db *beets.DB) http.HandlerFunc {
 				"error": err.Error(),
 			})
 			return
+		}
+
+		// Apply limit to results
+		if len(items) > limit {
+			items = items[:limit]
 		}
 
 		json.NewEncoder(w).Encode(items)

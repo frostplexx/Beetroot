@@ -25,32 +25,32 @@ type DB struct {
 
 // Item represents a track/song in the library
 type Item struct {
-	ID                 int64           `json:"id"`
-	Title              string          `json:"title"`
-	Artist             string          `json:"artist"`
-	ArtistSort         string          `json:"artist_sort"`
-	Album              string          `json:"album"`
-	AlbumID            sql.NullInt64   `json:"album_id"`
-	AlbumArtist        string          `json:"albumartist"`
-	Path               string          `json:"path"`
-	Length             float64         `json:"length"`
-	Bitrate            int             `json:"bitrate"`
-	Format             string          `json:"format"`
-	Year               sql.NullInt64   `json:"year"`
-	Month              sql.NullInt64   `json:"month"`
-	Day                sql.NullInt64   `json:"day"`
-	Track              sql.NullInt64   `json:"track"`
-	TrackTotal         sql.NullInt64   `json:"tracktotal"`
-	Disc               sql.NullInt64   `json:"disc"`
-	DiscTotal          sql.NullInt64   `json:"disctotal"`
-	Genres             sql.NullString  `json:"genres"`
-	Lyrics             sql.NullString  `json:"lyrics"`
-	ISRC               sql.NullString  `json:"isrc"`
-	Comp               sql.NullInt64   `json:"comp"`
-	MusicBrainzTrackID sql.NullString  `json:"mb_trackid"`
-	MusicBrainzAlbumID sql.NullString  `json:"mb_albumid"`
-	Added              float64         `json:"added"`
-	Modified           float64         `json:"mtime"`
+	ID                 int64          `json:"id"`
+	Title              string         `json:"title"`
+	Artist             string         `json:"artist"`
+	ArtistSort         string         `json:"artist_sort"`
+	Album              string         `json:"album"`
+	AlbumID            sql.NullInt64  `json:"album_id"`
+	AlbumArtist        string         `json:"albumartist"`
+	Path               string         `json:"path"`
+	Length             float64        `json:"length"`
+	Bitrate            int            `json:"bitrate"`
+	Format             string         `json:"format"`
+	Year               sql.NullInt64  `json:"year"`
+	Month              sql.NullInt64  `json:"month"`
+	Day                sql.NullInt64  `json:"day"`
+	Track              sql.NullInt64  `json:"track"`
+	TrackTotal         sql.NullInt64  `json:"tracktotal"`
+	Disc               sql.NullInt64  `json:"disc"`
+	DiscTotal          sql.NullInt64  `json:"disctotal"`
+	Genres             sql.NullString `json:"genres"`
+	Lyrics             sql.NullString `json:"lyrics"`
+	ISRC               sql.NullString `json:"isrc"`
+	Comp               sql.NullInt64  `json:"comp"`
+	MusicBrainzTrackID sql.NullString `json:"mb_trackid"`
+	MusicBrainzAlbumID sql.NullString `json:"mb_albumid"`
+	Added              float64        `json:"added"`
+	Modified           float64        `json:"mtime"`
 }
 
 // Album represents an album in the library
@@ -182,14 +182,28 @@ func RefetchAlbumArt(ctx context.Context, albumID int64) error {
 
 // ModifyAlbumMetadata modifies album metadata
 func ModifyAlbumMetadata(ctx context.Context, albumID int64, updates map[string]string) error {
+	// Validate album ID
+	if albumID <= 0 {
+		return fmt.Errorf("invalid album ID")
+	}
+
 	// For albums, use "id:" not "album_id:"
 	query := fmt.Sprintf("id:%d", albumID)
 
-	// Build field=value arguments
+	// Build field=value arguments with validation
 	// Add -a flag to modify albums (not items)
 	args := []string{"-a", "-y", query}
 	for field, value := range updates {
-		args = append(args, fmt.Sprintf("%s=%s", field, value))
+		// Validate field name (whitelist)
+		if err := validateMetadataField(field); err != nil {
+			return fmt.Errorf("invalid field: %w", err)
+		}
+		// Sanitize value
+		sanitized, err := sanitizeMetadataValue(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for field %s: %w", field, err)
+		}
+		args = append(args, fmt.Sprintf("%s=%s", field, sanitized))
 	}
 
 	log.Info().Int64("album_id", albumID).Interface("updates", updates).Msg("Modifying album metadata")
@@ -206,15 +220,9 @@ func ModifyAlbumMetadata(ctx context.Context, albumID int64, updates map[string]
 func FindDuplicateAlbums(ctx context.Context) ([]map[string]interface{}, error) {
 	log.Debug().Msg("Finding duplicate albums using similarity matching")
 
-	// Get database path from config
-	config, _, err := ParseBeetsConfig(ctx)
+	dbPath, err := GetDatabasePath(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing beets config: %w", err)
-	}
-
-	dbPath, ok := config["library"]
-	if !ok {
-		return nil, fmt.Errorf("library path not found in beets config")
+		return nil, fmt.Errorf("error getting database path: %w", err)
 	}
 
 	db, err := OpenDB(ctx, dbPath)
@@ -276,14 +284,14 @@ func FindDuplicateAlbums(ctx context.Context) ([]map[string]interface{}, error) 
 				seen[key] = true
 
 				duplicates = append(duplicates, map[string]interface{}{
-					"info":        fmt.Sprintf("%s - %s / %s", albums[i].albumartist, albums[i].album, albums[j].album),
-					"album1_id":   albums[i].id,
-					"album1":      albums[i].album,
-					"album2_id":   albums[j].id,
-					"album2":      albums[j].album,
-					"tracks1":     albums[i].trackCount,
-					"tracks2":     albums[j].trackCount,
-					"similarity":  similarity,
+					"info":       fmt.Sprintf("%s - %s / %s", albums[i].albumartist, albums[i].album, albums[j].album),
+					"album1_id":  albums[i].id,
+					"album1":     albums[i].album,
+					"album2_id":  albums[j].id,
+					"album2":     albums[j].album,
+					"tracks1":    albums[i].trackCount,
+					"tracks2":    albums[j].trackCount,
+					"similarity": similarity,
 				})
 			}
 		}
@@ -371,15 +379,9 @@ func max(a, b int) int {
 func MergeDuplicateAlbums(ctx context.Context, keepAlbumID, discardAlbumID int64) error {
 	log.Info().Int64("keep", keepAlbumID).Int64("discard", discardAlbumID).Msg("Merging duplicate albums")
 
-	// Get database path from config
-	config, _, err := ParseBeetsConfig(ctx)
+	dbPath, err := GetDatabasePath(ctx)
 	if err != nil {
-		return fmt.Errorf("error parsing beets config: %w", err)
-	}
-
-	dbPath, ok := config["library"]
-	if !ok {
-		return fmt.Errorf("library path not found in beets config")
+		return fmt.Errorf("error getting database path: %w", err)
 	}
 
 	// Open database in read-write mode for merging
@@ -469,11 +471,14 @@ func (db *DB) QueryAlbums(ctx context.Context, query string) ([]Album, error) {
 
 // GetDatabasePath retrieves the database path from config or uses default
 func GetDatabasePath(ctx context.Context) (string, error) {
+	if dbPath := strings.TrimSpace(os.Getenv("BEETROOT_DATABASE_PATH")); dbPath != "" {
+		return expandPath(dbPath), nil
+	}
+
 	config, _, err := ParseBeetsConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("error parsing beets config: %w", err)
 	}
-
 
 	if dbPath, ok := config["library"]; ok {
 		return expandPath(dbPath), nil
@@ -995,15 +1000,21 @@ func FetchArtForAlbum(ctx context.Context, albumID int64) error {
 
 // ApplyReplayGain applies ReplayGain to albums or items
 func ApplyReplayGain(ctx context.Context, query string, album bool) error {
-	log.Info().Str("query", query).Bool("album", album).Msg("Applying ReplayGain")
+	// Sanitize query to prevent command injection
+	sanitized, err := sanitizeBeetsQuery(query)
+	if err != nil {
+		return fmt.Errorf("invalid query: %w", err)
+	}
+
+	log.Info().Str("query", sanitized).Bool("album", album).Msg("Applying ReplayGain")
 
 	args := []string{}
 	if album {
 		args = append(args, "-a")
 	}
-	args = append(args, query)
+	args = append(args, sanitized)
 
-	_, err := ExecBeetCommand(ctx, "replaygain", args...)
+	_, err = ExecBeetCommand(ctx, "replaygain", args...)
 	if err != nil {
 		return fmt.Errorf("error applying replaygain: %w", err)
 	}
@@ -1013,12 +1024,26 @@ func ApplyReplayGain(ctx context.Context, query string, album bool) error {
 
 // ModifyItemMetadata modifies track/item metadata
 func ModifyItemMetadata(ctx context.Context, itemID int64, updates map[string]string) error {
+	// Validate item ID
+	if itemID <= 0 {
+		return fmt.Errorf("invalid item ID")
+	}
+
 	query := fmt.Sprintf("id:%d", itemID)
 
-	// Build field=value arguments
+	// Build field=value arguments with validation
 	args := []string{query}
 	for field, value := range updates {
-		args = append(args, fmt.Sprintf("%s=%s", field, value))
+		// Validate field name (whitelist)
+		if err := validateMetadataField(field); err != nil {
+			return fmt.Errorf("invalid field: %w", err)
+		}
+		// Sanitize value
+		sanitized, err := sanitizeMetadataValue(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for field %s: %w", field, err)
+		}
+		args = append(args, fmt.Sprintf("%s=%s", field, sanitized))
 	}
 
 	log.Info().Int64("item_id", itemID).Interface("updates", updates).Msg("Modifying item metadata")
@@ -1043,6 +1068,111 @@ func FetchLyricsForItem(ctx context.Context, itemID int64) error {
 	}
 
 	return nil
+}
+
+// OrphanedFile represents a file in the music directory that's not tracked by beets
+type OrphanedFile struct {
+	Path         string `json:"path"`
+	RelativePath string `json:"relative_path"`
+	Size         int64  `json:"size"`
+}
+
+// FindOrphanedFiles finds audio files in the music directory that aren't tracked by beets
+func (db *DB) FindOrphanedFiles(ctx context.Context) ([]OrphanedFile, error) {
+	log.Info().Msg("Finding orphaned files in music directory")
+
+	// Get music directory from beets config
+	config, _, err := ParseBeetsConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing beets config: %w", err)
+	}
+
+	musicDir, ok := config["directory"]
+	if !ok {
+		return nil, fmt.Errorf("directory path not found in beets config")
+	}
+
+	// Expand the music directory path
+	musicDir = expandPath(musicDir)
+
+	log.Debug().Str("music_dir", musicDir).Msg("Music directory")
+
+	// Get all tracked paths from database
+	query := `SELECT path FROM items`
+	rows, err := db.conn.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("error querying tracked files: %w", err)
+	}
+	defer rows.Close()
+
+	trackedPaths := make(map[string]bool)
+	for rows.Next() {
+		var pathBytes []byte
+		if err := rows.Scan(&pathBytes); err != nil {
+			return nil, fmt.Errorf("error scanning path: %w", err)
+		}
+		path := string(pathBytes)
+		trackedPaths[path] = true
+	}
+
+	log.Debug().Int("tracked_count", len(trackedPaths)).Msg("Tracked files in database")
+
+	// Supported audio formats
+	audioExtensions := map[string]bool{
+		".mp3":  true,
+		".flac": true,
+		".m4a":  true,
+		".aac":  true,
+		".ogg":  true,
+		".opus": true,
+		".wma":  true,
+		".wav":  true,
+		".ape":  true,
+		".wv":   true,
+		".mpc":  true,
+		".tta":  true,
+		".aiff": true,
+		".dsf":  true,
+		".dff":  true,
+	}
+
+	// Walk the music directory and find untracked audio files
+	var orphanedFiles []OrphanedFile
+	err = filepath.Walk(musicDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			log.Warn().Err(err).Str("path", path).Msg("Error accessing path")
+			return nil // Continue walking despite errors
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		// Check if it's an audio file
+		ext := strings.ToLower(filepath.Ext(path))
+		if !audioExtensions[ext] {
+			return nil
+		}
+
+		// Check if it's tracked
+		if !trackedPaths[path] {
+			relPath, _ := filepath.Rel(musicDir, path)
+			orphanedFiles = append(orphanedFiles, OrphanedFile{
+				Path:         path,
+				RelativePath: relPath,
+				Size:         info.Size(),
+			})
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("error walking music directory: %w", err)
+	}
+
+	log.Info().Int("orphaned_count", len(orphanedFiles)).Msg("Found orphaned files")
+	return orphanedFiles, nil
 }
 
 // DeleteAlbum deletes an album and optionally its files
@@ -1089,7 +1219,13 @@ func DeleteItem(ctx context.Context, itemID int64, deleteFiles bool) error {
 
 // DeleteArtist deletes all albums by an artist and optionally their files
 func DeleteArtist(ctx context.Context, artistName string, deleteFiles bool) error {
-	query := fmt.Sprintf("albumartist:%s", artistName)
+	// Sanitize artist name to prevent command injection
+	sanitized, err := sanitizeBeetsQuery(artistName)
+	if err != nil {
+		return fmt.Errorf("invalid artist name: %w", err)
+	}
+
+	query := fmt.Sprintf("albumartist:%s", sanitized)
 	log.Info().Str("artist", artistName).Bool("delete_files", deleteFiles).Msg("Deleting artist")
 
 	args := []string{"remove", "-a"}
@@ -1110,6 +1246,21 @@ func DeleteArtist(ctx context.Context, artistName string, deleteFiles bool) erro
 
 // ImportPath imports music files from a given path
 func ImportPath(ctx context.Context, path string) error {
+	// Validate path to prevent command injection
+	if strings.Contains(path, ";") || strings.Contains(path, "|") ||
+		strings.Contains(path, "&") || strings.Contains(path, "$") {
+		return fmt.Errorf("invalid path: contains dangerous characters")
+	}
+
+	// Ensure path exists and is a directory
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("path does not exist: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("path is not a directory")
+	}
+
 	log.Info().Str("path", path).Msg("Importing music from path")
 
 	// Use beet -v import -q --group-albums
@@ -1124,5 +1275,78 @@ func ImportPath(ctx context.Context, path string) error {
 	}
 
 	log.Info().Str("output", output).Msg("Import completed successfully")
+	return nil
+}
+
+// sanitizeBeetsQuery removes dangerous characters from beets query strings
+func sanitizeBeetsQuery(query string) (string, error) {
+	if len(query) > 1000 {
+		return "", fmt.Errorf("query too long")
+	}
+
+	// Remove null bytes
+	query = strings.ReplaceAll(query, "\x00", "")
+
+	// Check for shell metacharacters that could cause command injection
+	dangerous := []string{";", "|", "&", "$", "`", "\n", "\r", "$(", "${"}
+	for _, char := range dangerous {
+		if strings.Contains(query, char) {
+			return "", fmt.Errorf("query contains dangerous characters: %s", char)
+		}
+	}
+
+	return query, nil
+}
+
+// sanitizeMetadataValue sanitizes metadata field values
+func sanitizeMetadataValue(value string) (string, error) {
+	if len(value) > 10000 {
+		return "", fmt.Errorf("value too long")
+	}
+
+	// Remove null bytes
+	value = strings.ReplaceAll(value, "\x00", "")
+
+	// Check for command injection patterns
+	dangerous := []string{";", "|", "&", "$", "`", "$(", "${", "\n", "\r"}
+	for _, char := range dangerous {
+		if strings.Contains(value, char) {
+			return "", fmt.Errorf("value contains dangerous characters: %s", char)
+		}
+	}
+
+	return value, nil
+}
+
+// validateMetadataField ensures field name is safe (whitelist approach)
+func validateMetadataField(field string) error {
+	allowedFields := map[string]bool{
+		"album":             true,
+		"albumartist":       true,
+		"artist":            true,
+		"title":             true,
+		"year":              true,
+		"month":             true,
+		"day":               true,
+		"genre":             true,
+		"genres":            true,
+		"label":             true,
+		"country":           true,
+		"catalognum":        true,
+		"barcode":           true,
+		"albumtype":         true,
+		"albumstatus":       true,
+		"track":             true,
+		"disc":              true,
+		"comp":              true,
+		"mb_albumid":        true,
+		"mb_trackid":        true,
+		"mb_releasegroupid": true,
+	}
+
+	if !allowedFields[field] {
+		return fmt.Errorf("field not allowed: %s", field)
+	}
+
 	return nil
 }

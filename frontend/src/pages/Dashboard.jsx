@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { usePreview } from '../contexts/PreviewContext'
-import { Header } from '../components/common/Header'
+import { SearchBar } from '../components/common/SearchBar'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
-import { StatCard } from '../components/common/StatCard'
+import { Pagination } from '../components/common/Pagination'
 import { AlbumGrid } from '../components/albums/AlbumGrid'
 import { TrackTable } from '../components/tracks/TrackTable'
 import { PreviewPanel } from '../components/tracks/PreviewPanel'
-import { formatDurationLong } from '../utils/formatters'
 
 export function Dashboard() {
   const { previewTrack, setPreviewTrack } = usePreview()
@@ -15,18 +14,40 @@ export function Dashboard() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [activeTab, setActiveTab] = useState('albums')
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('dashboard-active-tab') || 'albums'
+  })
   const [searchQuery, setSearchQuery] = useState('')
   const [searching, setSearching] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
 
-  // Pagination state
-  const [albumsPage, setAlbumsPage] = useState(0)
-  const [itemsPage, setItemsPage] = useState(0)
+  // Pagination state with localStorage persistence
+  const [albumsPage, setAlbumsPage] = useState(() => {
+    const saved = localStorage.getItem('dashboard-albums-page')
+    return saved ? parseInt(saved, 10) : 0
+  })
+  const [itemsPage, setItemsPage] = useState(() => {
+    const saved = localStorage.getItem('dashboard-items-page')
+    return saved ? parseInt(saved, 10) : 0
+  })
   const [albumsTotal, setAlbumsTotal] = useState(0)
   const [itemsTotal, setItemsTotal] = useState(0)
   const albumsPerPage = 50
   const itemsPerPage = 100
+
+  // Persist active tab to localStorage
+  useEffect(() => {
+    localStorage.setItem('dashboard-active-tab', activeTab)
+  }, [activeTab])
+
+  // Persist pagination to localStorage
+  useEffect(() => {
+    localStorage.setItem('dashboard-albums-page', albumsPage.toString())
+  }, [albumsPage])
+
+  useEffect(() => {
+    localStorage.setItem('dashboard-items-page', itemsPage.toString())
+  }, [itemsPage])
 
   useEffect(() => {
     loadStats()
@@ -169,10 +190,8 @@ export function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950">
-      <Header
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
+    <>
+      <SearchBar
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         handleSearchSubmit={handleSearchSubmit}
@@ -183,48 +202,87 @@ export function Dashboard() {
         handleSearch={handleSearch}
       />
 
-      <div className="mx-auto px-6 py-8" style={{ maxWidth: 'min(1400px, calc(100vw - 512px))' }}>
+      <div className="mx-auto px-3 py-4 md:py-8 w-full max-w-[1800px] lg:max-w-[calc(min(1800px,100vw-512px))]">
         <div className="w-full">
           <div>
-            {activeTab === 'stats' && stats && (
-              <div>
-                <h2 className="text-sm font-medium text-neutral-400 mb-4 uppercase tracking-wider">
-                  Library Statistics
-                </h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <StatCard title="Albums" value={stats.total_albums?.toLocaleString() || 0} />
-                  <StatCard title="Tracks" value={stats.total_items?.toLocaleString() || 0} />
-                  <StatCard title="Artists" value={stats.total_artists?.toLocaleString() || 0} />
-                  <StatCard
-                    title="Duration"
-                    value={stats.total_duration_seconds ? formatDurationLong(stats.total_duration_seconds) : '0m'}
-                  />
+            {/* Control Bar with Segmented Control + Pagination */}
+            <div className="flex items-center justify-between mb-6">
+              {/* Left: Segmented Control */}
+              <div className="flex items-center gap-4">
+                <div className="inline-flex bg-neutral-900/50 border border-neutral-800 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setActiveTab('albums')}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                      activeTab === 'albums'
+                        ? 'bg-neutral-800 text-neutral-100'
+                        : 'text-neutral-500 hover:text-neutral-300'
+                    }`}
+                  >
+                    Albums
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('tracks')}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                      activeTab === 'tracks'
+                        ? 'bg-neutral-800 text-neutral-100'
+                        : 'text-neutral-500 hover:text-neutral-300'
+                    }`}
+                  >
+                    Tracks
+                  </button>
                 </div>
+
+                {/* Count */}
+                <span className="text-sm text-neutral-500">
+                  {activeTab === 'albums'
+                    ? `${albumsTotal.toLocaleString()} albums`
+                    : `${itemsTotal.toLocaleString()} tracks`
+                  }
+                </span>
               </div>
-            )}
+
+              {/* Right: Pagination */}
+              {activeTab === 'albums' && (
+                <Pagination
+                  currentPage={albumsPage}
+                  totalItems={albumsTotal}
+                  itemsPerPage={albumsPerPage}
+                  onPageChange={setAlbumsPage}
+                />
+              )}
+              {activeTab === 'tracks' && (
+                <Pagination
+                  currentPage={itemsPage}
+                  totalItems={itemsTotal}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={setItemsPage}
+                />
+              )}
+            </div>
 
             {activeTab === 'albums' && (
-              <AlbumGrid
-                albums={albums}
-                currentPage={albumsPage}
-                totalAlbums={albumsTotal}
-                albumsPerPage={albumsPerPage}
-                onPageChange={setAlbumsPage}
-              />
+              <AlbumGrid albums={albums} />
             )}
 
             {activeTab === 'tracks' && (
               <TrackTable
                 items={items}
                 currentPage={itemsPage}
-                totalItems={itemsTotal}
                 itemsPerPage={itemsPerPage}
-                onPageChange={setItemsPage}
               />
             )}
           </div>
 
-          <div className={`fixed top-32 right-0 w-[480px] h-[calc(100vh-8rem)] border-l border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-200 ${previewTrack ? 'translate-x-0' : 'translate-x-full'}`}>
+          {/* Mobile backdrop overlay */}
+          {previewTrack && (
+            <div
+              className="fixed inset-0 bg-black/60 z-30 lg:hidden transition-opacity duration-300"
+              onClick={() => setPreviewTrack(null)}
+            />
+          )}
+
+          {/* Mobile: bottom sheet, Desktop: right sidebar */}
+          <div className={`fixed bottom-0 left-0 right-0 max-h-[85vh] rounded-t-xl border-t border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-300 ${previewTrack ? 'translate-y-0' : 'translate-y-full'} lg:top-32 lg:bottom-auto lg:right-0 lg:left-auto lg:w-[480px] lg:h-[calc(100vh-8rem)] lg:rounded-none lg:border-l lg:border-t-0 ${previewTrack ? 'lg:translate-y-0 lg:translate-x-0' : 'lg:translate-y-0 lg:translate-x-full'}`}>
             {previewTrack && (
               <PreviewPanel
                 key={previewTrack.id}
@@ -236,6 +294,6 @@ export function Dashboard() {
           </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }

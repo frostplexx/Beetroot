@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, use, useState } from 'react'
 
 export const ConfigErrorContext = createContext(null)
 
@@ -6,14 +6,15 @@ export function ConfigErrorProvider({ children }) {
   const [configError, setConfigError] = useState(null)
 
   return (
-    <ConfigErrorContext.Provider value={{ configError, setConfigError }}>
+    <ConfigErrorContext value={{ configError, setConfigError }}>
       {children}
-    </ConfigErrorContext.Provider>
+    </ConfigErrorContext>
   )
 }
 
+// React 19: Using the new 'use' hook instead of useContext
 export function useConfigError() {
-  const context = useContext(ConfigErrorContext)
+  const context = use(ConfigErrorContext)
   if (!context) {
     throw new Error('useConfigError must be used within ConfigErrorProvider')
   }

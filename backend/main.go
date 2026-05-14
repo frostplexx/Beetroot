@@ -76,6 +76,7 @@ func main() {
 	mux.HandleFunc("/api/beets/modify", handlers.ModifyMetadataHandler())
 	mux.HandleFunc("/api/beets/modify-item", handlers.ModifyItemHandler())
 	mux.HandleFunc("/api/beets/mb-recommendations", handlers.GetMetadataRecommendationsHandler(db))
+	mux.HandleFunc("/api/beets/mb-tracklist", handlers.GetCompleteTracklistHandler(db))
 
 	// Delete endpoints
 	mux.HandleFunc("/api/beets/delete/album", handlers.DeleteAlbumHandler())
@@ -88,6 +89,7 @@ func main() {
 	mux.HandleFunc("/api/beets/tools/missing-art", handlers.MissingArtHandler(db))
 	mux.HandleFunc("/api/beets/tools/fetch-art", handlers.FetchArtHandler())
 	mux.HandleFunc("/api/beets/tools/replaygain", handlers.ReplayGainHandler())
+	mux.HandleFunc("/api/beets/tools/orphaned-files", handlers.OrphanedFilesHandler(db))
 	mux.HandleFunc("/api/beets/fetch-lyrics", handlers.FetchLyricsHandler())
 
 	// Upload & Import endpoints

@@ -31,12 +31,19 @@ func RefetchMetadataHandler() http.HandlerFunc {
 			return
 		}
 
+		// Validate album ID
+		if req.AlbumID <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid album ID"})
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 		defer cancel()
 
 		if err := beets.RefetchAlbumMetadata(ctx, req.AlbumID); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to refetch metadata"})
 			return
 		}
 
@@ -64,14 +71,24 @@ func RefetchArtHandler() http.HandlerFunc {
 			return
 		}
 
+		// Validate album ID
+		if req.AlbumID <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid album ID"})
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 		defer cancel()
 
 		if err := beets.RefetchAlbumArt(ctx, req.AlbumID); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to refetch album art"})
 			return
 		}
+
+		// Clear thumbnail cache to force regeneration with new art
+		ClearThumbnailCache("")
 
 		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	}
@@ -98,12 +115,32 @@ func ModifyMetadataHandler() http.HandlerFunc {
 			return
 		}
 
+		// Validate album ID
+		if req.AlbumID <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid album ID"})
+			return
+		}
+
+		// Validate updates map
+		if len(req.Updates) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "No updates provided"})
+			return
+		}
+
+		if len(req.Updates) > 50 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Too many fields to update"})
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 
 		if err := beets.ModifyAlbumMetadata(ctx, req.AlbumID, req.Updates); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to modify metadata"})
 			return
 		}
 
@@ -132,12 +169,32 @@ func ModifyItemHandler() http.HandlerFunc {
 			return
 		}
 
+		// Validate item ID
+		if req.ItemID <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid item ID"})
+			return
+		}
+
+		// Validate updates map
+		if len(req.Updates) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "No updates provided"})
+			return
+		}
+
+		if len(req.Updates) > 50 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Too many fields to update"})
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 
 		if err := beets.ModifyItemMetadata(ctx, req.ItemID, req.Updates); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to modify metadata"})
 			return
 		}
 
