@@ -613,3 +613,122 @@ func fetchDiscogsMetadata(ctx context.Context, album, artist string) (MetadataRe
 
 	return rec, nil
 }
+// Track represents a single track from MusicBrainz
+type Track struct {
+	Position int    `json:"position"`
+	Title    string `json:"title"`
+	Length   int    `json:"length"` // milliseconds
+}
+
+// GetCompleteTracklistHandler fetches complete tracklist from MusicBrainz
+func GetCompleteTracklistHandler(db *beets.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		albumIDStr := r.URL.Query().Get("album_id")
+		if albumIDStr == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "album_id required"})
+			return
+		}
+
+		var albumID int64
+		fmt.Sscanf(albumIDStr, "%d", &albumID)
+
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+
+		// Get album from database
+		album, err := db.GetAlbumByID(ctx, albumID)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Album not found"})
+			return
+		}
+
+		// Check if album has MusicBrainz ID
+		if !album.MusicBrainzAlbumID.Valid || album.MusicBrainzAlbumID.String == "" {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "No MusicBrainz ID for this album"})
+			return
+		}
+
+		// Fetch tracklist from MusicBrainz
+		tracks, err := fetchMusicBrainzTracklist(ctx, album.MusicBrainzAlbumID.String)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"tracks": tracks,
+		})
+	}
+}
+
+func fetchMusicBrainzTracklist(ctx context.Context, mbID string) ([]Track, error) {
+	mbURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?inc=recordings&fmt=json", mbID)
+	req, err := http.NewRequestWithContext(ctx, "GET", mbURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", "Beetroot/1.0 (https://github.com/frostplexx/beetroot)")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("MusicBrainz returned %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var mbData map[string]interface{}
+	if err := json.Unmarshal(body, &mbData); err != nil {
+		return nil, err
+	}
+
+	var tracks []Track
+
+	// Parse media (discs)
+	if media, ok := mbData["media"].([]interface{}); ok {
+		trackPosition := 1
+		for _, m := range media {
+			if mediaObj, ok := m.(map[string]interface{}); ok {
+				if trackList, ok := mediaObj["tracks"].([]interface{}); ok {
+					for _, t := range trackList {
+						if trackObj, ok := t.(map[string]interface{}); ok {
+							track := Track{
+								Position: trackPosition,
+							}
+
+							if title, ok := trackObj["title"].(string); ok {
+								track.Title = title
+							}
+
+							if recording, ok := trackObj["recording"].(map[string]interface{}); ok {
+								if length, ok := recording["length"].(float64); ok {
+									track.Length = int(length)
+								}
+							}
+
+							tracks = append(tracks, track)
+							trackPosition++
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return tracks, nil
+}

@@ -14,6 +14,7 @@ export function AlbumDetailPage() {
   const { previewTrack, setPreviewTrack } = usePreview()
   const [album, setAlbum] = useState(null)
   const [tracks, setTracks] = useState([])
+  const [mbTracklist, setMbTracklist] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [artError, setArtError] = useState(false)
@@ -26,7 +27,16 @@ export function AlbumDetailPage() {
 
   useEffect(() => {
     loadAlbumData()
+    loadMusicBrainzTracklist()
   }, [id])
+
+  // Rebuild track list when MusicBrainz tracklist is loaded
+  const [rawTracks, setRawTracks] = useState([])
+  useEffect(() => {
+    if (rawTracks.length > 0) {
+      setTracks(buildCompleteTrackList(rawTracks, mbTracklist))
+    }
+  }, [mbTracklist, rawTracks])
 
   const loadAlbumData = () => {
     const albumId = parseInt(id)
@@ -36,7 +46,8 @@ export function AlbumDetailPage() {
     ])
       .then(([albumData, itemsData]) => {
         setAlbum(albumData)
-        setTracks(buildCompleteTrackList(itemsData))
+        setRawTracks(itemsData)
+        setTracks(buildCompleteTrackList(itemsData, mbTracklist))
         setLoading(false)
       })
       .catch(err => {
@@ -45,14 +56,26 @@ export function AlbumDetailPage() {
       })
   }
 
+  const loadMusicBrainzTracklist = async () => {
+    try {
+      const res = await fetch(`/api/beets/mb-tracklist?album_id=${id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setMbTracklist(data.tracks || [])
+      }
+    } catch (err) {
+      console.log('Could not load MusicBrainz tracklist:', err)
+    }
+  }
+
   // Build complete track list including missing tracks
-  const buildCompleteTrackList = (tracks) => {
+  const buildCompleteTrackList = (tracks, mbTracks = []) => {
     if (!tracks || tracks.length === 0) return []
 
     // Get expected total from tracktotal field or max track number
     const trackTotal = tracks.find(t => t.tracktotal?.Valid)?.tracktotal?.Int64
     const maxTrackNum = Math.max(...tracks.filter(t => t.track?.Valid).map(t => t.track.Int64))
-    const expectedTotal = trackTotal || maxTrackNum
+    const expectedTotal = trackTotal || maxTrackNum || mbTracks.length
 
     if (!expectedTotal) return tracks.map(t => ({ ...t, missing: false }))
 
@@ -64,18 +87,26 @@ export function AlbumDetailPage() {
       }
     })
 
+    // Create a map of MusicBrainz tracks by position
+    const mbTrackMap = new Map()
+    mbTracks.forEach(track => {
+      mbTrackMap.set(track.position, track)
+    })
+
     // Build complete list with missing tracks
     const completeList = []
     for (let i = 1; i <= expectedTotal; i++) {
       if (trackMap.has(i)) {
         completeList.push({ ...trackMap.get(i), missing: false })
       } else {
+        // Use MusicBrainz track name if available, otherwise generic message
+        const mbTrack = mbTrackMap.get(i)
         completeList.push({
           missing: true,
           track: { Valid: true, Int64: i },
-          title: `Missing Track ${i}`,
+          title: mbTrack?.title || `Missing Track ${i}`,
           artist: '',
-          length: 0
+          length: mbTrack?.length ? mbTrack.length / 1000 : 0 // Convert ms to seconds
         })
       }
     }
