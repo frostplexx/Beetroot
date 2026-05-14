@@ -19,7 +19,7 @@ func BeetsConfigHandler() http.HandlerFunc {
 
 		config, raw, err := beets.ParseBeetsConfig(ctx)
 		if err != nil {
-			w.WriteHeader(http.StatusOK) // Return 200 so the frontend can handle the error data
+			w.WriteHeader(http.StatusServiceUnavailable)
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"error":      err.Error(),
 				"raw_config": raw,
