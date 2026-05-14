@@ -181,6 +181,7 @@
             pkgs.writeShellApplication {
               name = "beetroot";
               runtimeInputs = with pkgs; [
+                bash
                 coreutils
                 findutils
                 gawk
