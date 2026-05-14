@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Header } from '../common/Header'
 
 export function FetchLyricsTool() {
   const navigate = useNavigate()
@@ -47,7 +46,6 @@ export function FetchLyricsTool() {
   if (loading) {
     return (
       <div className="min-h-screen bg-neutral-950">
-        <Header />
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="text-center py-12">
             <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-solid border-rose-500 border-r-transparent"></div>
@@ -60,7 +58,6 @@ export function FetchLyricsTool() {
 
   return (
     <div className="min-h-screen bg-neutral-950">
-      <Header />
       <div className="max-w-7xl mx-auto px-6 py-8">
         <button
           onClick={() => navigate('/tools')}
