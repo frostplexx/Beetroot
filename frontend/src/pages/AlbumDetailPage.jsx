@@ -290,7 +290,7 @@ export function AlbumDetailPage() {
                 <div className="aspect-square bg-neutral-900 border border-neutral-800 rounded overflow-hidden mb-2 flex items-center justify-center">
                   {!artError ? (
                     <img
-                      src={`/api/beets/albums/${album.id}/art${artTimestamp ? `?t=${artTimestamp}` : ''}`}
+                      src={`/api/beets/albums/${album.id}/art?size=800${artTimestamp ? `&t=${artTimestamp}` : ''}`}
                       alt={album.album}
                       className="w-full h-full object-cover"
                       crossOrigin="anonymous"

@@ -2,8 +2,12 @@ package handlers
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +17,8 @@ import (
 	"time"
 
 	"backend/beets"
+
+	"golang.org/x/image/draw"
 )
 
 // Album art path cache with expiration
@@ -311,8 +317,50 @@ func getMusicDirectory(ctx context.Context) (string, error) {
 	return musicDir, nil
 }
 
+// resizeImage resizes an image to fit within maxWidth x maxHeight while maintaining aspect ratio
+func resizeImage(img image.Image, maxWidth, maxHeight int) image.Image {
+	bounds := img.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+
+	// Calculate scaling factor
+	scaleX := float64(maxWidth) / float64(width)
+	scaleY := float64(maxHeight) / float64(height)
+	scale := scaleX
+	if scaleY < scaleX {
+		scale = scaleY
+	}
+
+	// Don't upscale
+	if scale >= 1.0 {
+		return img
+	}
+
+	newWidth := int(float64(width) * scale)
+	newHeight := int(float64(height) * scale)
+
+	dst := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
+	return dst
+}
+
+// getThumbnailPath returns a cached thumbnail path
+func getThumbnailPath(artPath string, size int) string {
+	hash := fmt.Sprintf("%x", md5.Sum([]byte(artPath)))
+	cacheDir := filepath.Join(os.TempDir(), "beetroot-thumbs")
+	os.MkdirAll(cacheDir, 0755)
+	return filepath.Join(cacheDir, fmt.Sprintf("%s-%d.jpg", hash, size))
+}
+
 // serveAlbumArt serves an album art file with proper headers and caching
 func serveAlbumArt(w http.ResponseWriter, r *http.Request, artPath string, albumID int64) {
+	// Check for size parameter (for thumbnails)
+	sizeStr := r.URL.Query().Get("size")
+	var thumbnailSize int
+	if sizeStr != "" {
+		if size, err := strconv.Atoi(sizeStr); err == nil && size > 0 && size <= 2000 {
+			thumbnailSize = size
+		}
+	}
 	// Get file info for modification time
 	fileInfo, err := os.Stat(artPath)
 	if err != nil {
@@ -345,6 +393,73 @@ func serveAlbumArt(w http.ResponseWriter, r *http.Request, artPath string, album
 		contentType = "image/webp"
 	}
 
+	// If thumbnail requested, resize and serve
+	if thumbnailSize > 0 {
+		thumbPath := getThumbnailPath(artPath, thumbnailSize)
+
+		// Check if thumbnail exists and is newer than original
+		if thumbInfo, err := os.Stat(thumbPath); err == nil {
+			if thumbInfo.ModTime().After(fileInfo.ModTime()) {
+				w.Header().Set("Content-Type", "image/jpeg")
+				w.Header().Set("Cache-Control", "public, max-age=2592000")
+				w.Header().Set("ETag", etag)
+				http.ServeFile(w, r, thumbPath)
+				return
+			}
+		}
+
+		// Generate thumbnail
+		srcFile, err := os.Open(artPath)
+		if err != nil {
+			http.Error(w, "Failed to open image", http.StatusInternalServerError)
+			return
+		}
+		defer srcFile.Close()
+
+		var img image.Image
+		ext := strings.ToLower(filepath.Ext(artPath))
+		switch ext {
+		case ".jpg", ".jpeg":
+			img, err = jpeg.Decode(srcFile)
+		case ".png":
+			img, err = png.Decode(srcFile)
+		default:
+			// For unsupported formats, serve original
+			w.Header().Set("Content-Type", contentType)
+			w.Header().Set("Cache-Control", "public, max-age=2592000")
+			w.Header().Set("ETag", etag)
+			http.ServeFile(w, r, artPath)
+			return
+		}
+
+		if err != nil {
+			// If decode fails, serve original
+			w.Header().Set("Content-Type", contentType)
+			w.Header().Set("Cache-Control", "public, max-age=2592000")
+			w.Header().Set("ETag", etag)
+			http.ServeFile(w, r, artPath)
+			return
+		}
+
+		// Resize image
+		resized := resizeImage(img, thumbnailSize, thumbnailSize)
+
+		// Save thumbnail to cache
+		thumbFile, err := os.Create(thumbPath)
+		if err == nil {
+			defer thumbFile.Close()
+			jpeg.Encode(thumbFile, resized, &jpeg.Options{Quality: 85})
+		}
+
+		// Serve resized image
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Cache-Control", "public, max-age=2592000")
+		w.Header().Set("ETag", etag)
+		jpeg.Encode(w, resized, &jpeg.Options{Quality: 85})
+		return
+	}
+
+	// Serve original image
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "public, max-age=2592000")
 	w.Header().Set("ETag", etag)

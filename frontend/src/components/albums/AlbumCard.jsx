@@ -19,7 +19,7 @@ export function AlbumCard({ album, index = 0 }) {
       <div className="absolute inset-0 overflow-hidden">
         {!imageError ? (
           <img
-            src={`/api/beets/albums/${album.id}/art`}
+            src={`/api/beets/albums/${album.id}/art?size=400`}
             alt={album.album}
             className={`w-full h-full object-cover transition-all duration-300 group-hover:scale-105 ${
               imageLoaded ? 'opacity-100' : 'opacity-0'
