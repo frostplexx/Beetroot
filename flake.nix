@@ -188,6 +188,7 @@
                 gnugrep
                 gnused
                 go
+                gcc
                 nodejs_22
                 beets
               ];
