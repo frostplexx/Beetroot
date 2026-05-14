@@ -16,6 +16,7 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
     albumstatus: '',
     disctotal: '',
     comp: '0',
+    mb_albumid: '',
   })
   const [recommendations, setRecommendations] = useState(null)
   const [alternatives, setAlternatives] = useState(null)
@@ -48,6 +49,7 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
         albumstatus: album.albumstatus?.Valid ? album.albumstatus.String : '',
         disctotal: album.disctotal?.Valid ? album.disctotal.Int64.toString() : '',
         comp: album.comp?.Valid ? album.comp.Int64.toString() : '0',
+        mb_albumid: album.mb_albumid?.Valid ? album.mb_albumid.String : '',
       })
 
       // Fetch MusicBrainz recommendations
@@ -121,31 +123,10 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
     }
   }
 
-  const selectMBRelease = async (mbId) => {
-    try {
-      // Update the album with the selected MusicBrainz ID
-      const response = await fetch('/api/beets/modify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          album_id: album.id,
-          updates: { mb_albumid: mbId }
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to update MusicBrainz ID')
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 500))
-
-      alert('MusicBrainz ID updated! You can now refetch metadata.')
-      setShowMBSearch(false)
-      onSave()
-      onClose()
-    } catch (err) {
-      alert('Error: ' + err.message)
-    }
+  const selectMBRelease = (mbId) => {
+    // Update form data with selected MB ID
+    setFormData({ ...formData, mb_albumid: mbId })
+    setShowMBSearch(false)
   }
 
   const handleSubmit = async (e) => {
@@ -166,6 +147,7 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
     const originalAlbumStatus = album.albumstatus?.Valid ? album.albumstatus.String : ''
     const originalDiscTotal = album.disctotal?.Valid ? album.disctotal.Int64.toString() : ''
     const originalComp = album.comp?.Valid ? album.comp.Int64.toString() : '0'
+    const originalMBAlbumID = album.mb_albumid?.Valid ? album.mb_albumid.String : ''
 
     const updates = {}
 
@@ -211,6 +193,9 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
     }
     if (formData.comp !== originalComp) {
       updates.comp = formData.comp
+    }
+    if (formData.mb_albumid !== originalMBAlbumID && formData.mb_albumid !== '') {
+      updates.mb_albumid = formData.mb_albumid
     }
 
     console.log('Changes detected:', updates)
@@ -344,7 +329,17 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
           <div className="bg-neutral-950 border border-neutral-800 rounded p-3">
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm text-neutral-400">MusicBrainz Release ID</label>
-              {!album.mb_albumid?.Valid || !album.mb_albumid.String ? (
+              <div className="flex items-center gap-2">
+                {formData.mb_albumid && (
+                  <a
+                    href={`https://musicbrainz.org/release/${formData.mb_albumid}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-rose-400 hover:text-rose-300"
+                  >
+                    <i className="fa-solid fa-external-link"></i>
+                  </a>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -356,26 +351,17 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
                   className="text-xs px-2 py-1 bg-rose-500/20 text-rose-400 rounded hover:bg-rose-500/30 transition-colors"
                 >
                   <i className="fa-solid fa-magnifying-glass mr-1"></i>
-                  Find MB ID
+                  Search
                 </button>
-              ) : (
-                <a
-                  href={`https://musicbrainz.org/release/${album.mb_albumid.String}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-rose-400 hover:text-rose-300"
-                >
-                  View on MusicBrainz <i className="fa-solid fa-external-link text-[10px]"></i>
-                </a>
-              )}
+              </div>
             </div>
-            <div className="text-xs text-neutral-500 font-mono">
-              {album.mb_albumid?.Valid && album.mb_albumid.String ? (
-                album.mb_albumid.String
-              ) : (
-                <span className="italic">No MusicBrainz ID assigned</span>
-              )}
-            </div>
+            <input
+              type="text"
+              value={formData.mb_albumid}
+              onChange={(e) => setFormData({ ...formData, mb_albumid: e.target.value })}
+              placeholder="Enter MusicBrainz Release ID or search"
+              className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-xs font-mono text-neutral-300 focus:outline-none focus:border-rose-500"
+            />
 
             {/* MusicBrainz Search Results */}
             {showMBSearch && (
