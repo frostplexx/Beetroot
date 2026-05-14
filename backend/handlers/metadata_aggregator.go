@@ -28,9 +28,9 @@ const (
 
 // SourceWeight defines voting weight for each source
 var SourceWeights = map[MetadataSource]int{
-	SourceSpotify:     2, // Higher weight
-	SourceAppleMusic:  2, // Higher weight
-	SourceMusicBrainz: 1,
+	SourceSpotify:     2, // Higher weight - accurate API
+	SourceMusicBrainz: 2, // Higher weight - authoritative source
+	SourceAppleMusic:  1, // Lower weight - returns many covers/remixes
 	SourceDiscogs:     1,
 }
 
@@ -130,20 +130,22 @@ func GetMetadataRecommendationsHandler(db *beets.DB) http.HandlerFunc {
 			return
 		}
 
-		// Use weighted consensus to pick best recommendations
-		consensus := buildConsensus(recommendations)
+		// Build both consensus and alternatives
+		consensus, alternatives := buildConsensusWithAlternatives(recommendations)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":          "success",
 			"recommendations": consensus,
+			"alternatives":    alternatives,
 			"sources_used":    len(recommendations),
 		})
 	}
 }
 
-// buildConsensus uses weighted voting to determine best metadata values
-func buildConsensus(recs []MetadataRecommendation) map[string]string {
+// buildConsensusWithAlternatives returns both consensus winner and all alternatives with vote counts
+func buildConsensusWithAlternatives(recs []MetadataRecommendation) (map[string]string, map[string][]map[string]interface{}) {
 	consensus := make(map[string]string)
+	alternatives := make(map[string][]map[string]interface{})
 
 	// For each field, count weighted votes
 	fields := []struct {
@@ -160,31 +162,63 @@ func buildConsensus(recs []MetadataRecommendation) map[string]string {
 
 	for _, field := range fields {
 		votes := make(map[string]int)
+		sources := make(map[string][]string) // Track which sources voted for each value
 
 		for _, rec := range recs {
 			value := field.getter(rec)
 			if value != "" {
 				weight := SourceWeights[rec.Source]
 				votes[value] += weight
+				sources[value] = append(sources[value], string(rec.Source))
 			}
 		}
 
-		// Pick value with highest vote count
-		var bestValue string
-		maxVotes := 0
+		if len(votes) == 0 {
+			continue
+		}
+
+		// Sort by vote count to get alternatives in order
+		type voteCount struct {
+			value   string
+			votes   int
+			sources []string
+		}
+		var voteCounts []voteCount
 		for value, count := range votes {
-			if count > maxVotes {
-				maxVotes = count
-				bestValue = value
+			voteCounts = append(voteCounts, voteCount{
+				value:   value,
+				votes:   count,
+				sources: sources[value],
+			})
+		}
+
+		// Sort by votes descending
+		for i := 0; i < len(voteCounts); i++ {
+			for j := i + 1; j < len(voteCounts); j++ {
+				if voteCounts[j].votes > voteCounts[i].votes {
+					voteCounts[i], voteCounts[j] = voteCounts[j], voteCounts[i]
+				}
 			}
 		}
 
-		if bestValue != "" {
-			consensus[field.name] = bestValue
+		// First one is the consensus winner
+		if len(voteCounts) > 0 {
+			consensus[field.name] = voteCounts[0].value
+
+			// All options (including winner) go to alternatives for UI selection
+			var alts []map[string]interface{}
+			for _, vc := range voteCounts {
+				alts = append(alts, map[string]interface{}{
+					"value":   vc.value,
+					"votes":   vc.votes,
+					"sources": vc.sources,
+				})
+			}
+			alternatives[field.name] = alts
 		}
 	}
 
-	return consensus
+	return consensus, alternatives
 }
 
 // fetchMusicBrainzMetadata queries MusicBrainz API
@@ -392,9 +426,11 @@ func getEnv(key string) string {
 
 // fetchAppleMusicMetadata queries Apple Music API
 func fetchAppleMusicMetadata(ctx context.Context, album, artist string) (MetadataRecommendation, error) {
-	// Search Apple Music for the album
+	zlog.Info().Str("album", album).Str("artist", artist).Msg("Apple Music: starting search")
+
+	// Search Apple Music for the album - get multiple results to find best match
 	query := fmt.Sprintf("%s %s", album, artist)
-	searchURL := fmt.Sprintf("https://itunes.apple.com/search?term=%s&entity=album&limit=1", url.QueryEscape(query))
+	searchURL := fmt.Sprintf("https://itunes.apple.com/search?term=%s&entity=album&limit=10", url.QueryEscape(query))
 
 	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
 	if err != nil {
@@ -428,26 +464,69 @@ func fetchAppleMusicMetadata(ctx context.Context, album, artist string) (Metadat
 		return MetadataRecommendation{}, fmt.Errorf("no results found")
 	}
 
-	result := appleData.Results[0]
+	// Find EXACT artist match only - Apple Music returns too many covers/remixes
+	var bestMatch map[string]interface{}
+	artistLower := strings.ToLower(strings.TrimSpace(artist))
+
+	for _, result := range appleData.Results {
+		if artistName, ok := result["artistName"].(string); ok {
+			artistNameLower := strings.ToLower(strings.TrimSpace(artistName))
+
+			// REQUIRE exact artist match (case-insensitive)
+			if artistNameLower == artistLower {
+				collectionType := ""
+				if ct, ok := result["collectionType"].(string); ok {
+					collectionType = ct
+				}
+
+				// Prefer Album type over Singles/EPs
+				if collectionType == "Album" {
+					bestMatch = result
+					break // Found exact artist + Album type, perfect!
+				}
+				if bestMatch == nil {
+					bestMatch = result // First exact match
+				}
+			}
+		}
+	}
+
+	if bestMatch == nil {
+		// No exact artist match found - fail rather than return covers/remixes
+		zlog.Debug().
+			Str("artist", artist).
+			Int("results_checked", len(appleData.Results)).
+			Msg("Apple Music: no exact artist match found")
+		return MetadataRecommendation{}, fmt.Errorf("no exact artist match in Apple Music (likely covers/remixes only)")
+	}
+
+	// Log what we found
+	if artistName, ok := bestMatch["artistName"].(string); ok {
+		zlog.Debug().
+			Str("expected_artist", artist).
+			Str("found_artist", artistName).
+			Msg("Apple Music: selected result")
+	}
+
 	rec := MetadataRecommendation{Source: SourceAppleMusic}
 
-	if collectionName, ok := result["collectionName"].(string); ok {
+	if collectionName, ok := bestMatch["collectionName"].(string); ok {
 		rec.Album = collectionName
 	}
 
-	if artistName, ok := result["artistName"].(string); ok {
+	if artistName, ok := bestMatch["artistName"].(string); ok {
 		rec.AlbumArtist = artistName
 	}
 
-	if releaseDate, ok := result["releaseDate"].(string); ok && len(releaseDate) >= 4 {
+	if releaseDate, ok := bestMatch["releaseDate"].(string); ok && len(releaseDate) >= 4 {
 		rec.Year = releaseDate[:4]
 	}
 
-	if country, ok := result["country"].(string); ok {
+	if country, ok := bestMatch["country"].(string); ok {
 		rec.Country = country
 	}
 
-	if primaryGenreName, ok := result["primaryGenreName"].(string); ok {
+	if primaryGenreName, ok := bestMatch["primaryGenreName"].(string); ok {
 		rec.Genre = primaryGenreName
 	}
 
