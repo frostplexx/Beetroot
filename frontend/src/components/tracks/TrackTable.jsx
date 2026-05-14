@@ -1,23 +1,11 @@
 import { formatDuration } from '../../utils/formatters'
 import { usePreview } from '../../contexts/PreviewContext'
-import { Pagination } from '../common/Pagination'
 
-export function TrackTable({ items, currentPage, totalItems, itemsPerPage, onPageChange }) {
+export function TrackTable({ items, currentPage, itemsPerPage }) {
   const { previewTrack, setPreviewTrack } = usePreview()
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-wider">
-          Tracks (Showing {items.length} of {totalItems})
-        </h2>
-        <Pagination
-          currentPage={currentPage}
-          totalItems={totalItems}
-          itemsPerPage={itemsPerPage}
-          onPageChange={onPageChange}
-        />
-      </div>
       {items.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-neutral-500">No tracks found</p>

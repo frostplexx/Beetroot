@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
-export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, handleSearchSubmit, clearSearch, searching, showHelp, setShowHelp, handleSearch }) {
+export function Header({ searchQuery, setSearchQuery, handleSearchSubmit, clearSearch, searching, showHelp, setShowHelp, handleSearch }) {
   const location = useLocation()
-  const isToolsPage = location.pathname.startsWith('/tools')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Close mobile menu on route change
@@ -11,16 +10,14 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
     setMobileMenuOpen(false)
   }, [location.pathname])
 
-  const isLibraryActive = !isToolsPage && location.pathname !== '/upload' && location.pathname !== '/logs'
-
-  const handleMobileTabClick = (tab) => {
-    setActiveTab(tab)
-    setMobileMenuOpen(false)
-  }
+  const isLibraryActive = location.pathname === '/'
+  const isToolsActive = location.pathname.startsWith('/tools')
+  const isUploadActive = location.pathname === '/upload'
+  const isSystemActive = location.pathname === '/system'
 
   return (
     <header className="border-b border-neutral-800/50 bg-neutral-950/95 backdrop-blur-lg sticky top-0 z-50 shadow-lg shadow-black/5">
-      <div className="max-w-7xl mx-auto px-4 md:px-6">
+      <div className="max-w-[1800px] mx-auto px-4 md:px-6">
         <div className="flex items-center justify-between h-14 md:h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group">
@@ -34,73 +31,22 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-2">
-            {/* Library section with nested sub-tabs */}
-            <div
-              className={`flex items-center rounded-lg transition-colors ${
-                activeTab !== undefined
-                  ? 'bg-neutral-900/30 border border-neutral-800/50 pr-2'
-                  : ''
+            <Link
+              to="/"
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                isLibraryActive
+                  ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
+                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
               }`}
-              style={{ width: '460px' }}
             >
-              <Link
-                to="/"
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                  isLibraryActive
-                    ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
-                }`}
-              >
-                <i className="fa-solid fa-house"></i>
-                <span>Library</span>
-              </Link>
-
-              {/* Sub-tabs for Library page */}
-              <div className={`flex items-center gap-1 ml-2 pl-2 border-l border-neutral-800 transition-opacity duration-200 ${
-                activeTab !== undefined ? 'opacity-100' : 'opacity-0 pointer-events-none'
-              }`}>
-                <button
-                  onClick={() => activeTab !== undefined && setActiveTab('albums')}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
-                    activeTab === 'albums'
-                      ? 'bg-rose-500/10 text-rose-400'
-                      : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/30'
-                  }`}
-                >
-                  <i className="fa-solid fa-compact-disc text-xs"></i>
-                  <span className="text-xs">Albums</span>
-                </button>
-                <button
-                  onClick={() => activeTab !== undefined && setActiveTab('tracks')}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
-                    activeTab === 'tracks'
-                      ? 'bg-rose-500/10 text-rose-400'
-                      : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/30'
-                  }`}
-                >
-                  <i className="fa-solid fa-music text-xs"></i>
-                  <span className="text-xs">Tracks</span>
-                </button>
-                <button
-                  onClick={() => activeTab !== undefined && setActiveTab('stats')}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
-                    activeTab === 'stats'
-                      ? 'bg-rose-500/10 text-rose-400'
-                      : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/30'
-                  }`}
-                >
-                  <i className="fa-solid fa-chart-simple text-xs"></i>
-                  <span className="text-xs">Stats</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="w-px h-6 bg-neutral-800"></div>
+              <i className="fa-solid fa-compact-disc"></i>
+              <span>Library</span>
+            </Link>
 
             <Link
               to="/upload"
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                location.pathname === '/upload'
+                isUploadActive
                   ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
                   : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
               }`}
@@ -112,7 +58,7 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
             <Link
               to="/tools"
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                isToolsPage
+                isToolsActive
                   ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
                   : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
               }`}
@@ -122,15 +68,15 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
             </Link>
 
             <Link
-              to="/logs"
+              to="/system"
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                location.pathname === '/logs'
+                isSystemActive
                   ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
                   : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
               }`}
             >
-              <i className="fa-solid fa-file-lines"></i>
-              <span>Logs</span>
+              <i className="fa-solid fa-chart-line"></i>
+              <span>System</span>
             </Link>
           </nav>
 
@@ -163,53 +109,14 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
                   : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
               }`}
             >
-              <i className="fa-solid fa-house"></i>
+              <i className="fa-solid fa-compact-disc"></i>
               <span>Library</span>
             </Link>
-
-            {/* Mobile sub-tabs for Library */}
-            {activeTab !== undefined && (
-              <div className="ml-6 flex flex-col gap-1 border-l border-neutral-800 pl-3">
-                <button
-                  onClick={() => handleMobileTabClick('albums')}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 w-full text-left ${
-                    activeTab === 'albums'
-                      ? 'bg-rose-500/10 text-rose-400'
-                      : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/30'
-                  }`}
-                >
-                  <i className="fa-solid fa-compact-disc text-xs"></i>
-                  <span>Albums</span>
-                </button>
-                <button
-                  onClick={() => handleMobileTabClick('tracks')}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 w-full text-left ${
-                    activeTab === 'tracks'
-                      ? 'bg-rose-500/10 text-rose-400'
-                      : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/30'
-                  }`}
-                >
-                  <i className="fa-solid fa-music text-xs"></i>
-                  <span>Tracks</span>
-                </button>
-                <button
-                  onClick={() => handleMobileTabClick('stats')}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 w-full text-left ${
-                    activeTab === 'stats'
-                      ? 'bg-rose-500/10 text-rose-400'
-                      : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-900/30'
-                  }`}
-                >
-                  <i className="fa-solid fa-chart-simple text-xs"></i>
-                  <span>Stats</span>
-                </button>
-              </div>
-            )}
 
             <Link
               to="/upload"
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                location.pathname === '/upload'
+                isUploadActive
                   ? 'bg-rose-500/15 text-rose-400'
                   : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
               }`}
@@ -221,7 +128,7 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
             <Link
               to="/tools"
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                isToolsPage
+                isToolsActive
                   ? 'bg-rose-500/15 text-rose-400'
                   : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
               }`}
@@ -231,15 +138,15 @@ export function Header({ activeTab, setActiveTab, searchQuery, setSearchQuery, h
             </Link>
 
             <Link
-              to="/logs"
+              to="/system"
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                location.pathname === '/logs'
+                isSystemActive
                   ? 'bg-rose-500/15 text-rose-400'
                   : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50'
               }`}
             >
-              <i className="fa-solid fa-file-lines"></i>
-              <span>Logs</span>
+              <i className="fa-solid fa-chart-line"></i>
+              <span>System</span>
             </Link>
           </nav>
         )}

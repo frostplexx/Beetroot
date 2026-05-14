@@ -5,7 +5,7 @@ import { ConfigErrorToast } from './components/common/ConfigErrorToast'
 import { Dashboard } from './pages/Dashboard'
 import { AlbumDetailPage } from './pages/AlbumDetailPage'
 import { ToolsPage } from './pages/ToolsPage'
-import { LogsPage } from './pages/LogsPage'
+import { SystemPage } from './pages/SystemPage'
 import { UploadPage } from './pages/UploadPage'
 import './App.css'
 
@@ -20,7 +20,7 @@ function App() {
             <Route path="/tools" element={<ToolsPage />} />
             <Route path="/tools/*" element={<ToolsPage />} />
             <Route path="/upload" element={<UploadPage />} />
-            <Route path="/logs" element={<LogsPage />} />
+            <Route path="/system" element={<SystemPage />} />
           </Routes>
           <ConfigErrorToast />
         </PreviewProvider>
