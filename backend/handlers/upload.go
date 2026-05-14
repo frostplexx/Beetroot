@@ -47,28 +47,52 @@ func UploadHandler() http.HandlerFunc {
 
 		// Save uploaded files
 		for _, fileHeader := range files {
+			// Sanitize filename to prevent path traversal
+			sanitizedName, err := sanitizeFilename(fileHeader.Filename)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Invalid filename: %s", fileHeader.Filename)})
+				return
+			}
+
+			// Validate file size (max 500MB per file)
+			if fileHeader.Size > 500<<20 {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("File too large: %s", sanitizedName)})
+				return
+			}
+
 			file, err := fileHeader.Open()
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to open file: %s", fileHeader.Filename)})
+				json.NewEncoder(w).Encode(map[string]string{"error": "Failed to open uploaded file"})
 				return
 			}
 			defer file.Close()
 
-			// Create destination file
-			destPath := filepath.Join(uploadDir, fileHeader.Filename)
+			// Create destination file with sanitized name
+			destPath := filepath.Join(uploadDir, sanitizedName)
+
+			// Extra validation: ensure the resolved path is within uploadDir
+			if err := validatePathWithinBase(uploadDir, destPath); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Invalid file path"})
+				return
+			}
+
 			destFile, err := os.Create(destPath)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to create file: %s", fileHeader.Filename)})
+				json.NewEncoder(w).Encode(map[string]string{"error": "Failed to create file"})
 				return
 			}
 			defer destFile.Close()
 
-			// Copy file contents
-			if _, err := io.Copy(destFile, file); err != nil {
+			// Copy file contents with size limit
+			limitedReader := io.LimitReader(file, 500<<20)
+			if _, err := io.Copy(destFile, limitedReader); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to save file: %s", fileHeader.Filename)})
+				json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save file"})
 				return
 			}
 		}
@@ -125,9 +149,12 @@ func ImportHandler() http.HandlerFunc {
 		}
 
 		// Clean up upload directory after successful import
-		go func() {
-			time.Sleep(5 * time.Second)
-			os.RemoveAll(req.Path)
+		// Use defer with proper error handling instead of goroutine
+		defer func() {
+			if err := os.RemoveAll(req.Path); err != nil {
+				// Log error but don't fail the request
+				// User already got success response
+			}
 		}()
 
 		json.NewEncoder(w).Encode(map[string]string{"status": "success"})

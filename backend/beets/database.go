@@ -182,14 +182,28 @@ func RefetchAlbumArt(ctx context.Context, albumID int64) error {
 
 // ModifyAlbumMetadata modifies album metadata
 func ModifyAlbumMetadata(ctx context.Context, albumID int64, updates map[string]string) error {
+	// Validate album ID
+	if albumID <= 0 {
+		return fmt.Errorf("invalid album ID")
+	}
+
 	// For albums, use "id:" not "album_id:"
 	query := fmt.Sprintf("id:%d", albumID)
 
-	// Build field=value arguments
+	// Build field=value arguments with validation
 	// Add -a flag to modify albums (not items)
 	args := []string{"-a", "-y", query}
 	for field, value := range updates {
-		args = append(args, fmt.Sprintf("%s=%s", field, value))
+		// Validate field name (whitelist)
+		if err := validateMetadataField(field); err != nil {
+			return fmt.Errorf("invalid field: %w", err)
+		}
+		// Sanitize value
+		sanitized, err := sanitizeMetadataValue(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for field %s: %w", field, err)
+		}
+		args = append(args, fmt.Sprintf("%s=%s", field, sanitized))
 	}
 
 	log.Info().Int64("album_id", albumID).Interface("updates", updates).Msg("Modifying album metadata")
@@ -995,15 +1009,21 @@ func FetchArtForAlbum(ctx context.Context, albumID int64) error {
 
 // ApplyReplayGain applies ReplayGain to albums or items
 func ApplyReplayGain(ctx context.Context, query string, album bool) error {
-	log.Info().Str("query", query).Bool("album", album).Msg("Applying ReplayGain")
+	// Sanitize query to prevent command injection
+	sanitized, err := sanitizeBeetsQuery(query)
+	if err != nil {
+		return fmt.Errorf("invalid query: %w", err)
+	}
+
+	log.Info().Str("query", sanitized).Bool("album", album).Msg("Applying ReplayGain")
 
 	args := []string{}
 	if album {
 		args = append(args, "-a")
 	}
-	args = append(args, query)
+	args = append(args, sanitized)
 
-	_, err := ExecBeetCommand(ctx, "replaygain", args...)
+	_, err = ExecBeetCommand(ctx, "replaygain", args...)
 	if err != nil {
 		return fmt.Errorf("error applying replaygain: %w", err)
 	}
@@ -1013,12 +1033,26 @@ func ApplyReplayGain(ctx context.Context, query string, album bool) error {
 
 // ModifyItemMetadata modifies track/item metadata
 func ModifyItemMetadata(ctx context.Context, itemID int64, updates map[string]string) error {
+	// Validate item ID
+	if itemID <= 0 {
+		return fmt.Errorf("invalid item ID")
+	}
+
 	query := fmt.Sprintf("id:%d", itemID)
 
-	// Build field=value arguments
+	// Build field=value arguments with validation
 	args := []string{query}
 	for field, value := range updates {
-		args = append(args, fmt.Sprintf("%s=%s", field, value))
+		// Validate field name (whitelist)
+		if err := validateMetadataField(field); err != nil {
+			return fmt.Errorf("invalid field: %w", err)
+		}
+		// Sanitize value
+		sanitized, err := sanitizeMetadataValue(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for field %s: %w", field, err)
+		}
+		args = append(args, fmt.Sprintf("%s=%s", field, sanitized))
 	}
 
 	log.Info().Int64("item_id", itemID).Interface("updates", updates).Msg("Modifying item metadata")
@@ -1194,7 +1228,13 @@ func DeleteItem(ctx context.Context, itemID int64, deleteFiles bool) error {
 
 // DeleteArtist deletes all albums by an artist and optionally their files
 func DeleteArtist(ctx context.Context, artistName string, deleteFiles bool) error {
-	query := fmt.Sprintf("albumartist:%s", artistName)
+	// Sanitize artist name to prevent command injection
+	sanitized, err := sanitizeBeetsQuery(artistName)
+	if err != nil {
+		return fmt.Errorf("invalid artist name: %w", err)
+	}
+
+	query := fmt.Sprintf("albumartist:%s", sanitized)
 	log.Info().Str("artist", artistName).Bool("delete_files", deleteFiles).Msg("Deleting artist")
 
 	args := []string{"remove", "-a"}
@@ -1215,6 +1255,21 @@ func DeleteArtist(ctx context.Context, artistName string, deleteFiles bool) erro
 
 // ImportPath imports music files from a given path
 func ImportPath(ctx context.Context, path string) error {
+	// Validate path to prevent command injection
+	if strings.Contains(path, ";") || strings.Contains(path, "|") ||
+	   strings.Contains(path, "&") || strings.Contains(path, "$") {
+		return fmt.Errorf("invalid path: contains dangerous characters")
+	}
+
+	// Ensure path exists and is a directory
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("path does not exist: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("path is not a directory")
+	}
+
 	log.Info().Str("path", path).Msg("Importing music from path")
 
 	// Use beet -v import -q --group-albums
@@ -1229,5 +1284,78 @@ func ImportPath(ctx context.Context, path string) error {
 	}
 
 	log.Info().Str("output", output).Msg("Import completed successfully")
+	return nil
+}
+
+// sanitizeBeetsQuery removes dangerous characters from beets query strings
+func sanitizeBeetsQuery(query string) (string, error) {
+	if len(query) > 1000 {
+		return "", fmt.Errorf("query too long")
+	}
+
+	// Remove null bytes
+	query = strings.ReplaceAll(query, "\x00", "")
+
+	// Check for shell metacharacters that could cause command injection
+	dangerous := []string{";", "|", "&", "$", "`", "\n", "\r", "$(", "${"}
+	for _, char := range dangerous {
+		if strings.Contains(query, char) {
+			return "", fmt.Errorf("query contains dangerous characters: %s", char)
+		}
+	}
+
+	return query, nil
+}
+
+// sanitizeMetadataValue sanitizes metadata field values
+func sanitizeMetadataValue(value string) (string, error) {
+	if len(value) > 10000 {
+		return "", fmt.Errorf("value too long")
+	}
+
+	// Remove null bytes
+	value = strings.ReplaceAll(value, "\x00", "")
+
+	// Check for command injection patterns
+	dangerous := []string{";", "|", "&", "$", "`", "$(", "${", "\n", "\r"}
+	for _, char := range dangerous {
+		if strings.Contains(value, char) {
+			return "", fmt.Errorf("value contains dangerous characters: %s", char)
+		}
+	}
+
+	return value, nil
+}
+
+// validateMetadataField ensures field name is safe (whitelist approach)
+func validateMetadataField(field string) error {
+	allowedFields := map[string]bool{
+		"album":               true,
+		"albumartist":         true,
+		"artist":              true,
+		"title":               true,
+		"year":                true,
+		"month":               true,
+		"day":                 true,
+		"genre":               true,
+		"genres":              true,
+		"label":               true,
+		"country":             true,
+		"catalognum":          true,
+		"barcode":             true,
+		"albumtype":           true,
+		"albumstatus":         true,
+		"track":               true,
+		"disc":                true,
+		"comp":                true,
+		"mb_albumid":          true,
+		"mb_trackid":          true,
+		"mb_releasegroupid":   true,
+	}
+
+	if !allowedFields[field] {
+		return fmt.Errorf("field not allowed: %s", field)
+	}
+
 	return nil
 }

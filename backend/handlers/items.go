@@ -173,9 +173,15 @@ func StreamAudioHandler(db *beets.DB) http.HandlerFunc {
 		}
 
 		// Build absolute path to audio file
-		audioPath := item.Path
+		audioPath := filepath.Clean(item.Path)
 		if !filepath.IsAbs(audioPath) {
 			audioPath = filepath.Join(musicDir, audioPath)
+		}
+
+		// Validate that the path is within the music directory
+		if err := validatePathWithinBase(musicDir, audioPath); err != nil {
+			http.Error(w, "Invalid file path", http.StatusBadRequest)
+			return
 		}
 
 		if _, err := os.Stat(audioPath); os.IsNotExist(err) {

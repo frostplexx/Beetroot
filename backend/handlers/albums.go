@@ -175,10 +175,21 @@ func AlbumArtHandler(db *beets.DB) http.HandlerFunc {
 		// First, try the artpath from the database
 		if album.ArtPath.Valid && album.ArtPath.String != "" {
 			testPath := album.ArtPath.String
+
+			// Sanitize path to prevent directory traversal
+			testPath = filepath.Clean(testPath)
+
 			// If it's a relative path, make it absolute
 			if !filepath.IsAbs(testPath) {
 				testPath = filepath.Join(musicDir, testPath)
 			}
+
+			// Validate that the path is within the music directory
+			if err := validatePathWithinBase(musicDir, testPath); err != nil {
+				http.Error(w, "Invalid art path", http.StatusBadRequest)
+				return
+			}
+
 			if _, err := os.Stat(testPath); err == nil {
 				artPath = testPath
 			}
@@ -193,10 +204,17 @@ func AlbumArtHandler(db *beets.DB) http.HandlerFunc {
 			}
 
 			// Get album directory from first item's path
-			itemPath := items[0].Path
+			itemPath := filepath.Clean(items[0].Path)
 			if !filepath.IsAbs(itemPath) {
 				itemPath = filepath.Join(musicDir, itemPath)
 			}
+
+			// Validate that the path is within the music directory
+			if err := validatePathWithinBase(musicDir, itemPath); err != nil {
+				http.NotFound(w, r)
+				return
+			}
+
 			albumDir := filepath.Dir(itemPath)
 
 			// Common cover art filenames
@@ -253,6 +271,12 @@ func AlbumArtHandler(db *beets.DB) http.HandlerFunc {
 			contentType = "image/gif"
 		case ".webp":
 			contentType = "image/webp"
+		}
+
+		// Final validation before serving
+		if err := validatePathWithinBase(musicDir, artPath); err != nil {
+			http.Error(w, "Invalid file path", http.StatusBadRequest)
+			return
 		}
 
 		w.Header().Set("Content-Type", contentType)

@@ -30,12 +30,19 @@ func DeleteAlbumHandler() http.HandlerFunc {
 			return
 		}
 
+		// Validate album ID
+		if req.AlbumID <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid album ID"})
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 
 		if err := beets.DeleteAlbum(ctx, req.AlbumID, req.DeleteFiles); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to delete album"})
 			return
 		}
 
@@ -64,12 +71,19 @@ func DeleteItemHandler() http.HandlerFunc {
 			return
 		}
 
+		// Validate item ID
+		if req.ItemID <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid item ID"})
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 
 		if err := beets.DeleteItem(ctx, req.ItemID, req.DeleteFiles); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to delete item"})
 			return
 		}
 
@@ -98,12 +112,25 @@ func DeleteArtistHandler() http.HandlerFunc {
 			return
 		}
 
+		// Validate artist name
+		if req.Artist == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Artist name is required"})
+			return
+		}
+
+		if len(req.Artist) > 500 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Artist name too long"})
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 		defer cancel()
 
 		if err := beets.DeleteArtist(ctx, req.Artist, req.DeleteFiles); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to delete artist"})
 			return
 		}
 
