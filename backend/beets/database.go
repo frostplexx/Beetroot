@@ -25,32 +25,32 @@ type DB struct {
 
 // Item represents a track/song in the library
 type Item struct {
-	ID                 int64           `json:"id"`
-	Title              string          `json:"title"`
-	Artist             string          `json:"artist"`
-	ArtistSort         string          `json:"artist_sort"`
-	Album              string          `json:"album"`
-	AlbumID            sql.NullInt64   `json:"album_id"`
-	AlbumArtist        string          `json:"albumartist"`
-	Path               string          `json:"path"`
-	Length             float64         `json:"length"`
-	Bitrate            int             `json:"bitrate"`
-	Format             string          `json:"format"`
-	Year               sql.NullInt64   `json:"year"`
-	Month              sql.NullInt64   `json:"month"`
-	Day                sql.NullInt64   `json:"day"`
-	Track              sql.NullInt64   `json:"track"`
-	TrackTotal         sql.NullInt64   `json:"tracktotal"`
-	Disc               sql.NullInt64   `json:"disc"`
-	DiscTotal          sql.NullInt64   `json:"disctotal"`
-	Genres             sql.NullString  `json:"genres"`
-	Lyrics             sql.NullString  `json:"lyrics"`
-	ISRC               sql.NullString  `json:"isrc"`
-	Comp               sql.NullInt64   `json:"comp"`
-	MusicBrainzTrackID sql.NullString  `json:"mb_trackid"`
-	MusicBrainzAlbumID sql.NullString  `json:"mb_albumid"`
-	Added              float64         `json:"added"`
-	Modified           float64         `json:"mtime"`
+	ID                 int64          `json:"id"`
+	Title              string         `json:"title"`
+	Artist             string         `json:"artist"`
+	ArtistSort         string         `json:"artist_sort"`
+	Album              string         `json:"album"`
+	AlbumID            sql.NullInt64  `json:"album_id"`
+	AlbumArtist        string         `json:"albumartist"`
+	Path               string         `json:"path"`
+	Length             float64        `json:"length"`
+	Bitrate            int            `json:"bitrate"`
+	Format             string         `json:"format"`
+	Year               sql.NullInt64  `json:"year"`
+	Month              sql.NullInt64  `json:"month"`
+	Day                sql.NullInt64  `json:"day"`
+	Track              sql.NullInt64  `json:"track"`
+	TrackTotal         sql.NullInt64  `json:"tracktotal"`
+	Disc               sql.NullInt64  `json:"disc"`
+	DiscTotal          sql.NullInt64  `json:"disctotal"`
+	Genres             sql.NullString `json:"genres"`
+	Lyrics             sql.NullString `json:"lyrics"`
+	ISRC               sql.NullString `json:"isrc"`
+	Comp               sql.NullInt64  `json:"comp"`
+	MusicBrainzTrackID sql.NullString `json:"mb_trackid"`
+	MusicBrainzAlbumID sql.NullString `json:"mb_albumid"`
+	Added              float64        `json:"added"`
+	Modified           float64        `json:"mtime"`
 }
 
 // Album represents an album in the library
@@ -220,15 +220,9 @@ func ModifyAlbumMetadata(ctx context.Context, albumID int64, updates map[string]
 func FindDuplicateAlbums(ctx context.Context) ([]map[string]interface{}, error) {
 	log.Debug().Msg("Finding duplicate albums using similarity matching")
 
-	// Get database path from config
-	config, _, err := ParseBeetsConfig(ctx)
+	dbPath, err := GetDatabasePath(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing beets config: %w", err)
-	}
-
-	dbPath, ok := config["library"]
-	if !ok {
-		return nil, fmt.Errorf("library path not found in beets config")
+		return nil, fmt.Errorf("error getting database path: %w", err)
 	}
 
 	db, err := OpenDB(ctx, dbPath)
@@ -290,14 +284,14 @@ func FindDuplicateAlbums(ctx context.Context) ([]map[string]interface{}, error) 
 				seen[key] = true
 
 				duplicates = append(duplicates, map[string]interface{}{
-					"info":        fmt.Sprintf("%s - %s / %s", albums[i].albumartist, albums[i].album, albums[j].album),
-					"album1_id":   albums[i].id,
-					"album1":      albums[i].album,
-					"album2_id":   albums[j].id,
-					"album2":      albums[j].album,
-					"tracks1":     albums[i].trackCount,
-					"tracks2":     albums[j].trackCount,
-					"similarity":  similarity,
+					"info":       fmt.Sprintf("%s - %s / %s", albums[i].albumartist, albums[i].album, albums[j].album),
+					"album1_id":  albums[i].id,
+					"album1":     albums[i].album,
+					"album2_id":  albums[j].id,
+					"album2":     albums[j].album,
+					"tracks1":    albums[i].trackCount,
+					"tracks2":    albums[j].trackCount,
+					"similarity": similarity,
 				})
 			}
 		}
@@ -385,15 +379,9 @@ func max(a, b int) int {
 func MergeDuplicateAlbums(ctx context.Context, keepAlbumID, discardAlbumID int64) error {
 	log.Info().Int64("keep", keepAlbumID).Int64("discard", discardAlbumID).Msg("Merging duplicate albums")
 
-	// Get database path from config
-	config, _, err := ParseBeetsConfig(ctx)
+	dbPath, err := GetDatabasePath(ctx)
 	if err != nil {
-		return fmt.Errorf("error parsing beets config: %w", err)
-	}
-
-	dbPath, ok := config["library"]
-	if !ok {
-		return fmt.Errorf("library path not found in beets config")
+		return fmt.Errorf("error getting database path: %w", err)
 	}
 
 	// Open database in read-write mode for merging
@@ -483,11 +471,14 @@ func (db *DB) QueryAlbums(ctx context.Context, query string) ([]Album, error) {
 
 // GetDatabasePath retrieves the database path from config or uses default
 func GetDatabasePath(ctx context.Context) (string, error) {
+	if dbPath := strings.TrimSpace(os.Getenv("BEETROOT_DATABASE_PATH")); dbPath != "" {
+		return expandPath(dbPath), nil
+	}
+
 	config, _, err := ParseBeetsConfig(ctx)
 	if err != nil {
 		return "", fmt.Errorf("error parsing beets config: %w", err)
 	}
-
 
 	if dbPath, ok := config["library"]; ok {
 		return expandPath(dbPath), nil
@@ -1257,7 +1248,7 @@ func DeleteArtist(ctx context.Context, artistName string, deleteFiles bool) erro
 func ImportPath(ctx context.Context, path string) error {
 	// Validate path to prevent command injection
 	if strings.Contains(path, ";") || strings.Contains(path, "|") ||
-	   strings.Contains(path, "&") || strings.Contains(path, "$") {
+		strings.Contains(path, "&") || strings.Contains(path, "$") {
 		return fmt.Errorf("invalid path: contains dangerous characters")
 	}
 
@@ -1330,27 +1321,27 @@ func sanitizeMetadataValue(value string) (string, error) {
 // validateMetadataField ensures field name is safe (whitelist approach)
 func validateMetadataField(field string) error {
 	allowedFields := map[string]bool{
-		"album":               true,
-		"albumartist":         true,
-		"artist":              true,
-		"title":               true,
-		"year":                true,
-		"month":               true,
-		"day":                 true,
-		"genre":               true,
-		"genres":              true,
-		"label":               true,
-		"country":             true,
-		"catalognum":          true,
-		"barcode":             true,
-		"albumtype":           true,
-		"albumstatus":         true,
-		"track":               true,
-		"disc":                true,
-		"comp":                true,
-		"mb_albumid":          true,
-		"mb_trackid":          true,
-		"mb_releasegroupid":   true,
+		"album":             true,
+		"albumartist":       true,
+		"artist":            true,
+		"title":             true,
+		"year":              true,
+		"month":             true,
+		"day":               true,
+		"genre":             true,
+		"genres":            true,
+		"label":             true,
+		"country":           true,
+		"catalognum":        true,
+		"barcode":           true,
+		"albumtype":         true,
+		"albumstatus":       true,
+		"track":             true,
+		"disc":              true,
+		"comp":              true,
+		"mb_albumid":        true,
+		"mb_trackid":        true,
+		"mb_releasegroupid": true,
 	}
 
 	if !allowedFields[field] {

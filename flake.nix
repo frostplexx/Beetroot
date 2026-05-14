@@ -22,6 +22,7 @@
         }:
         let
           cfg = config.services.beetroot;
+          effectiveFrontendPort = if cfg.frontendPort != null then cfg.frontendPort else cfg.port;
         in
         {
           options.services.beetroot = {
@@ -40,6 +41,12 @@
               description = "TCP port used by the Beetroot HTTP server.";
             };
 
+            frontendPort = lib.mkOption {
+              type = lib.types.nullOr lib.types.port;
+              default = null;
+              description = "Port the bundled Beetroot frontend/API service listens on. Overrides services.beetroot.port when set.";
+            };
+
             stateDirectory = lib.mkOption {
               type = lib.types.str;
               default = "/var/lib/beetroot";
@@ -56,6 +63,12 @@
               type = lib.types.str;
               default = "/var/lib/music";
               description = "Music directory that beetroot/beets can read and write.";
+            };
+
+            databasePath = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Optional absolute path to the beets SQLite library database.";
             };
 
             user = lib.mkOption {
@@ -116,13 +129,18 @@
               wantedBy = [ "multi-user.target" ];
 
               environment = {
-                PORT = toString cfg.port;
+                PORT = toString effectiveFrontendPort;
                 BEET_BIN_PATH = "${pkgs.beets}/bin/beet";
                 BEET_WORKING_DIR = cfg.configDirectory;
                 BEETSDIR = cfg.configDirectory;
                 BEETSCONFIG = "${cfg.configDirectory}/config.yaml";
                 BEETROOT_BUILD_DIR = "${cfg.stateDirectory}/build";
-              } // cfg.environment;
+              }
+              // lib.optionalAttrs (cfg.databasePath != null) {
+                BEETROOT_DATABASE_PATH = cfg.databasePath;
+                BEET_LIBRARY_PATH = cfg.databasePath;
+              }
+              // cfg.environment;
 
               serviceConfig = {
                 ExecStart = "${cfg.package}/bin/beetroot";
@@ -139,11 +157,11 @@
                   cfg.stateDirectory
                   cfg.configDirectory
                   cfg.musicDirectory
-                ];
+                ] ++ lib.optional (cfg.databasePath != null) cfg.databasePath;
               };
             };
 
-            networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ cfg.port ];
+            networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ effectiveFrontendPort ];
           };
         };
     in
