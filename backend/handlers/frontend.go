@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"net/http"
-	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -11,6 +11,7 @@ import (
 func FrontendHandler(distDir string) http.Handler {
 	cleanDistDir := filepath.Clean(distDir)
 	indexPath := filepath.Join(cleanDistDir, "index.html")
+	fileServer := http.FileServer(http.Dir(cleanDistDir))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -18,20 +19,21 @@ func FrontendHandler(distDir string) http.Handler {
 			return
 		}
 
-		requestPath := filepath.Clean(strings.TrimPrefix(r.URL.Path, "/"))
-		if requestPath == "." {
+		requestPath := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if requestPath == "" {
 			http.ServeFile(w, r, indexPath)
 			return
 		}
 
-		assetPath := filepath.Join(cleanDistDir, requestPath)
-		if assetPath != cleanDistDir && !strings.HasPrefix(assetPath, cleanDistDir+string(os.PathSeparator)) {
+		if strings.Contains(requestPath, "..") {
 			http.NotFound(w, r)
 			return
 		}
 
-		if info, err := os.Stat(assetPath); err == nil && !info.IsDir() {
-			http.ServeFile(w, r, assetPath)
+		if strings.Contains(filepath.Base(requestPath), ".") {
+			assetReq := r.Clone(r.Context())
+			assetReq.URL.Path = "/" + requestPath
+			fileServer.ServeHTTP(w, assetReq)
 			return
 		}
 
