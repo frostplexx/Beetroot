@@ -11,6 +11,10 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
+  /* Improve scrolling performance */
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {

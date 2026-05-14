@@ -1,21 +1,18 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-export function AlbumCard({ album, index = 0 }) {
+export const AlbumCard = memo(function AlbumCard({ album, index = 0 }) {
   const navigate = useNavigate()
   const [imageError, setImageError] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
 
   return (
     <div
-      className="group cursor-pointer aspect-square bg-neutral-900 border border-neutral-900 rounded-xl overflow-hidden relative transition-all duration-150 hover:border-rose-500/50 hover:shadow-xl hover:shadow-rose-500/10 hover:-translate-y-0.5 active:scale-[0.99] opacity-0 animate-fade-in"
-      style={{
-        animationDelay: `${index * 20}ms`,
-        animationFillMode: 'forwards'
-      }}
+      className="group cursor-pointer aspect-square bg-neutral-900 border border-neutral-900 rounded-xl overflow-hidden relative transition-[border-color,box-shadow] duration-150 hover:border-rose-500/50 hover:shadow-lg hover:shadow-rose-500/5 active:scale-[0.99]"
+      style={{ willChange: 'border-color' }}
       onClick={() => navigate(`/album/${album.id}`)}
     >
-      {/* Album Art with zoom effect */}
+      {/* Album Art */}
       <div className="absolute inset-0 overflow-hidden">
         {!imageError ? (
           <img
@@ -23,7 +20,7 @@ export function AlbumCard({ album, index = 0 }) {
             alt={album.album}
             loading="lazy"
             decoding="async"
-            className={`w-full h-full object-cover transition-all duration-300 group-hover:scale-105 ${
+            className={`w-full h-full object-cover transition-opacity duration-300 ${
               imageLoaded ? 'opacity-100' : 'opacity-0'
             }`}
             onError={() => setImageError(true)}
@@ -31,7 +28,7 @@ export function AlbumCard({ album, index = 0 }) {
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <svg className="w-12 h-12 text-neutral-800 transition-transform duration-200 group-hover:scale-105" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-12 h-12 text-neutral-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -42,32 +39,28 @@ export function AlbumCard({ album, index = 0 }) {
           </div>
         )}
 
-        {/* Shimmer loading effect */}
+        {/* Simple loading placeholder - no animation */}
         {!imageLoaded && !imageError && (
-          <div className="absolute inset-0 bg-gradient-to-r from-neutral-900 via-neutral-800 to-neutral-900 animate-shimmer" />
+          <div className="absolute inset-0 bg-neutral-800" />
         )}
       </div>
 
-      {/* Gradient Blur Overlay at Bottom */}
+      {/* Simple gradient overlay - no blur, no animations */}
       <div
-        className="absolute inset-x-0 bottom-0 h-20 transition-all duration-200 group-hover:h-22"
+        className="absolute inset-x-0 bottom-0 h-20 pointer-events-none"
         style={{
-          background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)',
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-          maskImage: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to top, black 0%, black 40%, transparent 100%)'
+          background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 50%, transparent 100%)'
         }}
       >
-        <div className="absolute inset-x-0 bottom-0 p-3 transform transition-all duration-200 group-hover:translate-y-[-2px]">
-          <div className="text-sm font-medium text-white truncate group-hover:text-rose-400 transition-all duration-200">
+        <div className="absolute inset-x-0 bottom-0 p-3">
+          <div className="text-sm font-medium text-white truncate group-hover:text-rose-400 transition-colors duration-150">
             {album.album}
           </div>
-          <div className="text-xs text-neutral-300 truncate mt-0.5 transition-all duration-200 group-hover:text-neutral-200">
+          <div className="text-xs text-neutral-300 truncate mt-0.5">
             {album.albumartist}
           </div>
         </div>
       </div>
     </div>
   )
-}
+})
