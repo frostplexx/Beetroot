@@ -149,7 +149,6 @@
                 WorkingDirectory = cfg.configDirectory;
                 User = cfg.user;
                 Group = cfg.group;
-                SupplementaryGroups = cfg.extraGroups;
                 Restart = "on-failure";
                 RestartSec = 5;
                 NoNewPrivileges = true;
@@ -160,6 +159,9 @@
                   cfg.configDirectory
                   cfg.musicDirectory
                 ] ++ lib.optional (cfg.databasePath != null) (builtins.dirOf cfg.databasePath);
+              }
+              // lib.optionalAttrs (cfg.extraGroups != []) {
+                SupplementaryGroups = cfg.extraGroups;
               };
             };
 
