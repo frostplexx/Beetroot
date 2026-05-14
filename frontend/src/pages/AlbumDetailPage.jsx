@@ -36,13 +36,51 @@ export function AlbumDetailPage() {
     ])
       .then(([albumData, itemsData]) => {
         setAlbum(albumData)
-        setTracks(itemsData)
+        setTracks(buildCompleteTrackList(itemsData))
         setLoading(false)
       })
       .catch(err => {
         setError(err.message)
         setLoading(false)
       })
+  }
+
+  // Build complete track list including missing tracks
+  const buildCompleteTrackList = (tracks) => {
+    if (!tracks || tracks.length === 0) return []
+
+    // Get expected total from tracktotal field or max track number
+    const trackTotal = tracks.find(t => t.tracktotal?.Valid)?.tracktotal?.Int64
+    const maxTrackNum = Math.max(...tracks.filter(t => t.track?.Valid).map(t => t.track.Int64))
+    const expectedTotal = trackTotal || maxTrackNum
+
+    if (!expectedTotal) return tracks.map(t => ({ ...t, missing: false }))
+
+    // Create a map of track numbers to tracks
+    const trackMap = new Map()
+    tracks.forEach(track => {
+      if (track.track?.Valid) {
+        trackMap.set(track.track.Int64, track)
+      }
+    })
+
+    // Build complete list with missing tracks
+    const completeList = []
+    for (let i = 1; i <= expectedTotal; i++) {
+      if (trackMap.has(i)) {
+        completeList.push({ ...trackMap.get(i), missing: false })
+      } else {
+        completeList.push({
+          missing: true,
+          track: { Valid: true, Int64: i },
+          title: `Missing Track ${i}`,
+          artist: '',
+          length: 0
+        })
+      }
+    }
+
+    return completeList
   }
 
   const getDisplayTitle = (track) => {
@@ -425,18 +463,22 @@ export function AlbumDetailPage() {
                   <tbody className="divide-y divide-neutral-900">
                     {tracks.map((track) => (
                       <tr
-                        key={track.id}
-                        onClick={() => setPreviewTrack(track)}
-                        className="hover:bg-neutral-900/30 cursor-pointer group"
+                        key={track.id || `missing-${track.track.Int64}`}
+                        onClick={() => !track.missing && setPreviewTrack(track)}
+                        className={track.missing ? 'opacity-40' : 'hover:bg-neutral-900/30 cursor-pointer group'}
                       >
                         <td className="px-2 md:px-4 py-2 md:py-3 text-sm font-mono relative w-10">
-                          <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-opacity absolute left-2 md:left-4 text-rose-500"></i>
-                          <span className={`group-hover:opacity-0 transition-opacity ${previewTrack?.id === track.id ? 'text-rose-500' : 'text-neutral-500'}`}>
+                          {!track.missing && (
+                            <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-opacity absolute left-2 md:left-4 text-rose-500"></i>
+                          )}
+                          <span className={`transition-opacity ${!track.missing ? 'group-hover:opacity-0' : ''} ${previewTrack?.id === track.id && !track.missing ? 'text-rose-500' : 'text-neutral-500'}`}>
                             {track.track?.Valid ? track.track.Int64 : '-'}
                           </span>
                         </td>
-                        <td className="px-2 md:px-4 py-2 md:py-3 text-sm text-neutral-200 group-hover:text-rose-400">
-                          {getDisplayTitle(track)}
+                        <td className="px-2 md:px-4 py-2 md:py-3 text-sm">
+                          <span className={track.missing ? 'text-neutral-600 italic' : 'text-neutral-200 group-hover:text-rose-400 transition-colors'}>
+                            {getDisplayTitle(track)}
+                          </span>
                         </td>
                         <td className="px-2 md:px-4 py-2 md:py-3 text-sm text-neutral-400 hidden sm:table-cell">{track.artist}</td>
                         <td className="px-2 md:px-4 py-2 md:py-3 text-sm text-neutral-500 font-mono text-right">
