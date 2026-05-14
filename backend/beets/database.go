@@ -5,11 +5,7 @@ package beets
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -164,176 +160,23 @@ func RefetchAlbumMetadata(ctx context.Context, albumID int64) error {
 	return nil
 }
 
-// RefetchAlbumArt refetches album art for an album, with Apple Music fallback
+// RefetchAlbumArt refetches album art for an album
 func RefetchAlbumArt(ctx context.Context, albumID int64) error {
 	query := fmt.Sprintf("id:%d", albumID)
 	log.Info().Int64("album_id", albumID).Msg("Refetching album art")
 
-	// Try beets fetchart first
+	// Use beet fetchart with -f (force) to re-download even if art exists
 	output, err := ExecBeetCommand(ctx, "fetchart", "-f", query)
-	beetsSuccess := err == nil && !strings.Contains(output, "no art found")
-
-	if beetsSuccess {
-		log.Info().Str("output", output).Msg("Album art refetched successfully from beets")
-		return nil
-	}
-
-	// Beets failed, try Apple Music fallback
-	log.Info().Msg("Beets fetchart failed, trying Apple Music fallback")
-
-	// Get database path and open connection
-	dbPath, err := GetDatabasePath(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get database path: %w", err)
+		return fmt.Errorf("error refetching album art: %w", err)
 	}
 
-	db, err := OpenDB(ctx, dbPath)
-	if err != nil {
-		return fmt.Errorf("failed to open database for Apple Music fallback: %w", err)
-	}
-	defer db.Close()
-
-	album, err := db.GetAlbumByID(ctx, albumID)
-	if err != nil {
-		return fmt.Errorf("failed to get album info: %w", err)
+	// Check if beets actually found art
+	if strings.Contains(output, "no art found") {
+		return fmt.Errorf("no album art found for this album")
 	}
 
-	// Try to fetch from Apple Music
-	artworkURL, err := fetchAppleMusicArtwork(ctx, album.Album, album.AlbumArtist)
-	if err != nil {
-		return fmt.Errorf("no artwork found from beets or Apple Music: %w", err)
-	}
-
-	// Download and save artwork
-	if err := downloadAndSaveArtwork(ctx, db, albumID, artworkURL); err != nil {
-		return fmt.Errorf("failed to save Apple Music artwork: %w", err)
-	}
-
-	log.Info().Msg("Album art fetched successfully from Apple Music")
-	return nil
-}
-
-// fetchAppleMusicArtwork searches Apple Music for artwork URL
-func fetchAppleMusicArtwork(ctx context.Context, album, artist string) (string, error) {
-	query := fmt.Sprintf("%s %s", album, artist)
-	searchURL := fmt.Sprintf("https://itunes.apple.com/search?term=%s&entity=album&limit=10", url.QueryEscape(query))
-
-	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
-	if err != nil {
-		return "", err
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Apple Music returned %d", resp.StatusCode)
-	}
-
-	var appleData struct {
-		Results []struct {
-			ArtistName     string `json:"artistName"`
-			CollectionName string `json:"collectionName"`
-			CollectionType string `json:"collectionType"`
-			ArtworkUrl100  string `json:"artworkUrl100"`
-		} `json:"results"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&appleData); err != nil {
-		return "", err
-	}
-
-	if len(appleData.Results) == 0 {
-		return "", fmt.Errorf("no results found on Apple Music")
-	}
-
-	// Find exact artist match (case-insensitive)
-	artistLower := strings.ToLower(strings.TrimSpace(artist))
-	for _, result := range appleData.Results {
-		artistNameLower := strings.ToLower(strings.TrimSpace(result.ArtistName))
-		if artistNameLower == artistLower {
-			// Found exact match - get high-res artwork (replace 100x100 with 1200x1200)
-			artworkURL := strings.Replace(result.ArtworkUrl100, "100x100", "1200x1200", 1)
-			log.Info().
-				Str("artist", result.ArtistName).
-				Str("album", result.CollectionName).
-				Str("url", artworkURL).
-				Msg("Found Apple Music artwork")
-			return artworkURL, nil
-		}
-	}
-
-	return "", fmt.Errorf("no exact artist match found on Apple Music")
-}
-
-// downloadAndSaveArtwork downloads artwork and saves it to the album directory
-func downloadAndSaveArtwork(ctx context.Context, db *DB, albumID int64, artworkURL string) error {
-	// Get album items to find directory
-	items, err := db.GetItemsByAlbumID(ctx, albumID)
-	if err != nil || len(items) == 0 {
-		return fmt.Errorf("failed to get album items: %w", err)
-	}
-
-	// Get music directory
-	config, _, err := ParseBeetsConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get music directory: %w", err)
-	}
-	musicDir := config["directory"]
-
-	// Get album directory from first item
-	itemPath := filepath.Clean(items[0].Path)
-	if !filepath.IsAbs(itemPath) {
-		itemPath = filepath.Join(musicDir, itemPath)
-	}
-	albumDir := filepath.Dir(itemPath)
-
-	// Download artwork
-	req, err := http.NewRequestWithContext(ctx, "GET", artworkURL, nil)
-	if err != nil {
-		return err
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download artwork: HTTP %d", resp.StatusCode)
-	}
-
-	// Save to cover.jpg in album directory
-	coverPath := filepath.Join(albumDir, "cover.jpg")
-	outFile, err := os.Create(coverPath)
-	if err != nil {
-		return fmt.Errorf("failed to create cover file: %w", err)
-	}
-	defer outFile.Close()
-
-	if _, err := io.Copy(outFile, resp.Body); err != nil {
-		return fmt.Errorf("failed to save artwork: %w", err)
-	}
-
-	log.Info().Str("path", coverPath).Msg("Artwork saved successfully")
-
-	// Update database to point to new artwork
-	relPath, err := filepath.Rel(musicDir, coverPath)
-	if err != nil {
-		relPath = coverPath // Fall back to absolute path
-	}
-
-	_, err = db.conn.ExecContext(ctx, "UPDATE albums SET artpath = ? WHERE id = ?", relPath, albumID)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to update artpath in database (artwork still saved)")
-	}
-
+	log.Info().Str("output", output).Msg("Album art refetched successfully")
 	return nil
 }
 
@@ -1142,52 +985,16 @@ func (db *DB) GetAlbumsWithoutArt(ctx context.Context) ([]Album, error) {
 	return albums, nil
 }
 
-// FetchArtForAlbum fetches artwork for a specific album, with Apple Music fallback
+// FetchArtForAlbum fetches artwork for a specific album
 func FetchArtForAlbum(ctx context.Context, albumID int64) error {
 	query := fmt.Sprintf("id:%d", albumID)
 	log.Info().Int64("album_id", albumID).Msg("Fetching artwork for album")
 
-	// Try beets fetchart first
-	output, err := ExecBeetCommand(ctx, "fetchart", "-q", query)
-	beetsSuccess := err == nil && !strings.Contains(output, "no art found")
-
-	if beetsSuccess {
-		log.Info().Msg("Album art fetched successfully from beets")
-		return nil
-	}
-
-	// Beets failed, try Apple Music fallback
-	log.Info().Msg("Beets fetchart failed, trying Apple Music fallback")
-
-	// Get database path and open connection
-	dbPath, err := GetDatabasePath(ctx)
+	_, err := ExecBeetCommand(ctx, "fetchart", "-q", query)
 	if err != nil {
-		return fmt.Errorf("failed to get database path: %w", err)
+		return fmt.Errorf("error fetching artwork: %w", err)
 	}
 
-	db, err := OpenDB(ctx, dbPath)
-	if err != nil {
-		return fmt.Errorf("failed to open database for Apple Music fallback: %w", err)
-	}
-	defer db.Close()
-
-	album, err := db.GetAlbumByID(ctx, albumID)
-	if err != nil {
-		return fmt.Errorf("failed to get album info: %w", err)
-	}
-
-	// Try to fetch from Apple Music
-	artworkURL, err := fetchAppleMusicArtwork(ctx, album.Album, album.AlbumArtist)
-	if err != nil {
-		return fmt.Errorf("no artwork found from beets or Apple Music: %w", err)
-	}
-
-	// Download and save artwork
-	if err := downloadAndSaveArtwork(ctx, db, albumID, artworkURL); err != nil {
-		return fmt.Errorf("failed to save Apple Music artwork: %w", err)
-	}
-
-	log.Info().Msg("Album art fetched successfully from Apple Music")
 	return nil
 }
 
