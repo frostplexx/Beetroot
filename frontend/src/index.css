@@ -5,20 +5,40 @@ html {
   scrollbar-gutter: stable;
   margin: 0;
   padding: 0;
+  /* Disable overscroll/bounce effect */
+  overscroll-behavior-y: none;
+  /* Match app background to prevent white flash */
+  background-color: #0a0a0a; /* neutral-950 */
+  /* Prevent pull-to-refresh on mobile */
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  /* Improve scrolling performance */
+  /* Match app background */
+  background-color: #0a0a0a; /* neutral-950 */
+  /* Disable overscroll/bounce effect */
   overscroll-behavior: none;
+  overscroll-behavior-y: none;
+  /* Improve scrolling performance */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent mobile Safari bounce */
+  position: fixed;
+  width: 100%;
+  overflow: hidden;
 }
 
 #root {
   width: 100%;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Disable overscroll on root */
+  overscroll-behavior: none;
 }
 
 @keyframes slide-in {
