@@ -324,21 +324,68 @@ export function AlbumDetailPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 text-sm mb-6">
-                  {album.year?.Valid && (
+                  {/* Date */}
+                  {(album.year?.Valid || album.month?.Valid || album.day?.Valid) && (
                     <div>
-                      <span className="text-neutral-500">Year</span>
-                      <p className="text-neutral-200">{album.year.Int64}</p>
+                      <span className="text-neutral-500">Date</span>
+                      <p className="text-neutral-200">
+                        {album.year?.Valid && album.year.Int64}
+                        {album.month?.Valid && album.month.Int64 && `-${String(album.month.Int64).padStart(2, '0')}`}
+                        {album.day?.Valid && album.day.Int64 && `-${String(album.day.Int64).padStart(2, '0')}`}
+                      </p>
                     </div>
                   )}
-                  {album.label?.Valid && (
+                  {album.label?.Valid && album.label.String && (
                     <div>
                       <span className="text-neutral-500">Label</span>
                       <p className="text-neutral-200">{album.label.String}</p>
                     </div>
                   )}
-                  {album.genres?.Valid && (
+                  {album.country?.Valid && album.country.String && (
                     <div>
-                      <span className="text-neutral-500 block mb-1">Genre</span>
+                      <span className="text-neutral-500">Country</span>
+                      <p className="text-neutral-200">{album.country.String}</p>
+                    </div>
+                  )}
+                  {album.catalognum?.Valid && album.catalognum.String && (
+                    <div>
+                      <span className="text-neutral-500">Catalog #</span>
+                      <p className="text-neutral-200 font-mono text-xs">{album.catalognum.String}</p>
+                    </div>
+                  )}
+                  {album.barcode?.Valid && album.barcode.String && (
+                    <div>
+                      <span className="text-neutral-500">Barcode</span>
+                      <p className="text-neutral-200 font-mono text-xs">{album.barcode.String}</p>
+                    </div>
+                  )}
+                  {album.albumtype?.Valid && album.albumtype.String && (
+                    <div>
+                      <span className="text-neutral-500">Type</span>
+                      <p className="text-neutral-200">{album.albumtype.String}</p>
+                    </div>
+                  )}
+                  {album.albumstatus?.Valid && album.albumstatus.String && (
+                    <div>
+                      <span className="text-neutral-500">Status</span>
+                      <p className="text-neutral-200">{album.albumstatus.String}</p>
+                    </div>
+                  )}
+                  {album.comp?.Valid && album.comp.Int64 === 1 && (
+                    <div>
+                      <span className="text-neutral-500">Compilation</span>
+                      <p className="text-neutral-200">Yes</p>
+                    </div>
+                  )}
+                  {album.disctotal?.Valid && album.disctotal.Int64 > 1 && (
+                    <div>
+                      <span className="text-neutral-500">Discs</span>
+                      <p className="text-neutral-200">{album.disctotal.Int64}</p>
+                    </div>
+                  )}
+                  {album.genres?.Valid && album.genres.String && (
+                    <div className="col-span-2">
+                      <span className="text-neutral-500 block mb-1">Genres</span>
                       <div className="flex flex-wrap gap-1">
                         {album.genres.String.split(String.fromCharCode(0)).filter(g => g.trim()).map((genre, i) => (
                           <span
@@ -349,12 +396,6 @@ export function AlbumDetailPage() {
                           </span>
                         ))}
                       </div>
-                    </div>
-                  )}
-                  {album.country?.Valid && (
-                    <div>
-                      <span className="text-neutral-500">Country</span>
-                      <p className="text-neutral-200">{album.country.String}</p>
                     </div>
                   )}
                   <div>

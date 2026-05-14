@@ -279,10 +279,28 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
               {track.track?.Valid && (
                 <div>
                   <span className="text-neutral-500 text-xs uppercase tracking-wider">Track</span>
-                  <p className="text-neutral-200 mt-1">#{track.track.Int64}</p>
+                  <p className="text-neutral-200 mt-1">
+                    #{track.track.Int64}
+                    {track.tracktotal?.Valid && track.tracktotal.Int64 > 0 && ` / ${track.tracktotal.Int64}`}
+                  </p>
                 </div>
               )}
-              {track.genres?.Valid && (
+              {track.disc?.Valid && track.disc.Int64 > 0 && (
+                <div>
+                  <span className="text-neutral-500 text-xs uppercase tracking-wider">Disc</span>
+                  <p className="text-neutral-200 mt-1">
+                    {track.disc.Int64}
+                    {track.disctotal?.Valid && track.disctotal.Int64 > 1 && ` / ${track.disctotal.Int64}`}
+                  </p>
+                </div>
+              )}
+              {track.isrc?.Valid && track.isrc.String && (
+                <div>
+                  <span className="text-neutral-500 text-xs uppercase tracking-wider">ISRC</span>
+                  <p className="text-neutral-200 mt-1 font-mono text-xs">{track.isrc.String}</p>
+                </div>
+              )}
+              {track.genres?.Valid && track.genres.String && (
                 <div>
                   <span className="text-neutral-500 text-xs uppercase tracking-wider">Genre</span>
                   <p className="text-neutral-200 mt-1">{track.genres.String.split('\0').filter(g => g.trim()).join(', ')}</p>

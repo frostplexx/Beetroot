@@ -5,11 +5,20 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
     album: '',
     albumartist: '',
     year: '',
+    month: '',
+    day: '',
     label: '',
     genre: '',
     country: '',
+    catalognum: '',
+    barcode: '',
+    albumtype: '',
+    albumstatus: '',
+    disctotal: '',
+    comp: '0',
   })
   const [recommendations, setRecommendations] = useState(null)
+  const [sourcesUsed, setSourcesUsed] = useState(0)
   const [loadingRecommendations, setLoadingRecommendations] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState(null)
 
@@ -23,9 +32,17 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
         album: album.album || '',
         albumartist: album.albumartist || '',
         year: album.year?.Valid ? album.year.Int64.toString() : '',
+        month: album.month?.Valid ? album.month.Int64.toString() : '',
+        day: album.day?.Valid ? album.day.Int64.toString() : '',
         label: album.label?.Valid ? album.label.String : '',
         genre: formattedGenres,
         country: album.country?.Valid ? album.country.String : '',
+        catalognum: album.catalognum?.Valid ? album.catalognum.String : '',
+        barcode: album.barcode?.Valid ? album.barcode.String : '',
+        albumtype: album.albumtype?.Valid ? album.albumtype.String : '',
+        albumstatus: album.albumstatus?.Valid ? album.albumstatus.String : '',
+        disctotal: album.disctotal?.Valid ? album.disctotal.Int64.toString() : '',
+        comp: album.comp?.Valid ? album.comp.Int64.toString() : '0',
       })
 
       // Fetch MusicBrainz recommendations
@@ -38,6 +55,7 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
 
     setLoadingRecommendations(true)
     setRecommendationsError(null)
+    setSourcesUsed(0)
     try {
       const response = await fetch(`/api/beets/mb-recommendations?album_id=${album.id}`)
       const data = await response.json()
@@ -45,22 +63,21 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
       if (response.ok && data.recommendations) {
         const recCount = Object.keys(data.recommendations).length
         if (recCount === 0) {
-          setRecommendationsError('MusicBrainz has no metadata for this album')
+          setRecommendationsError('No metadata found from any source')
         }
         setRecommendations(data.recommendations)
+        setSourcesUsed(data.sources_used || 0)
       } else {
         const errorMsg = data.error || 'Failed to fetch suggestions'
-        if (errorMsg.includes('No MusicBrainz ID')) {
-          setRecommendationsError('No MusicBrainz ID - use beet mbsync first')
-        } else {
-          setRecommendationsError(errorMsg)
-        }
+        setRecommendationsError(errorMsg)
         setRecommendations(null)
+        setSourcesUsed(0)
       }
     } catch (err) {
       console.error('Failed to fetch recommendations:', err)
       setRecommendationsError('Network error')
       setRecommendations(null)
+      setSourcesUsed(0)
     } finally {
       setLoadingRecommendations(false)
     }
@@ -75,11 +92,19 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
 
     // Get original values for comparison
     const originalYear = album.year?.Valid ? album.year.Int64.toString() : ''
+    const originalMonth = album.month?.Valid ? album.month.Int64.toString() : ''
+    const originalDay = album.day?.Valid ? album.day.Int64.toString() : ''
     const originalLabel = album.label?.Valid ? album.label.String : ''
     const originalGenre = album.genres?.Valid
       ? album.genres.String.split(String.fromCharCode(0)).filter(g => g.trim()).join(', ')
       : ''
     const originalCountry = album.country?.Valid ? album.country.String : ''
+    const originalCatalogNum = album.catalognum?.Valid ? album.catalognum.String : ''
+    const originalBarcode = album.barcode?.Valid ? album.barcode.String : ''
+    const originalAlbumType = album.albumtype?.Valid ? album.albumtype.String : ''
+    const originalAlbumStatus = album.albumstatus?.Valid ? album.albumstatus.String : ''
+    const originalDiscTotal = album.disctotal?.Valid ? album.disctotal.Int64.toString() : ''
+    const originalComp = album.comp?.Valid ? album.comp.Int64.toString() : '0'
 
     const updates = {}
 
@@ -93,6 +118,12 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
     if (formData.year !== originalYear && formData.year !== '') {
       updates.year = formData.year
     }
+    if (formData.month !== originalMonth && formData.month !== '') {
+      updates.month = formData.month
+    }
+    if (formData.day !== originalDay && formData.day !== '') {
+      updates.day = formData.day
+    }
     if (formData.label !== originalLabel && formData.label !== '') {
       updates.label = formData.label
     }
@@ -101,6 +132,24 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
     }
     if (formData.country !== originalCountry && formData.country !== '') {
       updates.country = formData.country
+    }
+    if (formData.catalognum !== originalCatalogNum && formData.catalognum !== '') {
+      updates.catalognum = formData.catalognum
+    }
+    if (formData.barcode !== originalBarcode && formData.barcode !== '') {
+      updates.barcode = formData.barcode
+    }
+    if (formData.albumtype !== originalAlbumType && formData.albumtype !== '') {
+      updates.albumtype = formData.albumtype
+    }
+    if (formData.albumstatus !== originalAlbumStatus && formData.albumstatus !== '') {
+      updates.albumstatus = formData.albumstatus
+    }
+    if (formData.disctotal !== originalDiscTotal && formData.disctotal !== '') {
+      updates.disctotal = formData.disctotal
+    }
+    if (formData.comp !== originalComp) {
+      updates.comp = formData.comp
     }
 
     console.log('Changes detected:', updates)
@@ -172,8 +221,8 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 overflow-y-auto py-8" onClick={onClose}>
+      <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 max-w-3xl w-full mx-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-medium text-neutral-200">Edit Metadata</h2>
           {loadingRecommendations && (
@@ -188,27 +237,57 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
             </span>
           )}
           {!loadingRecommendations && !recommendationsError && recommendations && Object.keys(recommendations).length > 0 && (
-            <span className="text-xs text-rose-400">
-              <i className="fa-solid fa-sparkles"></i> {Object.keys(recommendations).length} suggestion{Object.keys(recommendations).length !== 1 ? 's' : ''}
+            <span className="text-xs text-rose-400" title={`Aggregated from ${sourcesUsed} source${sourcesUsed !== 1 ? 's' : ''}`}>
+              <i className="fa-solid fa-sparkles"></i> {Object.keys(recommendations).length} suggestion{Object.keys(recommendations).length !== 1 ? 's' : ''} ({sourcesUsed} source{sourcesUsed !== 1 ? 's' : ''})
             </span>
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {renderField('Album', 'album', formData.album)}
-          {renderField('Artist', 'albumartist', formData.albumartist)}
-
+        <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
           <div className="grid grid-cols-2 gap-4">
+            {renderField('Album', 'album', formData.album)}
+            {renderField('Album Artist', 'albumartist', formData.albumartist)}
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
             {renderField('Year', 'year', formData.year)}
-            {renderField('Country', 'country', formData.country)}
+            {renderField('Month', 'month', formData.month)}
+            {renderField('Day', 'day', formData.day)}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             {renderField('Label', 'label', formData.label)}
-            {renderField('Genre', 'genre', formData.genre)}
+            {renderField('Country', 'country', formData.country)}
           </div>
 
-          <div className="flex gap-2 pt-2">
+          {renderField('Genre', 'genre', formData.genre)}
+
+          <div className="grid grid-cols-2 gap-4">
+            {renderField('Catalog Number', 'catalognum', formData.catalognum)}
+            {renderField('Barcode', 'barcode', formData.barcode)}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {renderField('Album Type', 'albumtype', formData.albumtype)}
+            {renderField('Album Status', 'albumstatus', formData.albumstatus)}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {renderField('Disc Total', 'disctotal', formData.disctotal)}
+            <div>
+              <label className="block text-sm text-neutral-400 mb-1">Compilation</label>
+              <select
+                value={formData.comp}
+                onChange={(e) => setFormData({ ...formData, comp: e.target.value })}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
+              >
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2 sticky bottom-0 bg-neutral-900 pt-4 -mx-2 px-2">
             <button
               type="submit"
               className="flex-1 px-4 py-2 bg-rose-500 text-white rounded hover:bg-rose-600 text-sm font-medium"

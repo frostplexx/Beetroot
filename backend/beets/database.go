@@ -45,6 +45,8 @@ type Item struct {
 	DiscTotal          sql.NullInt64   `json:"disctotal"`
 	Genres             sql.NullString  `json:"genres"`
 	Lyrics             sql.NullString  `json:"lyrics"`
+	ISRC               sql.NullString  `json:"isrc"`
+	Comp               sql.NullInt64   `json:"comp"`
 	MusicBrainzTrackID sql.NullString  `json:"mb_trackid"`
 	MusicBrainzAlbumID sql.NullString  `json:"mb_albumid"`
 	Added              float64         `json:"added"`
@@ -66,6 +68,10 @@ type Album struct {
 	Label                     sql.NullString `json:"label"`
 	Genres                    sql.NullString `json:"genres"`
 	DiscTotal                 sql.NullInt64  `json:"disctotal"`
+	Comp                      sql.NullInt64  `json:"comp"`
+	CatalogNum                sql.NullString `json:"catalognum"`
+	Barcode                   sql.NullString `json:"barcode"`
+	AlbumStatus               sql.NullString `json:"albumstatus"`
 	MusicBrainzAlbumID        sql.NullString `json:"mb_albumid"`
 	MusicBrainzReleaseGroupID sql.NullString `json:"mb_releasegroupid"`
 	Added                     float64        `json:"added"`
@@ -704,7 +710,8 @@ func (db *DB) GetAlbums(ctx context.Context, opts QueryOptions) ([]Album, error)
 func (db *DB) GetAlbumByID(ctx context.Context, id int64) (*Album, error) {
 	query := `SELECT
 		id, album, albumartist, albumartist_sort, albumtype, artpath,
-		year, month, day, country, label, genres, disctotal,
+		year, month, day, country, label, genres, disctotal, comp,
+		catalognum, barcode, albumstatus,
 		mb_albumid, mb_releasegroupid, added
 	FROM albums WHERE id = ?`
 
@@ -716,7 +723,8 @@ func (db *DB) GetAlbumByID(ctx context.Context, id int64) (*Album, error) {
 	err := db.conn.QueryRowContext(ctx, query, id).Scan(
 		&album.ID, &album.Album, &album.AlbumArtist, &album.AlbumArtistSort,
 		&album.AlbumType, &artPathBytes, &album.Year, &album.Month, &album.Day,
-		&album.Country, &album.Label, &album.Genres, &album.DiscTotal,
+		&album.Country, &album.Label, &album.Genres, &album.DiscTotal, &album.Comp,
+		&album.CatalogNum, &album.Barcode, &album.AlbumStatus,
 		&album.MusicBrainzAlbumID, &album.MusicBrainzReleaseGroupID, &album.Added,
 	)
 
@@ -738,7 +746,7 @@ func (db *DB) GetItemsByAlbumID(ctx context.Context, albumID int64) ([]Item, err
 	query := `SELECT
 		id, title, artist, artist_sort, album, album_id, albumartist,
 		path, length, bitrate, format, year, month, day,
-		track, tracktotal, disc, disctotal, genres, lyrics,
+		track, tracktotal, disc, disctotal, genres, lyrics, isrc, comp,
 		mb_trackid, mb_albumid, added, mtime
 	FROM items
 	WHERE album_id = ?
@@ -763,7 +771,8 @@ func (db *DB) GetItemsByAlbumID(ctx context.Context, albumID int64) ([]Item, err
 			&pathBytes, &item.Length, &item.Bitrate, &item.Format,
 			&item.Year, &item.Month, &item.Day,
 			&item.Track, &item.TrackTotal, &item.Disc, &item.DiscTotal,
-			&item.Genres, &item.Lyrics, &item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
+			&item.Genres, &item.Lyrics, &item.ISRC, &item.Comp,
+			&item.MusicBrainzTrackID, &item.MusicBrainzAlbumID,
 			&item.Added, &item.Modified,
 		)
 		if err != nil {
