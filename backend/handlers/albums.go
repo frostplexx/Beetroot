@@ -5,11 +5,9 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
-	"image"
-	"image/jpeg"
-	"image/png"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,7 +16,7 @@ import (
 
 	"backend/beets"
 
-	"golang.org/x/image/draw"
+	"github.com/disintegration/imaging"
 )
 
 // Album art path cache with expiration
@@ -317,38 +315,25 @@ func getMusicDirectory(ctx context.Context) (string, error) {
 	return musicDir, nil
 }
 
-// resizeImage resizes an image to fit within maxWidth x maxHeight while maintaining aspect ratio
-func resizeImage(img image.Image, maxWidth, maxHeight int) image.Image {
-	bounds := img.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-
-	// Calculate scaling factor
-	scaleX := float64(maxWidth) / float64(width)
-	scaleY := float64(maxHeight) / float64(height)
-	scale := scaleX
-	if scaleY < scaleX {
-		scale = scaleY
-	}
-
-	// Don't upscale
-	if scale >= 1.0 {
-		return img
-	}
-
-	newWidth := int(float64(width) * scale)
-	newHeight := int(float64(height) * scale)
-
-	dst := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
-	draw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
-	return dst
-}
-
 // getThumbnailPath returns a cached thumbnail path
 func getThumbnailPath(artPath string, size int) string {
 	hash := fmt.Sprintf("%x", md5.Sum([]byte(artPath)))
 	cacheDir := filepath.Join(os.TempDir(), "beetroot-thumbs")
 	os.MkdirAll(cacheDir, 0755)
-	return filepath.Join(cacheDir, fmt.Sprintf("%s-%d.jpg", hash, size))
+	return filepath.Join(cacheDir, fmt.Sprintf("%s-%d.webp", hash, size))
+}
+
+// convertToWebP converts an image to WebP using ImageMagick
+func convertToWebP(inputPath, outputPath string, size int) error {
+	// Use ImageMagick to resize and convert to WebP
+	cmd := exec.Command("magick", "convert",
+		inputPath,
+		"-resize", fmt.Sprintf("%dx%d>", size, size), // > means only shrink, don't enlarge
+		"-quality", "85",
+		"-define", "webp:method=6", // Best compression
+		outputPath,
+	)
+	return cmd.Run()
 }
 
 // serveAlbumArt serves an album art file with proper headers and caching
@@ -393,14 +378,14 @@ func serveAlbumArt(w http.ResponseWriter, r *http.Request, artPath string, album
 		contentType = "image/webp"
 	}
 
-	// If thumbnail requested, resize and serve
+	// If thumbnail requested, resize and serve as WebP
 	if thumbnailSize > 0 {
 		thumbPath := getThumbnailPath(artPath, thumbnailSize)
 
 		// Check if thumbnail exists and is newer than original
 		if thumbInfo, err := os.Stat(thumbPath); err == nil {
 			if thumbInfo.ModTime().After(fileInfo.ModTime()) {
-				w.Header().Set("Content-Type", "image/jpeg")
+				w.Header().Set("Content-Type", "image/webp")
 				w.Header().Set("Cache-Control", "public, max-age=2592000")
 				w.Header().Set("ETag", etag)
 				http.ServeFile(w, r, thumbPath)
@@ -408,30 +393,19 @@ func serveAlbumArt(w http.ResponseWriter, r *http.Request, artPath string, album
 			}
 		}
 
-		// Generate thumbnail
-		srcFile, err := os.Open(artPath)
-		if err != nil {
-			http.Error(w, "Failed to open image", http.StatusInternalServerError)
-			return
-		}
-		defer srcFile.Close()
-
-		var img image.Image
-		ext := strings.ToLower(filepath.Ext(artPath))
-		switch ext {
-		case ".jpg", ".jpeg":
-			img, err = jpeg.Decode(srcFile)
-		case ".png":
-			img, err = png.Decode(srcFile)
-		default:
-			// For unsupported formats, serve original
-			w.Header().Set("Content-Type", contentType)
+		// Try ImageMagick conversion first (best quality WebP)
+		err := convertToWebP(artPath, thumbPath, thumbnailSize)
+		if err == nil {
+			// Success - serve the WebP thumbnail
+			w.Header().Set("Content-Type", "image/webp")
 			w.Header().Set("Cache-Control", "public, max-age=2592000")
 			w.Header().Set("ETag", etag)
-			http.ServeFile(w, r, artPath)
+			http.ServeFile(w, r, thumbPath)
 			return
 		}
 
+		// Fallback: Use imaging library if ImageMagick fails
+		img, err := imaging.Open(artPath)
 		if err != nil {
 			// If decode fails, serve original
 			w.Header().Set("Content-Type", contentType)
@@ -441,21 +415,26 @@ func serveAlbumArt(w http.ResponseWriter, r *http.Request, artPath string, album
 			return
 		}
 
-		// Resize image
-		resized := resizeImage(img, thumbnailSize, thumbnailSize)
+		// Resize image (Lanczos filter for best quality)
+		resized := imaging.Fit(img, thumbnailSize, thumbnailSize, imaging.Lanczos)
 
-		// Save thumbnail to cache
-		thumbFile, err := os.Create(thumbPath)
-		if err == nil {
-			defer thumbFile.Close()
-			jpeg.Encode(thumbFile, resized, &jpeg.Options{Quality: 85})
+		// Save as JPEG fallback (change extension)
+		jpegPath := strings.TrimSuffix(thumbPath, ".webp") + ".jpg"
+		err = imaging.Save(resized, jpegPath, imaging.JPEGQuality(85))
+		if err != nil {
+			// If save fails, serve resized image directly
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Cache-Control", "public, max-age=2592000")
+			w.Header().Set("ETag", etag)
+			imaging.Encode(w, resized, imaging.JPEG)
+			return
 		}
 
-		// Serve resized image
+		// Serve JPEG fallback
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.Header().Set("Cache-Control", "public, max-age=2592000")
 		w.Header().Set("ETag", etag)
-		jpeg.Encode(w, resized, &jpeg.Options{Quality: 85})
+		http.ServeFile(w, r, jpegPath)
 		return
 	}
 
