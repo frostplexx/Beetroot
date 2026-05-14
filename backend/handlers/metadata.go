@@ -15,6 +15,8 @@ import (
 // RefetchMetadataHandler refetches album metadata from MusicBrainz
 func RefetchMetadataHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		startTime := time.Now()
+
 		if r.Method != "POST" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -42,12 +44,19 @@ func RefetchMetadataHandler() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 		defer cancel()
 
-		if err := beets.RefetchAlbumMetadata(ctx, req.AlbumID); err != nil {
+		albumName := fmt.Sprintf("Album ID %d", req.AlbumID)
+		err := beets.RefetchAlbumMetadata(ctx, req.AlbumID)
+		duration := time.Since(startTime)
+
+		// Log the action
+		if err != nil {
+			LogAlbumAction(ctx, "refetch_metadata", req.AlbumID, albumName, nil, false, err.Error(), duration)
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to refetch metadata"})
 			return
 		}
 
+		LogAlbumAction(ctx, "refetch_metadata", req.AlbumID, albumName, nil, true, "", duration)
 		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	}
 }
@@ -55,6 +64,8 @@ func RefetchMetadataHandler() http.HandlerFunc {
 // RefetchArtHandler refetches album art
 func RefetchArtHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		startTime := time.Now()
+
 		if r.Method != "POST" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -82,7 +93,13 @@ func RefetchArtHandler() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 		defer cancel()
 
-		if err := beets.RefetchAlbumArt(ctx, req.AlbumID); err != nil {
+		albumName := fmt.Sprintf("Album ID %d", req.AlbumID)
+		err := beets.RefetchAlbumArt(ctx, req.AlbumID)
+		duration := time.Since(startTime)
+
+		// Log the action
+		if err != nil {
+			LogAlbumAction(ctx, "refetch_art", req.AlbumID, albumName, nil, false, err.Error(), duration)
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to refetch album art"})
 			return
@@ -91,6 +108,7 @@ func RefetchArtHandler() http.HandlerFunc {
 		// Clear thumbnail cache to force regeneration with new art
 		ClearThumbnailCache("")
 
+		LogAlbumAction(ctx, "refetch_art", req.AlbumID, albumName, nil, true, "", duration)
 		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	}
 }
@@ -98,6 +116,8 @@ func RefetchArtHandler() http.HandlerFunc {
 // ModifyMetadataHandler modifies album metadata
 func ModifyMetadataHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		startTime := time.Now()
+
 		if r.Method != "POST" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -139,12 +159,25 @@ func ModifyMetadataHandler() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 
-		if err := beets.ModifyAlbumMetadata(ctx, req.AlbumID, req.Updates); err != nil {
+		// Get album name for audit log (need DB)
+		// We'll use a placeholder for now since we don't have DB access here
+		albumName := fmt.Sprintf("Album ID %d", req.AlbumID)
+
+		err := beets.ModifyAlbumMetadata(ctx, req.AlbumID, req.Updates)
+		duration := time.Since(startTime)
+
+		// Log the action
+		details := map[string]interface{}{
+			"updates": req.Updates,
+		}
+		if err != nil {
+			LogAlbumAction(ctx, "modify_album", req.AlbumID, albumName, details, false, err.Error(), duration)
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Failed to modify metadata"})
 			return
 		}
 
+		LogAlbumAction(ctx, "modify_album", req.AlbumID, albumName, details, true, "", duration)
 		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	}
 }

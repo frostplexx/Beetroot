@@ -24,6 +24,18 @@ func main() {
 	hook := logger.NewBufferHook(logger.GetGlobalBuffer())
 	zlog.Logger = zlog.Hook(hook)
 
+	// Initialize audit logger
+	auditDBPath := os.Getenv("AUDIT_DB_PATH")
+	if auditDBPath == "" {
+		auditDBPath = "./audit.db"
+	}
+	if err := handlers.InitAuditLogger(auditDBPath); err != nil {
+		log.Printf("Warning: Could not initialize audit logger: %v", err)
+		log.Printf("Audit logging will be unavailable")
+	} else {
+		log.Printf("Audit logging initialized at %s", auditDBPath)
+	}
+
 	// Initialize database connection
 	dbPath, err := beets.GetDatabasePath(ctx)
 	if err != nil {
@@ -100,6 +112,11 @@ func main() {
 	// Logs endpoints
 	mux.HandleFunc("/api/logs", handlers.LogsHandler())
 	mux.HandleFunc("/api/logs/clear", handlers.ClearLogsHandler())
+
+	// Audit endpoints
+	mux.HandleFunc("/api/audit/logs", handlers.AuditLogsHandler())
+	mux.HandleFunc("/api/audit/logs/target", handlers.AuditLogsByTargetHandler())
+	mux.HandleFunc("/api/audit/stats", handlers.AuditStatsHandler())
 
 	if frontendDistDir := os.Getenv("FRONTEND_DIST_DIR"); frontendDistDir != "" {
 		mux.Handle("/", handlers.FrontendHandler(frontendDistDir))
