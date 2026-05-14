@@ -25,7 +25,7 @@ dev
 
 This starts both backend and frontend servers. Press `Ctrl+C` to stop both.
 
-- Backend runs on http://localhost:8080
+- Backend runs on http://localhost:4433
 - Frontend runs on http://localhost:5173
 
 The Vite dev server proxies `/api/*` requests to the backend.
@@ -51,3 +51,13 @@ cd frontend && npm run dev
 
 - `GET /health` - Health check
 - `GET /api/hello` - Test endpoint
+
+## Deployment
+
+Beetroot can be deployed as a single service with Docker or with the flake NixOS module.
+
+- Docker image: `docker build -t beetroot .`
+- Example compose file: `docker-compose.example.yml`
+- NixOS module: `beetroot.nixosModules.default` with `services.beetroot.enable = true;`
+
+See `docs/deployment.md` for complete setup, including writable music/config/library requirements.
