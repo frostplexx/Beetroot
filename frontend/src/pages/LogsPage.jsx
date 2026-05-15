@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Header } from '../components/common/Header'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
 
 export function LogsPage() {
   const [logs, setLogs] = useState([])
@@ -122,60 +129,65 @@ export function LogsPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 text-sm text-neutral-400 cursor-pointer">
-              <input
-                type="checkbox"
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="auto-refresh"
                 checked={autoRefresh}
-                onChange={(e) => setAutoRefresh(e.target.checked)}
-                className="rounded border-neutral-700 bg-neutral-900 text-rose-500 focus:ring-rose-500"
+                onCheckedChange={setAutoRefresh}
               />
-              Auto-refresh
-            </label>
+              <Label htmlFor="auto-refresh" className="text-sm text-neutral-400 cursor-pointer">
+                Auto-refresh
+              </Label>
+            </div>
 
-            <button
+            <Button
               onClick={loadLogs}
-              className="px-3 py-1.5 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-rose-500 hover:text-rose-500"
+              variant="outline"
+              size="sm"
             >
               <i className="fa-solid fa-rotate mr-2"></i>
               Refresh
-            </button>
+            </Button>
 
-            <button
+            <Button
               onClick={clearLogs}
-              className="px-3 py-1.5 text-sm bg-neutral-900 border border-neutral-800 rounded text-neutral-300 hover:border-red-500 hover:text-red-500"
+              variant="outline"
+              size="sm"
+              className="hover:border-red-500 hover:text-red-500"
             >
               <i className="fa-solid fa-trash mr-2"></i>
               Clear
-            </button>
+            </Button>
           </div>
         </div>
 
         <div className="flex gap-4 mb-4">
           <div className="flex-1">
-            <input
+            <Input
               type="text"
               placeholder="Filter logs..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 rounded px-4 py-2 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-rose-500"
             />
           </div>
 
-          <select
-            value={levelFilter}
-            onChange={(e) => setLevelFilter(e.target.value)}
-            className="bg-neutral-900 border border-neutral-800 rounded px-4 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
-          >
-            <option value="all">All Levels</option>
-            <option value="debug">Debug</option>
-            <option value="info">Info</option>
-            <option value="warn">Warning</option>
-            <option value="error">Error</option>
-          </select>
+          <Select value={levelFilter} onValueChange={setLevelFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Levels</SelectItem>
+              <SelectItem value="debug">Debug</SelectItem>
+              <SelectItem value="info">Info</SelectItem>
+              <SelectItem value="warn">Warning</SelectItem>
+              <SelectItem value="error">Error</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="border border-neutral-800 rounded overflow-hidden">
-          <div className="bg-neutral-900/50 p-4 font-mono text-xs space-y-1 max-h-[70vh] overflow-y-auto">
+          <ScrollArea className="h-[70vh] bg-neutral-900/50 p-4">
+            <div className="font-mono text-xs space-y-1">
             {filteredLogs.length === 0 ? (
               <div className="text-center py-8 text-neutral-500">
                 No logs found
@@ -187,12 +199,15 @@ export function LogsPage() {
                   className={`border rounded p-2 ${getLevelBg(log.level)}`}
                 >
                   <div className="flex items-start gap-3">
-                    <span className="text-neutral-600 shrink-0">
+                    <span className="text-neutral-600 shrink-0 font-mono text-xs">
                       {formatTimestamp(log.timestamp)}
                     </span>
-                    <span className={`${getLevelColor(log.level)} uppercase font-medium shrink-0 w-12`}>
+                    <Badge
+                      variant="outline"
+                      className={`${getLevelColor(log.level)} uppercase font-medium shrink-0 text-[10px] h-5`}
+                    >
                       {log.level || 'LOG'}
-                    </span>
+                    </Badge>
                     <span className="text-neutral-300 flex-1">
                       {log.message}
                     </span>
@@ -209,7 +224,8 @@ export function LogsPage() {
                 </div>
               ))
             )}
-          </div>
+            </div>
+          </ScrollArea>
         </div>
       </div>
     </div>

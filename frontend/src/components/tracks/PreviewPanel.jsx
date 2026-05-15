@@ -1,6 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { AlertDialog } from '../common/AlertDialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { toast } from 'sonner'
 
 export function PreviewPanel({ track, onClose, setPreviewTrack }) {
   const audioRef = useRef(null)
@@ -34,6 +44,11 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
 
   useEffect(() => {
     const handleClickOutside = (event) => {
+      // Don't close if clicking on resize handle or if actively resizing
+      if (event.target.closest('[data-resize-handle]')) {
+        return
+      }
+
       if (panelRef.current && !panelRef.current.contains(event.target)) {
         onClose()
       }
@@ -88,9 +103,10 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
       if (!response.ok) throw new Error('Failed to update track')
 
       setEditMode(false)
+      toast.success('Track updated successfully!')
       onClose()
     } catch (err) {
-      alert('Error: ' + err.message)
+      toast.error('Error: ' + err.message)
     }
   }
 
@@ -235,21 +251,27 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
   if (!track) return null
 
   return (
-    <div ref={panelRef} className="w-full h-full">
+    <div ref={panelRef} className="w-full h-full flex flex-col bg-neutral-900">
       <audio ref={audioRef} src={`/api/beets/items/${track.id}/stream`} />
 
       {/* Mobile drag handle */}
-      <div className="lg:hidden flex justify-center pt-2 pb-1">
+      <div className="lg:hidden flex justify-center pt-2 pb-1 flex-shrink-0">
         <div className="w-12 h-1 bg-neutral-700 rounded-full"></div>
       </div>
 
-      <div className="p-4 lg:p-8 space-y-6 lg:space-y-8 relative">
-        <button
-          onClick={onClose}
-          className="absolute top-1 right-1 lg:top-2 lg:right-2 w-8 h-8 flex items-center justify-center rounded-full hover:bg-neutral-800/50 text-neutral-500 hover:text-neutral-300 transition-colors z-10"
-        >
-          <i className="fa-solid fa-xmark text-sm"></i>
-        </button>
+      <ScrollArea className="flex-1 overflow-y-auto">
+        <div className="p-4 lg:p-8 space-y-6 lg:space-y-8 relative">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onClose}
+              className="absolute top-1 right-1 lg:top-2 lg:right-2 w-8 h-8 flex items-center justify-center rounded-full hover:bg-neutral-800/50 text-neutral-500 hover:text-neutral-300 transition-colors z-10"
+            >
+              <i className="fa-solid fa-xmark text-sm"></i>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Close</TooltipContent>
+        </Tooltip>
 
         {!editMode ? (
           <div className="space-y-4 lg:space-y-6">
@@ -259,20 +281,34 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
                 <p className="text-base lg:text-lg text-neutral-400 truncate">{track.artist}</p>
               </div>
               <div className="flex flex-col lg:flex-row gap-1 lg:gap-2 flex-shrink-0 ml-2">
-                <button
-                  onClick={() => setEditMode(true)}
-                  className="px-2 lg:px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-rose-500 hover:text-rose-500 transition-colors"
-                >
-                  <i className="fa-solid fa-pen lg:mr-1"></i>
-                  <span className="hidden lg:inline">Edit</span>
-                </button>
-                <button
-                  onClick={handleDeleteTrack}
-                  className="px-2 lg:px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-red-500 hover:text-red-500 transition-colors"
-                >
-                  <i className="fa-solid fa-trash lg:mr-1"></i>
-                  <span className="hidden lg:inline">Delete</span>
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={() => setEditMode(true)}
+                      variant="outline"
+                      size="sm"
+                      className="h-auto px-2 lg:px-3 py-1.5 text-xs"
+                    >
+                      <i className="fa-solid fa-pen lg:mr-1"></i>
+                      <span className="hidden lg:inline">Edit</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit track metadata</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleDeleteTrack}
+                      variant="outline"
+                      size="sm"
+                      className="h-auto px-2 lg:px-3 py-1.5 text-xs hover:border-red-500 hover:text-red-500"
+                    >
+                      <i className="fa-solid fa-trash lg:mr-1"></i>
+                      <span className="hidden lg:inline">Delete</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete track</TooltipContent>
+                </Tooltip>
               </div>
             </div>
 
@@ -327,28 +363,31 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
               </div>
             </div>
 
-            <button
+            <Button
               onClick={handlePlay}
-              className="w-full py-3 bg-neutral-800 hover:bg-neutral-750 border border-neutral-700 hover:border-rose-500 rounded-lg flex items-center justify-center gap-3 text-neutral-300 hover:text-rose-400 font-medium transition-all"
+              variant="outline"
+              className="w-full py-3 h-auto"
             >
-              <i className={`fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'} text-sm`}></i>
+              <i className={`fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'} text-sm mr-3`}></i>
               {isPlaying ? 'Playing...' : 'Preview (30s)'}
-            </button>
+            </Button>
 
-            <div className="pt-6 border-t border-neutral-800">
+            <div className="pt-6 border-t border-neutral-800 pb-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-neutral-400 uppercase tracking-wider">Lyrics</h3>
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider">Lyrics</h3>
                 {(!track.lyrics?.Valid || !track.lyrics?.String) && (
-                  <button
+                  <Button
                     onClick={handleFetchLyrics}
                     disabled={fetchingLyrics}
-                    className="px-3 py-1.5 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:border-rose-500 hover:text-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                    variant="outline"
+                    size="sm"
+                    className="h-auto px-3 py-1.5 text-xs"
                   >
                     {fetchingLyrics && (
-                      <div className="w-3 h-3 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin"></div>
+                      <div className="w-3 h-3 border-2 border-neutral-500 border-t-rose-500 rounded-full animate-spin mr-2"></div>
                     )}
                     {fetchingLyrics ? 'Searching online...' : 'Fetch Lyrics'}
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -381,9 +420,9 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
                 </div>
               )}
 
-              <div className="text-sm leading-relaxed max-h-96 overflow-y-auto">
+              <div className="text-sm leading-relaxed">
                 {track.lyrics?.Valid && track.lyrics?.String ? (
-                  <div className="space-y-1">
+                  <div className="space-y-1 pb-4">
                     {parseLyrics(track.lyrics.String).map((line, index) => (
                       <div key={index} className="flex gap-3 items-start">
                         {line.hasTimestamp && (
@@ -409,80 +448,77 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
           </div>
         ) : (
           <div className="space-y-4">
-            <h3 className="text-lg font-medium text-neutral-200">Edit Track</h3>
+            <h3 className="text-lg font-medium text-foreground">Edit Track</h3>
 
-            <div>
-              <label className="block text-xs text-neutral-500 mb-1">Title</label>
-              <input
+            <div className="space-y-2">
+              <Label className="text-xs">Title</Label>
+              <Input
                 type="text"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
               />
             </div>
 
-            <div>
-              <label className="block text-xs text-neutral-500 mb-1">Artist</label>
-              <input
+            <div className="space-y-2">
+              <Label className="text-xs">Artist</Label>
+              <Input
                 type="text"
                 value={formData.artist}
                 onChange={(e) => setFormData({ ...formData, artist: e.target.value })}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
               />
             </div>
 
-            <div>
-              <label className="block text-xs text-neutral-500 mb-1">Album</label>
-              <input
+            <div className="space-y-2">
+              <Label className="text-xs">Album</Label>
+              <Input
                 type="text"
                 value={formData.album}
                 onChange={(e) => setFormData({ ...formData, album: e.target.value })}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-neutral-500 mb-1">Track #</label>
-                <input
+              <div className="space-y-2">
+                <Label className="text-xs">Track #</Label>
+                <Input
                   type="text"
                   value={formData.track}
                   onChange={(e) => setFormData({ ...formData, track: e.target.value })}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
                 />
               </div>
-              <div>
-                <label className="block text-xs text-neutral-500 mb-1">Genre</label>
-                <input
+              <div className="space-y-2">
+                <Label className="text-xs">Genre</Label>
+                <Input
                   type="text"
                   value={formData.genre}
                   onChange={(e) => setFormData({ ...formData, genre: e.target.value })}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
                 />
               </div>
             </div>
 
             <div className="flex gap-2 pt-2">
-              <button
+              <Button
                 onClick={handleSave}
-                className="flex-1 px-4 py-2 bg-rose-500 text-white rounded hover:bg-rose-600 text-sm font-medium"
+                className="flex-1"
               >
                 Save
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => setEditMode(false)}
-                className="flex-1 px-4 py-2 bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700 text-sm font-medium"
+                variant="secondary"
+                className="flex-1"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}
 
-        <div className="pt-4 border-t border-neutral-800">
-          <p className="text-xs text-neutral-600 font-mono break-all">{track.path}</p>
+          <div className="pt-4 border-t border-neutral-800 pb-4">
+            <p className="text-xs text-neutral-600 font-mono break-all">{track.path}</p>
+          </div>
         </div>
-      </div>
+      </ScrollArea>
 
       <ConfirmDialog
         isOpen={deleteDialog.isOpen}

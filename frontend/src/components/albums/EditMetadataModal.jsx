@@ -1,4 +1,12 @@
 import { useState, useEffect } from 'react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { toast } from 'sonner'
 
 export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
   const [formData, setFormData] = useState({
@@ -220,16 +228,14 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
       // Wait a moment for beets to finish writing to database
       await new Promise(resolve => setTimeout(resolve, 500))
 
-      alert('Metadata updated successfully!')
+      toast.success('Metadata updated successfully!')
       onSave()
       onClose()
     } catch (err) {
-      alert('Error: ' + err.message)
+      toast.error('Error: ' + err.message)
       console.error('Update error:', err)
     }
   }
-
-  if (!isOpen) return null
 
   const renderField = (label, field, value) => {
     const recValue = recommendations?.[field]
@@ -302,188 +308,198 @@ export function EditMetadataModal({ album, isOpen, onClose, onSave }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 overflow-y-auto py-8" onClick={onClose}>
-      <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 max-w-3xl w-full mx-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-medium text-neutral-200">Edit Metadata</h2>
-          {loadingRecommendations && (
-            <span className="text-xs text-neutral-500 flex items-center gap-2">
-              <div className="w-3 h-3 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin"></div>
-              Loading suggestions...
-            </span>
-          )}
-          {!loadingRecommendations && recommendationsError && (
-            <span className="text-xs text-neutral-500" title={recommendationsError}>
-              <i className="fa-solid fa-circle-exclamation text-amber-500"></i> {recommendationsError}
-            </span>
-          )}
-          {!loadingRecommendations && !recommendationsError && recommendations && Object.keys(recommendations).length > 0 && (
-            <span className="text-xs text-rose-400" title={`Aggregated from ${sourcesUsed} source${sourcesUsed !== 1 ? 's' : ''}`}>
-              <i className="fa-solid fa-sparkles"></i> {Object.keys(recommendations).length} suggestion{Object.keys(recommendations).length !== 1 ? 's' : ''} ({sourcesUsed} source{sourcesUsed !== 1 ? 's' : ''})
-            </span>
-          )}
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-          {/* MusicBrainz ID Section */}
-          <div className="bg-neutral-950 border border-neutral-800 rounded p-3">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm text-neutral-400">MusicBrainz Release ID</label>
-              <div className="flex items-center gap-2">
-                {formData.mb_albumid && (
-                  <a
-                    href={`https://musicbrainz.org/release/${formData.mb_albumid}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-rose-400 hover:text-rose-300"
-                  >
-                    <i className="fa-solid fa-external-link"></i>
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMBSearch(!showMBSearch)
-                    if (!showMBSearch && mbSearchResults.length === 0) {
-                      searchMusicBrainz()
-                    }
-                  }}
-                  className="text-xs px-2 py-1 bg-rose-500/20 text-rose-400 rounded hover:bg-rose-500/30 transition-colors"
-                >
-                  <i className="fa-solid fa-magnifying-glass mr-1"></i>
-                  Search
-                </button>
-              </div>
-            </div>
-            <input
-              type="text"
-              value={formData.mb_albumid}
-              onChange={(e) => setFormData({ ...formData, mb_albumid: e.target.value })}
-              placeholder="Enter MusicBrainz Release ID or search"
-              className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-xs font-mono text-neutral-300 focus:outline-none focus:border-rose-500"
-            />
-
-            {/* MusicBrainz Search Results */}
-            {showMBSearch && (
-              <div className="mt-3 pt-3 border-t border-neutral-800">
-                {loadingMBSearch && (
-                  <div className="text-center py-4">
-                    <div className="w-4 h-4 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin mx-auto"></div>
-                    <p className="text-xs text-neutral-500 mt-2">Searching MusicBrainz...</p>
-                  </div>
-                )}
-
-                {mbSearchError && (
-                  <div className="text-xs text-amber-400 py-2">
-                    <i className="fa-solid fa-circle-exclamation mr-1"></i>
-                    {mbSearchError}
-                  </div>
-                )}
-
-                {!loadingMBSearch && mbSearchResults.length > 0 && (
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    <p className="text-xs text-neutral-400 mb-2">
-                      Found {mbSearchResults.length} matches. Click to select:
-                    </p>
-                    {mbSearchResults.map((result) => (
-                      <button
-                        key={result.id}
-                        type="button"
-                        onClick={() => selectMBRelease(result.id)}
-                        className="w-full text-left p-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-rose-500/50 rounded text-xs transition-colors"
-                      >
-                        <div className="font-medium text-neutral-200">
-                          {result.title}
-                          {result.score && (
-                            <span className="ml-2 text-rose-400">({result.score}%)</span>
-                          )}
-                        </div>
-                        <div className="text-neutral-400 mt-0.5">
-                          {result.artist}
-                          {result.date && ` • ${result.date}`}
-                          {result.country && ` • ${result.country}`}
-                        </div>
-                        {result.label && (
-                          <div className="text-neutral-500 mt-0.5">
-                            {result.label}
-                            {result.catalog_num && ` [${result.catalog_num}]`}
-                          </div>
-                        )}
-                        {result.format && (
-                          <div className="text-neutral-600 mt-0.5">
-                            {result.format}
-                            {result.track_count && ` • ${result.track_count} tracks`}
-                            {result.status && ` • ${result.status}`}
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl max-h-[90vh] bg-neutral-900 border-neutral-800 text-neutral-100 sm:max-w-3xl">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle>Edit Metadata</DialogTitle>
+            {loadingRecommendations && (
+              <span className="text-xs text-muted-foreground flex items-center gap-2">
+                <div className="w-3 h-3 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin"></div>
+                Loading suggestions...
+              </span>
+            )}
+            {!loadingRecommendations && recommendationsError && (
+              <span className="text-xs text-muted-foreground" title={recommendationsError}>
+                <i className="fa-solid fa-circle-exclamation text-amber-500"></i> {recommendationsError}
+              </span>
+            )}
+            {!loadingRecommendations && !recommendationsError && recommendations && Object.keys(recommendations).length > 0 && (
+              <span className="text-xs text-rose-400" title={`Aggregated from ${sourcesUsed} source${sourcesUsed !== 1 ? 's' : ''}`}>
+                <i className="fa-solid fa-sparkles"></i> {Object.keys(recommendations).length} suggestion{Object.keys(recommendations).length !== 1 ? 's' : ''} ({sourcesUsed} source{sourcesUsed !== 1 ? 's' : ''})
+              </span>
             )}
           </div>
+        </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-4">
-            {renderField('Album', 'album', formData.album)}
-            {renderField('Album Artist', 'albumartist', formData.albumartist)}
-          </div>
+        <ScrollArea className="max-h-[60vh]">
+          <form onSubmit={handleSubmit} className="space-y-4 pr-4">
+            {/* MusicBrainz ID Section */}
+            <div className="bg-neutral-950 border border-neutral-800 rounded p-3">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm text-neutral-400">MusicBrainz Release ID</label>
+                <div className="flex items-center gap-2">
+                  {formData.mb_albumid && (
+                    <a
+                      href={`https://musicbrainz.org/release/${formData.mb_albumid}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-rose-400 hover:text-rose-300"
+                    >
+                      <i className="fa-solid fa-external-link"></i>
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMBSearch(!showMBSearch)
+                      if (!showMBSearch && mbSearchResults.length === 0) {
+                        searchMusicBrainz()
+                      }
+                    }}
+                    className="text-xs px-2 py-1 bg-rose-500/20 text-rose-400 rounded hover:bg-rose-500/30 transition-colors"
+                  >
+                    <i className="fa-solid fa-magnifying-glass mr-1"></i>
+                    Search
+                  </button>
+                </div>
+              </div>
+              <input
+                type="text"
+                value={formData.mb_albumid}
+                onChange={(e) => setFormData({ ...formData, mb_albumid: e.target.value })}
+                placeholder="Enter MusicBrainz Release ID or search"
+                className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-xs font-mono text-neutral-300 focus:outline-none focus:border-rose-500"
+              />
 
-          <div className="grid grid-cols-3 gap-4">
-            {renderField('Year', 'year', formData.year)}
-            {renderField('Month', 'month', formData.month)}
-            {renderField('Day', 'day', formData.day)}
-          </div>
+              {/* MusicBrainz Search Results */}
+              {showMBSearch && (
+                <div className="pt-3 border-t space-y-2">
+                  {loadingMBSearch && (
+                    <div className="text-center py-4">
+                      <div className="w-4 h-4 border-2 border-neutral-600 border-t-rose-500 rounded-full animate-spin mx-auto"></div>
+                      <p className="text-xs text-muted-foreground mt-2">Searching MusicBrainz...</p>
+                    </div>
+                  )}
 
-          <div className="grid grid-cols-2 gap-4">
-            {renderField('Label', 'label', formData.label)}
-            {renderField('Country', 'country', formData.country)}
-          </div>
+                  {mbSearchError && (
+                    <div className="text-xs text-amber-400 py-2">
+                      <i className="fa-solid fa-circle-exclamation mr-1"></i>
+                      {mbSearchError}
+                    </div>
+                  )}
 
-          {renderField('Genre', 'genre', formData.genre)}
-
-          <div className="grid grid-cols-2 gap-4">
-            {renderField('Catalog Number', 'catalognum', formData.catalognum)}
-            {renderField('Barcode', 'barcode', formData.barcode)}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            {renderField('Album Type', 'albumtype', formData.albumtype)}
-            {renderField('Album Status', 'albumstatus', formData.albumstatus)}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            {renderField('Disc Total', 'disctotal', formData.disctotal)}
-            <div>
-              <label className="block text-sm text-neutral-400 mb-1">Compilation</label>
-              <select
-                value={formData.comp}
-                onChange={(e) => setFormData({ ...formData, comp: e.target.value })}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
-              >
-                <option value="0">No</option>
-                <option value="1">Yes</option>
-              </select>
+                  {!loadingMBSearch && mbSearchResults.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        Found {mbSearchResults.length} matches. Click to select:
+                      </p>
+                      <ScrollArea className="max-h-60">
+                        <div className="space-y-2 pr-4">
+                          {mbSearchResults.map((result) => (
+                            <button
+                              key={result.id}
+                              type="button"
+                              onClick={() => selectMBRelease(result.id)}
+                              className="w-full text-left p-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-rose-500/50 rounded text-xs transition-colors"
+                            >
+                              <div className="space-y-0.5">
+                                <div className="font-medium text-foreground">
+                                  {result.title}
+                                  {result.score && (
+                                    <span className="ml-2 text-rose-400">({result.score}%)</span>
+                                  )}
+                                </div>
+                                <div className="text-neutral-400">
+                                  {result.artist}
+                                  {result.date && ` • ${result.date}`}
+                                  {result.country && ` • ${result.country}`}
+                                </div>
+                                {result.label && (
+                                  <div className="text-neutral-500">
+                                    {result.label}
+                                    {result.catalog_num && ` [${result.catalog_num}]`}
+                                  </div>
+                                )}
+                                {result.format && (
+                                  <div className="text-neutral-600">
+                                    {result.format}
+                                    {result.track_count && ` • ${result.track_count} tracks`}
+                                    {result.status && ` • ${result.status}`}
+                                  </div>
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
 
-          <div className="flex gap-2 pt-2 sticky bottom-0 bg-neutral-900 pt-4 -mx-2 px-2">
-            <button
-              type="submit"
-              className="flex-1 px-4 py-2 bg-rose-500 text-white rounded hover:bg-rose-600 text-sm font-medium"
-            >
-              Save Changes
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700 text-sm font-medium"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+            <div className="grid grid-cols-2 gap-4">
+              {renderField('Album', 'album', formData.album)}
+              {renderField('Album Artist', 'albumartist', formData.albumartist)}
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              {renderField('Year', 'year', formData.year)}
+              {renderField('Month', 'month', formData.month)}
+              {renderField('Day', 'day', formData.day)}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {renderField('Label', 'label', formData.label)}
+              {renderField('Country', 'country', formData.country)}
+            </div>
+
+            {renderField('Genre', 'genre', formData.genre)}
+
+            <div className="grid grid-cols-2 gap-4">
+              {renderField('Catalog Number', 'catalognum', formData.catalognum)}
+              {renderField('Barcode', 'barcode', formData.barcode)}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {renderField('Album Type', 'albumtype', formData.albumtype)}
+              {renderField('Album Status', 'albumstatus', formData.albumstatus)}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {renderField('Disc Total', 'disctotal', formData.disctotal)}
+              <div>
+                <label className="block text-sm text-neutral-400 mb-1">Compilation</label>
+                <select
+                  value={formData.comp}
+                  onChange={(e) => setFormData({ ...formData, comp: e.target.value })}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-rose-500"
+                >
+                  <option value="0">No</option>
+                  <option value="1">Yes</option>
+                </select>
+              </div>
+            </div>
+          </form>
+        </ScrollArea>
+
+        <div className="flex gap-2 pt-4 border-t border-neutral-800">
+          <button
+            onClick={handleSubmit}
+            className="flex-1 px-4 py-2 bg-rose-500 text-white rounded hover:bg-rose-600 text-sm font-medium"
+          >
+            Save Changes
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 px-4 py-2 bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700 text-sm font-medium"
+          >
+            Cancel
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

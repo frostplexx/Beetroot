@@ -1,5 +1,6 @@
 import { useState, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export const AlbumCard = memo(function AlbumCard({ album, index = 0 }) {
   const navigate = useNavigate()
@@ -39,9 +40,9 @@ export const AlbumCard = memo(function AlbumCard({ album, index = 0 }) {
           </div>
         )}
 
-        {/* Simple loading placeholder - no animation */}
+        {/* Loading placeholder */}
         {!imageLoaded && !imageError && (
-          <div className="absolute inset-0 bg-neutral-800" />
+          <Skeleton className="absolute inset-0" />
         )}
       </div>
 

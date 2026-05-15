@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
 import { StatCard } from '../components/common/StatCard'
 import { formatDurationLong } from '../utils/formatters'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 export function SystemPage() {
   const [activeTab, setActiveTab] = useState('stats')
@@ -257,58 +262,29 @@ export function SystemPage() {
 
   return (
     <div className="mx-auto px-3 py-4 md:py-8 w-full max-w-[1800px]">
-        {/* Tab Navigation */}
-        <div className="mb-6 border-b border-neutral-800">
-          <div className="flex gap-1">
-            <button
-              onClick={() => setActiveTab('stats')}
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'stats'
-                  ? 'border-rose-500 text-rose-400'
-                  : 'border-transparent text-neutral-400 hover:text-neutral-200'
-              }`}
-            >
-              <i className="fa-solid fa-chart-simple mr-2"></i>
-              Statistics
-            </button>
-            <button
-              onClick={() => setActiveTab('health')}
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'health'
-                  ? 'border-rose-500 text-rose-400'
-                  : 'border-transparent text-neutral-400 hover:text-neutral-200'
-              }`}
-            >
-              <i className="fa-solid fa-heart-pulse mr-2"></i>
-              System Health
-            </button>
-            <button
-              onClick={() => setActiveTab('logs')}
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'logs'
-                  ? 'border-rose-500 text-rose-400'
-                  : 'border-transparent text-neutral-400 hover:text-neutral-200'
-              }`}
-            >
-              <i className="fa-solid fa-file-lines mr-2"></i>
-              Logs
-            </button>
-            <button
-              onClick={() => setActiveTab('audit')}
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'audit'
-                  ? 'border-rose-500 text-rose-400'
-                  : 'border-transparent text-neutral-400 hover:text-neutral-200'
-              }`}
-            >
-              <i className="fa-solid fa-clipboard-list mr-2"></i>
-              Audit
-            </button>
-          </div>
-        </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-6">
+          <TabsTrigger value="stats">
+            <i className="fa-solid fa-chart-simple mr-2"></i>
+            Statistics
+          </TabsTrigger>
+          <TabsTrigger value="health">
+            <i className="fa-solid fa-heart-pulse mr-2"></i>
+            System Health
+          </TabsTrigger>
+          <TabsTrigger value="logs">
+            <i className="fa-solid fa-file-lines mr-2"></i>
+            Logs
+          </TabsTrigger>
+          <TabsTrigger value="audit">
+            <i className="fa-solid fa-clipboard-list mr-2"></i>
+            Audit
+          </TabsTrigger>
+        </TabsList>
 
         {/* Stats Tab */}
-        {activeTab === 'stats' && stats && (
+        <TabsContent value="stats">
+          {stats && (
           <div>
             <h2 className="text-lg font-medium text-neutral-200 mb-4">Library Statistics</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
@@ -321,10 +297,11 @@ export function SystemPage() {
               />
             </div>
           </div>
-        )}
+          )}
+        </TabsContent>
 
         {/* System Health Tab */}
-        {activeTab === 'health' && (
+        <TabsContent value="health">
           <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-medium text-neutral-200">System Health</h2>
@@ -390,10 +367,10 @@ export function SystemPage() {
               </div>
             </div>
           </div>
-        )}
+        </TabsContent>
 
         {/* Logs Tab */}
-        {activeTab === 'logs' && (
+        <TabsContent value="logs">
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -494,10 +471,10 @@ export function SystemPage() {
               </div>
             </div>
           </div>
-        )}
+        </TabsContent>
 
         {/* Audit Tab */}
-        {activeTab === 'audit' && (
+        <TabsContent value="audit">
           <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-medium text-neutral-200">Audit Log</h2>
@@ -653,7 +630,8 @@ export function SystemPage() {
               </div>
             )}
           </div>
-        )}
-      </div>
+        </TabsContent>
+      </Tabs>
+    </div>
   )
 }

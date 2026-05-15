@@ -5,6 +5,8 @@ import { MissingArtTool } from '../components/tools/MissingArtTool'
 import { FetchLyricsTool } from '../components/tools/FetchLyricsTool'
 import { ReplayGainTool } from '../components/tools/ReplayGainTool'
 import { OrphanedFilesTool } from '../components/tools/OrphanedFilesTool'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export function ToolsPage() {
   return (
@@ -90,8 +92,14 @@ function ToolsGallery() {
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="text-center py-12">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-solid border-rose-500 border-r-transparent"></div>
+        <div className="mb-8">
+          <Skeleton className="h-8 w-32 mb-2" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-48 rounded-lg" />
+          ))}
         </div>
       </div>
     )
@@ -123,9 +131,9 @@ function ToolsGallery() {
                 <div className="flex items-start justify-between mb-4">
                   <i className={`fa-solid ${tool.icon} text-3xl ${available ? 'text-rose-500' : 'text-neutral-700'}`}></i>
                   {!available && (
-                    <span className="px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-500">
+                    <Badge variant="outline" className="text-neutral-500 border-neutral-700">
                       Plugin Required
-                    </span>
+                    </Badge>
                   )}
                 </div>
                 <h3 className="text-lg font-medium text-neutral-200 mb-2">{tool.name}</h3>

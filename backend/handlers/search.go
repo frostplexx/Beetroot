@@ -39,9 +39,13 @@ func SearchAlbumsHandler(db *beets.DB) http.HandlerFunc {
 		// Use beets query for full query syntax support
 		albums, err := db.QueryAlbums(ctx, query)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			// Return a more user-friendly error message
+			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{
-				"error": err.Error(),
+				"error":   "Invalid search query",
+				"details": err.Error(),
+				"query":   query,
+				"hint":    "Try using: album:name, albumartist:name, year:2020, genre:rock",
 			})
 			return
 		}
@@ -84,9 +88,13 @@ func SearchItemsHandler(db *beets.DB) http.HandlerFunc {
 		// Use beets query for full query syntax support
 		items, err := db.QueryItems(ctx, query)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			// Return a more user-friendly error message
+			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{
-				"error": err.Error(),
+				"error":   "Invalid search query",
+				"details": err.Error(),
+				"query":   query,
+				"hint":    "Try using: title:keyword, artist:name, album:name, year:2020, genre:rock",
 			})
 			return
 		}

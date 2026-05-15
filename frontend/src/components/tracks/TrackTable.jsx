@@ -1,8 +1,36 @@
 import { formatDuration } from '../../utils/formatters'
 import { usePreview } from '../../contexts/PreviewContext'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
-export function TrackTable({ items, currentPage, itemsPerPage }) {
+export function TrackTable({ items, currentPage, itemsPerPage, sortField, sortDirection, onSort }) {
   const { previewTrack, setPreviewTrack } = usePreview()
+
+  const handleSort = (field) => {
+    if (onSort) {
+      onSort(field)
+    }
+  }
+
+  const SortableHead = ({ field, children, className }) => (
+    <TableHead
+      className={`${className} ${onSort ? 'cursor-pointer select-none hover:text-rose-400 transition-colors' : ''}`}
+      onClick={() => onSort && handleSort(field)}
+    >
+      <div className="flex items-center gap-2">
+        {children}
+        {onSort && (
+          <i className={`fa-solid ${sortField === field ? (sortDirection === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down') : 'fa-sort'} text-xs ${sortField === field ? 'text-rose-500' : 'text-neutral-700 opacity-0 group-hover:opacity-50'}`}></i>
+        )}
+      </div>
+    </TableHead>
+  )
 
   return (
     <div>
@@ -12,71 +40,61 @@ export function TrackTable({ items, currentPage, itemsPerPage }) {
         </div>
       ) : (
         <div className="border border-neutral-900 rounded overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-neutral-900/50 border-b border-neutral-900">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                    #
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                    Title
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                    Artist
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                    Album
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                    Year
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                    Duration
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                    Format
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-900">
-                {items.map((item, index) => (
-                  <tr
-                    key={item.id}
-                    onClick={() => setPreviewTrack(item)}
-                    className={`hover:bg-neutral-900/30 cursor-pointer group transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] opacity-0 animate-fade-in ${
-                      previewTrack?.id === item.id ? 'bg-rose-500/5 border-l-2 border-l-rose-500' : ''
-                    }`}
-                    style={{
-                      animationDelay: `${index * 20}ms`,
-                      animationFillMode: 'forwards'
-                    }}
-                  >
-                    <td className="px-4 py-3 text-sm font-mono relative">
-                      <i className="fa-solid fa-play text-xs opacity-0 group-hover:opacity-100 transition-all duration-200 absolute left-4 text-rose-500 transform scale-75 group-hover:scale-100"></i>
-                      <span className={`group-hover:opacity-0 transition-opacity duration-200 ${previewTrack?.id === item.id ? 'text-rose-500' : 'text-neutral-500'}`}>
-                        {currentPage * itemsPerPage + index + 1}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-neutral-200 group-hover:text-rose-400 transition-all duration-200 group-hover:translate-x-1">{item.title}</td>
-                    <td className="px-4 py-3 text-sm text-neutral-400 transition-colors duration-200 group-hover:text-neutral-300">{item.artist}</td>
-                    <td className="px-4 py-3 text-sm text-neutral-500 transition-colors duration-200 group-hover:text-neutral-400">{item.album}</td>
-                    <td className="px-4 py-3 text-sm text-neutral-500 transition-colors duration-200 group-hover:text-neutral-400">
-                      {item.year && item.year.Valid ? item.year.Int64 : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-neutral-500 font-mono transition-colors duration-200 group-hover:text-neutral-400">
-                      {item.length ? formatDuration(item.length) : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <span className="text-neutral-500 font-mono text-xs transition-all duration-200 group-hover:text-neutral-400 group-hover:font-semibold">
-                        {item.format?.toUpperCase() || 'N/A'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b border-neutral-800">
+                <TableHead className="w-16 text-neutral-500">#</TableHead>
+                <SortableHead field="title" className="text-neutral-500">Title</SortableHead>
+                <SortableHead field="artist" className="text-neutral-500">Artist</SortableHead>
+                <SortableHead field="album" className="text-neutral-500">Album</SortableHead>
+                <SortableHead field="year" className="w-24 text-neutral-500">Year</SortableHead>
+                <SortableHead field="length" className="w-28 text-neutral-500">Duration</SortableHead>
+                <SortableHead field="format" className="w-28 text-neutral-500">Format</SortableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item, index) => (
+                <TableRow
+                  key={item.id}
+                  onClick={() => setPreviewTrack(item)}
+                  className={`cursor-pointer group transition-colors duration-200 opacity-0 animate-fade-in border-b border-neutral-800 hover:bg-rose-500/5 ${
+                    previewTrack?.id === item.id ? 'bg-rose-500/10' : ''
+                  }`}
+                  style={{
+                    animationDelay: `${index * 20}ms`,
+                    animationFillMode: 'forwards',
+                    boxShadow: previewTrack?.id === item.id ? 'inset 3px 0 0 0 rgb(244 63 94)' : 'none'
+                  }}
+                >
+                  <TableCell className="font-mono">
+                    <span className={previewTrack?.id === item.id ? 'text-rose-500' : 'text-neutral-500'}>
+                      {currentPage * itemsPerPage + index + 1}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-neutral-200 group-hover:text-rose-400 transition-colors">
+                    {item.title}
+                  </TableCell>
+                  <TableCell className="text-neutral-400 transition-colors group-hover:text-neutral-300">
+                    {item.artist}
+                  </TableCell>
+                  <TableCell className="text-neutral-500 transition-colors group-hover:text-neutral-400">
+                    {item.album}
+                  </TableCell>
+                  <TableCell className="text-neutral-500 transition-colors group-hover:text-neutral-400">
+                    {item.year && item.year.Valid ? item.year.Int64 : '-'}
+                  </TableCell>
+                  <TableCell className="text-neutral-500 font-mono transition-colors group-hover:text-neutral-400">
+                    {item.length ? formatDuration(item.length) : '-'}
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-neutral-500 font-mono text-xs transition-colors group-hover:text-neutral-400">
+                      {item.format?.toUpperCase() || 'N/A'}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>

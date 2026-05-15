@@ -6,6 +6,8 @@ import { Pagination } from '../components/common/Pagination'
 import { AlbumGrid } from '../components/albums/AlbumGrid'
 import { TrackTable } from '../components/tracks/TrackTable'
 import { PreviewPanel } from '../components/tracks/PreviewPanel'
+import { ResizablePreviewPanel } from '../components/common/ResizablePreviewPanel'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export function Dashboard() {
   const { previewTrack, setPreviewTrack } = usePreview()
@@ -34,6 +36,10 @@ export function Dashboard() {
   const [itemsTotal, setItemsTotal] = useState(0)
   const albumsPerPage = 50
   const itemsPerPage = 100
+
+  // Track sorting state
+  const [sortField, setSortField] = useState('title')
+  const [sortDirection, setSortDirection] = useState('asc')
 
   // Persist active tab to localStorage and scroll to top when changing tabs
   useEffect(() => {
@@ -147,12 +153,67 @@ export function Dashboard() {
       const res = await fetch(`/api/beets/items?limit=${itemsPerPage}&offset=${offset}`)
       if (!res.ok) throw new Error(`Items: ${res.status} ${res.statusText}`)
       const data = await res.json()
-      setItems(data || [])
+      setItems(sortItems(data || [], sortField, sortDirection))
       setLoading(false)
     } catch (err) {
       setError(err.message)
       setLoading(false)
     }
+  }
+
+  const sortItems = (itemsToSort, field, direction) => {
+    const sorted = [...itemsToSort].sort((a, b) => {
+      let aVal, bVal
+
+      // Handle special cases for nullable fields
+      switch (field) {
+        case 'title':
+          aVal = a.title || ''
+          bVal = b.title || ''
+          break
+        case 'artist':
+          aVal = a.artist || ''
+          bVal = b.artist || ''
+          break
+        case 'album':
+          aVal = a.album || ''
+          bVal = b.album || ''
+          break
+        case 'year':
+          aVal = a.year?.Valid ? a.year.Int64 : 0
+          bVal = b.year?.Valid ? b.year.Int64 : 0
+          break
+        case 'length':
+          aVal = a.length || 0
+          bVal = b.length || 0
+          break
+        case 'format':
+          aVal = a.format || ''
+          bVal = b.format || ''
+          break
+        default:
+          return 0
+      }
+
+      // String comparison
+      if (typeof aVal === 'string') {
+        return direction === 'asc'
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal)
+      }
+
+      // Number comparison
+      return direction === 'asc' ? aVal - bVal : bVal - aVal
+    })
+
+    return sorted
+  }
+
+  const handleSort = (field) => {
+    const newDirection = sortField === field && sortDirection === 'asc' ? 'desc' : 'asc'
+    setSortField(field)
+    setSortDirection(newDirection)
+    setItems(sortItems(items, field, newDirection))
   }
 
   const loadAllData = () => {
@@ -240,36 +301,18 @@ export function Dashboard() {
 
       <div className="mx-auto px-3 py-4 md:py-8 w-full max-w-[1800px] lg:max-w-[calc(min(1800px,100vw-512px))]">
         <div className="w-full">
-          <div>
-            {/* Control Bar with Segmented Control + Pagination */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            {/* Control Bar with Tabs + Pagination */}
             <div className="flex items-center justify-between mb-6">
-              {/* Left: Segmented Control */}
+              {/* Left: Tabs */}
               <div className="flex items-center gap-4">
-                <div className="inline-flex bg-neutral-900/50 border border-neutral-800 rounded-lg p-0.5">
-                  <button
-                    onClick={() => setActiveTab('albums')}
-                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                      activeTab === 'albums'
-                        ? 'bg-neutral-800 text-neutral-100'
-                        : 'text-neutral-500 hover:text-neutral-300'
-                    }`}
-                  >
-                    Albums
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('tracks')}
-                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                      activeTab === 'tracks'
-                        ? 'bg-neutral-800 text-neutral-100'
-                        : 'text-neutral-500 hover:text-neutral-300'
-                    }`}
-                  >
-                    Tracks
-                  </button>
-                </div>
+                <TabsList>
+                  <TabsTrigger value="albums">Albums</TabsTrigger>
+                  <TabsTrigger value="tracks">Tracks</TabsTrigger>
+                </TabsList>
 
                 {/* Count */}
-                <span className="text-sm text-neutral-500">
+                <span className="text-sm text-muted-foreground">
                   {activeTab === 'albums'
                     ? `${albumsTotal.toLocaleString()} albums`
                     : `${itemsTotal.toLocaleString()} tracks`
@@ -296,18 +339,21 @@ export function Dashboard() {
               )}
             </div>
 
-            {activeTab === 'albums' && (
+            <TabsContent value="albums">
               <AlbumGrid albums={albums} />
-            )}
+            </TabsContent>
 
-            {activeTab === 'tracks' && (
+            <TabsContent value="tracks">
               <TrackTable
                 items={items}
                 currentPage={itemsPage}
                 itemsPerPage={itemsPerPage}
+                sortField={sortField}
+                sortDirection={sortDirection}
+                onSort={handleSort}
               />
-            )}
-          </div>
+            </TabsContent>
+          </Tabs>
 
           {/* Mobile backdrop overlay */}
           {previewTrack && (
@@ -317,8 +363,11 @@ export function Dashboard() {
             />
           )}
 
-          {/* Mobile: bottom sheet, Desktop: right sidebar */}
-          <div className={`fixed bottom-0 left-0 right-0 max-h-[85vh] rounded-t-xl border-t border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-y-auto transition-transform duration-300 ${previewTrack ? 'translate-y-0' : 'translate-y-full'} lg:top-32 lg:bottom-auto lg:right-0 lg:left-auto lg:w-[480px] lg:h-[calc(100vh-8rem)] lg:rounded-none lg:border-l lg:border-t-0 ${previewTrack ? 'lg:translate-y-0 lg:translate-x-0' : 'lg:translate-y-0 lg:translate-x-full'}`}>
+          {/* Mobile: bottom sheet, Desktop: resizable right sidebar */}
+          <ResizablePreviewPanel
+            isOpen={!!previewTrack}
+            className={`fixed bottom-0 left-0 right-0 h-[85vh] rounded-t-xl border-t border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-hidden transition-transform duration-300 ${previewTrack ? 'translate-y-0' : 'translate-y-full'} lg:top-32 lg:bottom-0 lg:right-0 lg:left-auto lg:h-auto lg:rounded-none lg:border-l lg:border-t-0 ${previewTrack ? 'lg:translate-y-0 lg:translate-x-0' : 'lg:translate-y-0 lg:translate-x-full'}`}
+          >
             {previewTrack && (
               <PreviewPanel
                 key={previewTrack.id}
@@ -327,7 +376,7 @@ export function Dashboard() {
                 setPreviewTrack={setPreviewTrack}
               />
             )}
-          </div>
+          </ResizablePreviewPanel>
         </div>
       </div>
     </>

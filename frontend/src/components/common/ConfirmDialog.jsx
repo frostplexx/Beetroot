@@ -1,38 +1,44 @@
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
+
 export function ConfirmDialog({ isOpen, onClose, title, message, buttons }) {
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100]" onClick={onClose}>
-      <div
-        className="bg-neutral-900 border border-neutral-800 rounded-lg p-6 max-w-md w-full mx-4 animate-slide-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-xl font-medium text-neutral-200 mb-3">{title}</h2>
-        <p className="text-sm text-neutral-400 mb-6 whitespace-pre-line leading-relaxed">
-          {message}
-        </p>
-
-        <div className="flex gap-2">
+    <AlertDialog open={isOpen} onOpenChange={onClose}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription className="whitespace-pre-line">
+            {message}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
           {buttons.map((button, index) => (
-            <button
+            <Button
               key={index}
               onClick={() => {
                 button.onClick()
                 onClose()
               }}
-              className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
+              variant={
                 button.variant === 'danger'
-                  ? 'bg-red-500 text-white hover:bg-red-600'
+                  ? 'destructive'
                   : button.variant === 'primary'
-                  ? 'bg-rose-500 text-white hover:bg-rose-600'
-                  : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
-              }`}
+                  ? 'default'
+                  : 'secondary'
+              }
             >
               {button.label}
-            </button>
+            </Button>
           ))}
-        </div>
-      </div>
-    </div>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
