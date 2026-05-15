@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"backend/beets"
@@ -69,6 +71,15 @@ func UploadHandler() http.HandlerFunc {
 				return
 			}
 			defer file.Close()
+
+			// Validate FLAC format
+			if !isValidFLACFile(file) {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{
+					"error": fmt.Sprintf("Invalid FLAC file: %s. File may be corrupted or incorrectly named.", sanitizedName),
+				})
+				return
+			}
 
 			// Create destination file with sanitized name
 			destPath := filepath.Join(uploadDir, sanitizedName)
@@ -142,9 +153,14 @@ func ImportHandler() http.HandlerFunc {
 		defer cancel()
 
 		// Run beet import
-		if err := beets.ImportPath(ctx, req.Path); err != nil {
+		output, err := beets.ImportPath(ctx, req.Path)
+		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			errorMessage := parseBeetErrorMessage(output, err)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":   errorMessage,
+				"details": output,
+			})
 			return
 		}
 
@@ -159,4 +175,60 @@ func ImportHandler() http.HandlerFunc {
 
 		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	}
+}
+
+// parseBeetErrorMessage extracts meaningful errors from beets output
+func parseBeetErrorMessage(output string, err error) string {
+	if output == "" {
+		return err.Error()
+	}
+
+	// Common beets error patterns
+	patterns := map[string]string{
+		"No such file or directory":     "File not found - files may have been moved or deleted",
+		"could not read file":            "Invalid or corrupted audio file",
+		"FFmpeg error":                   "Audio decoding failed - file may be corrupted",
+		"MusicBrainz API error":          "Unable to reach MusicBrainz - check internet connection",
+		"no matches found":               "Could not find metadata match for this album",
+		"unmatched tracks":               "Some tracks could not be matched to album",
+		"Permission denied":              "Permission error accessing files",
+		"disk full":                      "Not enough disk space",
+	}
+
+	lowerOutput := strings.ToLower(output)
+	for pattern, message := range patterns {
+		if strings.Contains(lowerOutput, strings.ToLower(pattern)) {
+			return message
+		}
+	}
+
+	// Extract first meaningful line from output
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !strings.HasPrefix(trimmed, "beet:") {
+			// Truncate if too long
+			if len(trimmed) > 200 {
+				return trimmed[:200] + "..."
+			}
+			return trimmed
+		}
+	}
+
+	return fmt.Sprintf("Import failed: %v", err)
+}
+
+// isValidFLACFile checks if file has valid FLAC magic bytes (0x664C6143 = "fLaC")
+func isValidFLACFile(file multipart.File) bool {
+	magicBytes := make([]byte, 4)
+	n, err := file.Read(magicBytes)
+	if err != nil || n != 4 {
+		return false
+	}
+
+	// Reset file pointer for subsequent reads
+	file.Seek(0, 0)
+
+	return magicBytes[0] == 0x66 && magicBytes[1] == 0x4C &&
+		magicBytes[2] == 0x61 && magicBytes[3] == 0x43
 }

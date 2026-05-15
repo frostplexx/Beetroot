@@ -1256,37 +1256,39 @@ func DeleteArtist(ctx context.Context, artistName string, deleteFiles bool) erro
 }
 
 // ImportPath imports music files from a given path
-func ImportPath(ctx context.Context, path string) error {
+// Returns the beets output and any error that occurred
+func ImportPath(ctx context.Context, path string) (string, error) {
 	// Validate path to prevent command injection
 	if strings.Contains(path, ";") || strings.Contains(path, "|") ||
 		strings.Contains(path, "&") || strings.Contains(path, "$") {
-		return fmt.Errorf("invalid path: contains dangerous characters")
+		return "", fmt.Errorf("invalid path: contains dangerous characters")
 	}
 
 	// Ensure path exists and is a directory
 	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("path does not exist: %w", err)
+		return "", fmt.Errorf("path does not exist: %w", err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("path is not a directory")
+		return "", fmt.Errorf("path is not a directory")
 	}
 
 	log.Info().Str("path", path).Msg("Importing music from path")
 
-	// Use beet -v import -q --group-albums
+	// Use beet -v import -q --group-albums --duplicate-action merge
 	// -v: verbose logging (global flag)
 	// import: import command
 	// -q: quiet mode (non-interactive, uses quiet_fallback from config)
 	// --group-albums: group tracks in folder into separate albums
-	output, err := ExecBeetCommandWithFlags(ctx, []string{"-v"}, "import", "-q", "--group-albums", path)
+	// --duplicate-action merge: merge new tracks into existing albums instead of replacing
+	output, err := ExecBeetCommandWithFlags(ctx, []string{"-v"}, "import", "-q", "--group-albums", "--duplicate-action", "merge", path)
 	if err != nil {
 		log.Error().Err(err).Str("output", output).Msg("Failed to import path")
-		return fmt.Errorf("error importing path: %w", err)
+		return output, fmt.Errorf("error importing path: %w", err)
 	}
 
 	log.Info().Str("output", output).Msg("Import completed successfully")
-	return nil
+	return output, nil
 }
 
 // sanitizeBeetsQuery removes dangerous characters from beets query strings

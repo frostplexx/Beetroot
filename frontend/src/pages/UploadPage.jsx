@@ -92,7 +92,9 @@ export function UploadPage() {
 
   const handleImport = async (uploadPath) => {
     setImporting(true)
-    setProgress('Importing and matching with MusicBrainz... This may take a minute or two.')
+    const fileCount = files.length
+    const estimatedMinutes = Math.max(1, Math.ceil(fileCount / 10))
+    setProgress(`Importing ${fileCount} track(s)... Matching with MusicBrainz and downloading metadata. Estimated time: ~${estimatedMinutes} minute(s).`)
 
     try {
       const response = await fetch('/api/beets/import', {
@@ -103,7 +105,11 @@ export function UploadPage() {
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || 'Import failed')
+        let errorMsg = data.error || 'Import failed'
+        if (data.details) {
+          errorMsg += '\n\nDetails:\n' + data.details
+        }
+        throw new Error(errorMsg)
       }
 
       setProgress('Import complete! Files added to your library with full metadata.')
@@ -246,9 +252,14 @@ export function UploadPage() {
           <div className="mt-6 p-4 bg-red-950/20 border border-red-900/50 rounded-lg">
             <div className="flex items-start gap-3">
               <i className="fa-solid fa-exclamation-triangle text-red-500 mt-0.5"></i>
-              <div>
-                <p className="text-sm text-red-400 font-medium mb-1">Error</p>
-                <p className="text-sm text-red-300">{error}</p>
+              <div className="flex-1">
+                <p className="text-sm text-red-400 font-medium mb-1">Upload Failed</p>
+                <pre className="text-sm text-red-300 whitespace-pre-wrap font-mono bg-red-950/30 p-3 rounded max-h-64 overflow-y-auto">
+                  {error}
+                </pre>
+                <p className="text-xs text-neutral-400 mt-2">
+                  Tip: Check that files are valid FLAC audio and you have internet connectivity.
+                </p>
               </div>
             </div>
           </div>
