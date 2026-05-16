@@ -4,11 +4,11 @@ import { useQuery } from '@tanstack/react-query'
 import { usePreview } from '../contexts/PreviewContext'
 import { SearchBar } from '../components/common/SearchBar'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
-import { Pagination } from '../components/common/Pagination'
+import { PaginationControls } from '../components/common/PaginationControls'
 import { AlbumGrid } from '../components/albums/AlbumGrid'
 import { TrackTable } from '../components/tracks/TrackTable'
 import { PreviewPanel } from '../components/tracks/PreviewPanel'
-import { ResizablePreviewPanel } from '../components/common/ResizablePreviewPanel'
+import { Drawer, DrawerContent } from '@/components/ui/drawer'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export function Dashboard() {
@@ -345,7 +345,7 @@ export function Dashboard() {
 
               {/* Right: Pagination (hidden when searching) */}
               {!isSearching && activeTab === 'albums' && (
-                <Pagination
+                <PaginationControls
                   currentPage={albumsPage}
                   totalItems={albumsTotal}
                   itemsPerPage={albumsPerPage}
@@ -353,7 +353,7 @@ export function Dashboard() {
                 />
               )}
               {!isSearching && activeTab === 'tracks' && (
-                <Pagination
+                <PaginationControls
                   currentPage={itemsPage}
                   totalItems={itemsTotal}
                   itemsPerPage={itemsPerPage}
@@ -388,30 +388,43 @@ export function Dashboard() {
                 />
               )}
             </TabsContent>
+
+            {/* Bottom Pagination */}
+            {!isSearching && (albums.length > 0 || sortedItems.length > 0) && (
+              <div className="mt-8 flex justify-center">
+                {activeTab === 'albums' && (
+                  <PaginationControls
+                    currentPage={albumsPage}
+                    totalItems={albumsTotal}
+                    itemsPerPage={albumsPerPage}
+                    onPageChange={setAlbumsPage}
+                  />
+                )}
+                {activeTab === 'tracks' && (
+                  <PaginationControls
+                    currentPage={itemsPage}
+                    totalItems={itemsTotal}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={setItemsPage}
+                  />
+                )}
+              </div>
+            )}
           </Tabs>
 
-          {/* Mobile backdrop overlay */}
-          {previewTrack && (
-            <div
-              className="fixed inset-0 bg-black/60 z-30 lg:hidden transition-opacity duration-300"
-              onClick={() => setPreviewTrack(null)}
-            />
-          )}
-
-          {/* Mobile: bottom sheet, Desktop: resizable right sidebar */}
-          <ResizablePreviewPanel
-            isOpen={!!previewTrack}
-            className={`fixed bottom-0 left-0 right-0 h-[85vh] rounded-t-xl border-t border-neutral-800 bg-neutral-900 backdrop-blur-sm z-40 overflow-hidden transition-transform duration-300 ${previewTrack ? 'translate-y-0' : 'translate-y-full'} lg:top-32 lg:bottom-0 lg:right-0 lg:left-auto lg:h-auto lg:rounded-none lg:border-l lg:border-t-0 ${previewTrack ? 'lg:translate-y-0 lg:translate-x-0' : 'lg:translate-y-0 lg:translate-x-full'}`}
-          >
-            {previewTrack && (
-              <PreviewPanel
-                key={previewTrack.id}
-                track={previewTrack}
-                onClose={() => setPreviewTrack(null)}
-                setPreviewTrack={setPreviewTrack}
-              />
-            )}
-          </ResizablePreviewPanel>
+          {/* Song Info Drawer */}
+          <Drawer open={!!previewTrack} onOpenChange={(open) => !open && setPreviewTrack(null)}>
+            <DrawerContent className="max-h-[90vh] overflow-auto">
+              {previewTrack && (
+                <PreviewPanel
+                  key={previewTrack.id}
+                  track={previewTrack}
+                  onClose={() => setPreviewTrack(null)}
+                  setPreviewTrack={setPreviewTrack}
+                />
+              )}
+            </DrawerContent>
+          </Drawer>
         </div>
       </div>
     </>
