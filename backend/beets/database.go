@@ -1191,7 +1191,10 @@ func DeleteAlbum(ctx context.Context, albumID int64, deleteFiles bool) error {
 	query := fmt.Sprintf("id:%d", albumID)
 	log.Info().Int64("album_id", albumID).Bool("delete_files", deleteFiles).Msg("Deleting album")
 
-	args := []string{"remove", "-a"}
+	// -a: album mode (delete entire album)
+	// -f: force (skip confirmation)
+	// -d: delete files from disk (optional)
+	args := []string{"remove", "-a", "-f"}
 	if deleteFiles {
 		args = append(args, "-d")
 	}
@@ -1212,7 +1215,9 @@ func DeleteItem(ctx context.Context, itemID int64, deleteFiles bool) error {
 	query := fmt.Sprintf("id:%d", itemID)
 	log.Info().Int64("item_id", itemID).Bool("delete_files", deleteFiles).Msg("Deleting item")
 
-	args := []string{"remove"}
+	// -f: force (skip confirmation)
+	// -d: delete files from disk (optional)
+	args := []string{"remove", "-f"}
 	if deleteFiles {
 		args = append(args, "-d")
 	}
@@ -1239,7 +1244,10 @@ func DeleteArtist(ctx context.Context, artistName string, deleteFiles bool) erro
 	query := fmt.Sprintf("albumartist:%s", sanitized)
 	log.Info().Str("artist", artistName).Bool("delete_files", deleteFiles).Msg("Deleting artist")
 
-	args := []string{"remove", "-a"}
+	// -a: album mode (delete entire albums)
+	// -f: force (skip confirmation)
+	// -d: delete files from disk (optional)
+	args := []string{"remove", "-a", "-f"}
 	if deleteFiles {
 		args = append(args, "-d")
 	}
@@ -1264,24 +1272,31 @@ func ImportPath(ctx context.Context, path string) (string, error) {
 		return "", fmt.Errorf("invalid path: contains dangerous characters")
 	}
 
-	// Ensure path exists and is a directory
+	// Ensure path exists (can be file or directory)
 	info, err := os.Stat(path)
 	if err != nil {
 		return "", fmt.Errorf("path does not exist: %w", err)
 	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("path is not a directory")
+
+	log.Info().Str("path", path).Bool("is_dir", info.IsDir()).Msg("Importing music from path")
+
+	// Build import command based on whether it's a file or directory
+	// For files: beet import -s <file>  (singleton mode, no grouping)
+	// For dirs:  beet import -q --group-albums --duplicate-action merge <dir>
+	var output string
+	if info.IsDir() {
+		// Directory import with album grouping
+		// -q: quiet mode (non-interactive, uses quiet_fallback from config)
+		// --group-albums: group tracks in folder into separate albums
+		// --duplicate-action merge: merge new tracks into existing albums instead of replacing
+		output, err = ExecBeetCommandWithFlags(ctx, []string{"-v"}, "import", "-q", "--group-albums", "--duplicate-action", "merge", path)
+	} else {
+		// Single file import
+		// -s: singleton mode (import as individual tracks, not albums)
+		// -q: quiet mode (non-interactive)
+		output, err = ExecBeetCommandWithFlags(ctx, []string{"-v"}, "import", "-s", "-q", path)
 	}
 
-	log.Info().Str("path", path).Msg("Importing music from path")
-
-	// Use beet -v import -q --group-albums --duplicate-action merge
-	// -v: verbose logging (global flag)
-	// import: import command
-	// -q: quiet mode (non-interactive, uses quiet_fallback from config)
-	// --group-albums: group tracks in folder into separate albums
-	// --duplicate-action merge: merge new tracks into existing albums instead of replacing
-	output, err := ExecBeetCommandWithFlags(ctx, []string{"-v"}, "import", "-q", "--group-albums", "--duplicate-action", "merge", path)
 	if err != nil {
 		log.Error().Err(err).Str("output", output).Msg("Failed to import path")
 		return output, fmt.Errorf("error importing path: %w", err)
