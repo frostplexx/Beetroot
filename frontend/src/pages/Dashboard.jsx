@@ -10,6 +10,8 @@ import { TrackTable } from '../components/tracks/TrackTable'
 import { PreviewPanel } from '../components/tracks/PreviewPanel'
 import { Drawer, DrawerContent } from '@/components/ui/drawer'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ConfirmDialog } from '../components/common/ConfirmDialog'
+import { toast } from 'sonner'
 
 export function Dashboard() {
   const { previewTrack, setPreviewTrack } = usePreview()
@@ -38,6 +40,7 @@ export function Dashboard() {
 
   // Track sorting state
   const [sortField, setSortField] = useState('title')
+  const [deleteDialog, setDeleteDialog] = useState({ isOpen: false })
   const [sortDirection, setSortDirection] = useState('asc')
 
   // Determine if we're searching
@@ -304,6 +307,58 @@ export function Dashboard() {
     )
   }
 
+  const handleDeleteTrack = (track) => {
+    // Close preview panel first
+    setPreviewTrack(null)
+
+    // Show delete dialog
+    setDeleteDialog({
+      isOpen: true,
+      title: 'Delete Track',
+      message: `Delete "${track.title}" by ${track.artist}?\n\nChoose how you want to delete this track:`,
+      buttons: [
+        {
+          label: 'Cancel',
+          variant: 'secondary',
+          onClick: () => {}
+        },
+        {
+          label: 'Library Only',
+          variant: 'primary',
+          onClick: () => performDeleteTrack(track.id, false)
+        },
+        {
+          label: 'Delete File',
+          variant: 'danger',
+          onClick: () => performDeleteTrack(track.id, true)
+        }
+      ]
+    })
+  }
+
+  const performDeleteTrack = async (trackId, deleteFiles) => {
+    try {
+      const response = await fetch('/api/beets/delete/item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item_id: trackId,
+          delete_files: deleteFiles
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to delete track')
+
+      toast.success('Track deleted successfully!')
+      // Refetch the data
+      setTimeout(() => {
+        itemsQuery.refetch()
+      }, 500)
+    } catch (err) {
+      toast.error('Error: ' + err.message)
+    }
+  }
+
   return (
     <>
       <div className="w-full px-6 py-6 md:py-8">
@@ -424,10 +479,19 @@ export function Dashboard() {
                   track={previewTrack}
                   onClose={() => setPreviewTrack(null)}
                   setPreviewTrack={setPreviewTrack}
+                  onDeleteTrack={handleDeleteTrack}
                 />
               )}
             </DrawerContent>
           </Drawer>
+
+          <ConfirmDialog
+            isOpen={deleteDialog.isOpen}
+            onClose={() => setDeleteDialog({ isOpen: false })}
+            title={deleteDialog.title}
+            message={deleteDialog.message}
+            buttons={deleteDialog.buttons || []}
+          />
         </div>
       </div>
     </>

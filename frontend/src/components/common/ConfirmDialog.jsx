@@ -11,14 +11,14 @@ import { Button } from '@/components/ui/button'
 export function ConfirmDialog({ isOpen, onClose, title, message, buttons }) {
   return (
     <AlertDialog open={isOpen} onOpenChange={onClose}>
-      <AlertDialogContent>
+      <AlertDialogContent className="dark bg-neutral-900 border border-neutral-800 text-neutral-100 max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription className="whitespace-pre-line">
+          <AlertDialogTitle className="text-neutral-100 text-lg">{title}</AlertDialogTitle>
+          <AlertDialogDescription className="whitespace-pre-line text-neutral-400 text-sm">
             {message}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="border-neutral-800 bg-neutral-950/50">
           {buttons.map((button, index) => (
             <Button
               key={index}

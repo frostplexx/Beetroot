@@ -213,6 +213,55 @@ export function AlbumDetailPage() {
     }
   }
 
+  const handleDeleteTrack = (track) => {
+    // Close preview panel first
+    setPreviewTrack(null)
+
+    // Show delete dialog
+    setDeleteDialog({
+      isOpen: true,
+      title: 'Delete Track',
+      message: `Delete "${track.title}" by ${track.artist}?\n\nChoose how you want to delete this track:`,
+      buttons: [
+        {
+          label: 'Cancel',
+          variant: 'secondary',
+          onClick: () => {}
+        },
+        {
+          label: 'Library Only',
+          variant: 'primary',
+          onClick: () => performDeleteTrack(track.id, false)
+        },
+        {
+          label: 'Delete File',
+          variant: 'danger',
+          onClick: () => performDeleteTrack(track.id, true)
+        }
+      ]
+    })
+  }
+
+  const performDeleteTrack = async (trackId, deleteFiles) => {
+    try {
+      const response = await fetch('/api/beets/delete/item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item_id: trackId,
+          delete_files: deleteFiles
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to delete track')
+
+      toast.success('Track deleted successfully!')
+      setTimeout(() => loadAlbumData(), 1000)
+    } catch (err) {
+      toast.error('Error: ' + err.message)
+    }
+  }
+
   const extractDominantColor = (imgElement) => {
     try {
       const canvas = document.createElement('canvas')
@@ -596,6 +645,7 @@ export function AlbumDetailPage() {
                 track={previewTrack}
                 onClose={() => setPreviewTrack(null)}
                 setPreviewTrack={setPreviewTrack}
+                onDeleteTrack={handleDeleteTrack}
               />
             )}
           </ResizablePreviewPanel>

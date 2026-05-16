@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
 
-export function PreviewPanel({ track, onClose, setPreviewTrack }) {
+export function PreviewPanel({ track, onClose, setPreviewTrack, onDeleteTrack }) {
   const audioRef = useRef(null)
   const panelRef = useRef(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -168,28 +168,33 @@ export function PreviewPanel({ track, onClose, setPreviewTrack }) {
   }
 
   const handleDeleteTrack = () => {
-    setDeleteDialog({
-      isOpen: true,
-      title: 'Delete Track',
-      message: `Delete "${getDisplayTitle(track)}" by ${track.artist}?\n\nChoose how you want to delete this track:`,
-      buttons: [
-        {
-          label: 'Cancel',
-          variant: 'secondary',
-          onClick: () => {}
-        },
-        {
-          label: 'Library Only',
-          variant: 'primary',
-          onClick: () => performDeleteTrack(false)
-        },
-        {
-          label: 'Delete File',
-          variant: 'danger',
-          onClick: () => performDeleteTrack(true)
-        }
-      ]
-    })
+    if (onDeleteTrack) {
+      onDeleteTrack(track)
+    } else {
+      // Fallback if no onDeleteTrack prop (shouldn't happen)
+      setDeleteDialog({
+        isOpen: true,
+        title: 'Delete Track',
+        message: `Delete "${getDisplayTitle(track)}" by ${track.artist}?\n\nChoose how you want to delete this track:`,
+        buttons: [
+          {
+            label: 'Cancel',
+            variant: 'secondary',
+            onClick: () => {}
+          },
+          {
+            label: 'Library Only',
+            variant: 'primary',
+            onClick: () => performDeleteTrack(false)
+          },
+          {
+            label: 'Delete File',
+            variant: 'danger',
+            onClick: () => performDeleteTrack(true)
+          }
+        ]
+      })
+    }
   }
 
   const performDeleteTrack = async (deleteFiles) => {
