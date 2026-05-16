@@ -114,10 +114,10 @@ export function AlbumHeader({ album, artUrl, onColorExtracted }: AlbumHeaderProp
     }
 
     return (
-        <div className="flex flex-col md:flex-row gap-10">
+        <div className="flex flex-col md:flex-row gap-8">
             {/* Album Artwork */}
             <div
-                className="w-full md:w-96 flex-shrink-0 mx-auto md:mx-0"
+                className="w-full md:w-72 flex-shrink-0 mx-auto md:mx-0"
                 style={{ perspective: '1000px' }}
             >
                 <div
@@ -135,13 +135,13 @@ export function AlbumHeader({ album, artUrl, onColorExtracted }: AlbumHeaderProp
                         <img
                             src={artUrl}
                             alt={album.album}
-                            className="w-full aspect-square object-cover rounded-2xl shadow-2xl ring-1 ring-white/10"
+                            className="w-full aspect-square object-cover rounded-xl shadow-2xl ring-1 ring-white/10"
                             crossOrigin="anonymous"
                             style={{ pointerEvents: 'none' }}
                         />
                     ) : (
-                        <div className="w-full aspect-square bg-muted rounded-2xl flex items-center justify-center ring-1 ring-white/10">
-                            <Music className="w-24 h-24 text-muted-foreground" />
+                        <div className="w-full aspect-square bg-muted rounded-xl flex items-center justify-center ring-1 ring-white/10">
+                            <Music className="w-20 h-20 text-muted-foreground" />
                         </div>
                     )}
                 </div>
@@ -149,23 +149,23 @@ export function AlbumHeader({ album, artUrl, onColorExtracted }: AlbumHeaderProp
 
             {/* Album Info */}
             <div className="flex-1 flex flex-col justify-start">
-                <div className="space-y-6">
+                <div className="space-y-4">
                     {/* Title & Edit Button */}
-                    <div className="flex items-start gap-4">
-                        <h1 className="text-5xl md:text-6xl font-heading font-black text-white leading-none tracking-tight flex-1">
+                    <div className="flex items-start gap-3">
+                        <h1 className="text-4xl md:text-5xl font-heading font-black text-white leading-none tracking-tight flex-1">
                             {album.album}
                         </h1>
                         <button
                             type="button"
-                            className="group mt-1 p-3 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-white transition-all hover:bg-white/20 hover:scale-110 hover:border-white/30 active:scale-95"
+                            className="group mt-0.5 p-2 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20 text-white transition-all hover:bg-white/20 hover:scale-110 hover:border-white/30 active:scale-95"
                             aria-label="Edit album"
                         >
-                            <Pencil className="w-6 h-6 transition-transform group-hover:rotate-12" />
+                            <Pencil className="w-4 h-4 transition-transform group-hover:rotate-12" />
                         </button>
                     </div>
 
                     {/* Metadata */}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-lg text-white/90">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-base text-white/90">
                         <span className="font-semibold">{album.albumartist}</span>
                         <span className="text-white/40">•</span>
                         <span>{album.year}</span>
@@ -180,29 +180,29 @@ export function AlbumHeader({ album, artUrl, onColorExtracted }: AlbumHeaderProp
                     </div>
 
                     {/* Additional Info */}
-                    <div className="flex flex-wrap gap-6 text-sm">
+                    <div className="flex flex-wrap gap-4 text-sm">
                         {album.country && (
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-white/60 uppercase tracking-wider text-xs font-medium">Country</span>
-                                <span className="text-white font-semibold">{album.country}</span>
+                            <div className="flex items-baseline gap-1.5">
+                                <span className="text-white/60 uppercase tracking-wider text-[10px] font-medium">Country</span>
+                                <span className="text-white text-xs font-semibold">{album.country}</span>
                             </div>
                         )}
 
                         {album.label && (
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-white/60 uppercase tracking-wider text-xs font-medium">Label</span>
-                                <span className="text-white font-semibold">{album.label}</span>
+                            <div className="flex items-baseline gap-1.5">
+                                <span className="text-white/60 uppercase tracking-wider text-[10px] font-medium">Label</span>
+                                <span className="text-white text-xs font-semibold">{album.label}</span>
                             </div>
                         )}
                     </div>
 
                     {/* Genres */}
                     {album.genres && (
-                        <div className="flex flex-wrap gap-2 pt-2">
+                        <div className="flex flex-wrap gap-1.5 pt-1">
                             {album.genres.replaceAll("\\␀", ",").split(",").map((genre) => (
                                 <span
                                     key={genre}
-                                    className="inline-flex items-center px-3 py-1.5 rounded-full bg-white/15 backdrop-blur-sm text-sm font-medium text-white border border-white/20 transition-all hover:bg-white/25 hover:scale-105"
+                                    className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-sm text-xs font-medium text-white border border-white/20 transition-all hover:bg-white/25 hover:scale-105"
                                 >
                                     {genre.trim()}
                                 </span>

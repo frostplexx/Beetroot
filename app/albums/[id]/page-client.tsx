@@ -47,12 +47,12 @@ export function AlbumPageClient({ album, artUrl, tracks }: AlbumPageClientProps)
                 opacity: isVisible || !bgColor ? 1 : 0,
             }}
         >
-            <div className="container mx-auto py-8 px-4">
+            <div className="container mx-auto py-6 px-4">
                 <button
                     onClick={() => router.back()}
-                    className="group mb-8 px-4 py-2.5 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 text-white font-medium transition-all hover:bg-white/20 hover:scale-105 hover:border-white/30 active:scale-95 flex items-center gap-2"
+                    className="group mb-6 px-3 py-2 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20 text-white text-sm font-medium transition-all hover:bg-white/20 hover:scale-105 hover:border-white/30 active:scale-95 flex items-center gap-1.5"
                 >
-                    <ChevronLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
+                    <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
                     Back
                 </button>
 

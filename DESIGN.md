@@ -83,8 +83,8 @@ linear-gradient(
 
 **Display** (Album Titles):
 ```css
-font-size: 3rem (48px) mobile
-font-size: 3.75rem (60px) desktop
+font-size: 2.25rem (36px) mobile
+font-size: 3rem (48px) desktop
 font-weight: 900 (black)
 line-height: 1
 letter-spacing: -0.025em (tight)
@@ -98,13 +98,19 @@ font-weight: 600 (semibold)
 
 **Body** (Metadata):
 ```css
-font-size: 1.125rem (18px)
+font-size: 1rem (16px)
 font-weight: 400 (regular)
 ```
 
 **Small** (Labels):
 ```css
 font-size: 0.75rem (12px)
+font-weight: 600 (semibold)
+```
+
+**Tiny** (Label headers):
+```css
+font-size: 10px
 font-weight: 500 (medium)
 text-transform: uppercase
 letter-spacing: 0.05em (wider)
@@ -134,11 +140,12 @@ border-radius: 0.75rem - 1rem
 
 #### Primary Button (Edit, Actions)
 ```css
-padding: 0.75rem (12px)
-border-radius: 0.75rem (rounded-xl)
+padding: 0.5rem (8px)
+border-radius: 0.5rem (rounded-lg)
 background: white/10
 border: 1px solid white/20
 backdrop-filter: blur-sm
+icon-size: 1rem (16px)
 
 hover:
   background: white/20
@@ -153,14 +160,16 @@ active:
 
 #### Navigation Button (Back)
 ```css
-padding: 0.625rem 1rem
-border-radius: 0.75rem
+padding: 0.5rem 0.75rem (py-2 px-3)
+border-radius: 0.5rem (rounded-lg)
 background: white/10
 border: 1px solid white/20
 backdrop-filter: blur-sm
 display: flex
 align-items: center
-gap: 0.5rem
+gap: 0.375rem (gap-1.5)
+font-size: 0.875rem (text-sm)
+icon-size: 1rem (16px)
 
 hover:
   background: white/20
@@ -178,16 +187,20 @@ hover:
 background: white/20
 color: white
 border: 1px solid white/30
-border-radius: 0.5rem
-padding: 0.5rem 1rem
+border-radius: 0.5rem (rounded-lg)
+padding: 0.375rem 0.75rem (py-1.5 px-3)
 font-weight: 500
+font-size: 0.875rem (text-sm)
+icon-size: 0.875rem (14px)
+gap: 0.375rem (gap-1.5)
 ```
 
 **Inactive State**:
 ```css
 color: white/70
 border: 1px solid transparent
-padding: 0.5rem 1rem
+padding: 0.375rem 0.75rem (py-1.5 px-3)
+font-size: 0.875rem (text-sm)
 
 hover:
   color: white
@@ -195,15 +208,17 @@ hover:
   border-color: white/20
 ```
 
+**Container Gap**: 0.375rem (gap-1.5)
+
 ### Tags (Genres)
 
 ```css
-padding: 0.375rem 0.75rem
+padding: 0.25rem 0.625rem (py-1 px-2.5)
 border-radius: 9999px (full)
 background: white/15
 border: 1px solid white/20
 backdrop-filter: blur-sm
-font-size: 0.875rem
+font-size: 0.75rem (text-xs)
 font-weight: 500
 
 hover:
@@ -211,13 +226,13 @@ hover:
   transform: scale(1.05)
 ```
 
-**Layout**: Horizontal flex wrap with 0.5rem gap
+**Layout**: Horizontal flex wrap with 0.375rem (gap-1.5)
 
 ### Album Artwork
 
 #### Container
 ```css
-width: 24rem (384px) desktop
+width: 18rem (288px) desktop
 width: 100% mobile
 aspect-ratio: 1/1
 perspective: 1000px
@@ -225,10 +240,16 @@ perspective: 1000px
 
 #### Image
 ```css
-border-radius: 1rem (rounded-2xl)
+border-radius: 0.75rem (rounded-xl)
 box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25) (shadow-2xl)
 ring: 1px solid white/10
 object-fit: cover
+```
+
+#### Placeholder Icon
+```css
+width: 5rem (80px)
+height: 5rem (80px)
 ```
 
 #### 3D Tilt Effect
@@ -257,7 +278,7 @@ transition: 0.1s ease-out (hovering) | 0.3s ease-out (leaving)
 ### Page Container
 ```css
 container: mx-auto
-padding: 2rem 1rem (py-8 px-4)
+padding: 1.5rem 1rem (py-6 px-4)
 ```
 
 ### Album Header Layout
@@ -267,17 +288,17 @@ padding: 2rem 1rem (py-8 px-4)
 ┌─────────────────────────────────────────┐
 │  [Back Button]                          │
 │                                         │
-│  ┌──────────┐  ┌────────────────────┐  │
-│  │          │  │ Album Title  [Edit]│  │
-│  │  Album   │  │                    │  │
-│  │   Art    │  │ Artist • Year •    │  │
-│  │          │  │ X songs, Y min     │  │
-│  │          │  │                    │  │
-│  └──────────┘  │ Country: USA       │  │
-│                │ Label: Epic        │  │
-│                │                    │  │
-│                │ [Genre] [Genre]... │  │
-│                └────────────────────┘  │
+│  ┌────────┐  ┌──────────────────────┐  │
+│  │        │  │ Album Title    [Edit]│  │
+│  │ Album  │  │                      │  │
+│  │  Art   │  │ Artist • Year •      │  │
+│  │        │  │ X songs, Y min       │  │
+│  └────────┘  │                      │  │
+│              │ Country: USA         │  │
+│              │ Label: Epic          │  │
+│              │                      │  │
+│              │ [Genre] [Genre]...   │  │
+│              └──────────────────────┘  │
 └─────────────────────────────────────────┘
 ```
 
@@ -285,7 +306,7 @@ padding: 2rem 1rem (py-8 px-4)
 ```css
 display: flex
 flex-direction: column (mobile) | row (desktop)
-gap: 2.5rem
+gap: 2rem (gap-8)
 align-items: flex-start
 ```
 
@@ -295,7 +316,7 @@ flex: 1
 display: flex
 flex-direction: column
 justify-content: flex-start (top-aligned)
-gap: 1.5rem (space-y-6)
+gap: 1rem (space-y-4)
 ```
 
 ### Metadata Organization
@@ -305,26 +326,29 @@ gap: 1.5rem (space-y-6)
 Artist • Year • X songs • Y min
 ```
 - Flex wrap
-- Gap: 0.75rem horizontal, 0.5rem vertical
+- Gap: 0.625rem horizontal (gap-x-2.5), 0.375rem vertical (gap-y-1.5)
 - Separator: `•` with `white/40` color
-- Font size: 1.125rem
+- Font size: 1rem (text-base)
 
 **Secondary Metadata** (Labeled):
 ```css
 display: flex
 flex-wrap: wrap
-gap: 1.5rem
+gap: 1rem (gap-4)
 
 label:
   color: white/60
-  font-size: 0.75rem
+  font-size: 10px (text-[10px])
   text-transform: uppercase
   letter-spacing: 0.05em
   font-weight: 500
 
 value:
   color: white
+  font-size: 0.75rem (text-xs)
   font-weight: 600
+
+item-gap: 0.375rem (gap-1.5)
 ```
 
 ---
@@ -346,10 +370,119 @@ border-bottom: 1px solid white/10
 **Inner**:
 ```css
 container: mx-auto
-padding: 1rem 1.5rem (py-4 px-6)
+padding: 0.75rem 1rem (py-3 px-4)
 ```
 
-**Links**: Horizontal flex with 0.5rem gap
+**Layout**: Spotify-style layout with centered search
+```css
+display: flex
+align-items: center
+gap: 1rem (gap-4)
+width: 100%
+```
+
+### Navigation Icon (Left)
+
+**Single Library Button**:
+```css
+padding: 0.5rem (p-2)
+border-radius: 9999px (rounded-full)
+icon-size: 1.25rem (20px)
+
+inactive:
+  color: white/70
+  hover:
+    color: white
+    background: white/10
+
+active:
+  color: white
+  background: white/20
+```
+
+### Search Bar + Actions (Center Group)
+
+**Container**:
+```css
+display: flex
+align-items: center
+gap: 0.5rem (gap-2)
+flex: 1
+max-width: 42rem (max-w-2xl)
+```
+
+**Search Bar**:
+```css
+flex: 1
+
+input:
+  height: 2.25rem (h-9)
+  padding-left: 2.5rem (pl-10)
+  font-size: 0.875rem (text-sm)
+  background: white/10 (increased contrast)
+  border: 1px solid white/20 (increased contrast)
+  border-radius: 9999px (rounded-full)
+  
+  focus:
+    background: white/15
+    border-color: white/30
+
+  placeholder:
+    color: white/50
+
+icon:
+  position: absolute
+  left: 0.75rem
+  width: 1rem (16px)
+  color: white/50 (increased contrast)
+```
+
+**Action Buttons**:
+```css
+display: flex
+gap: 0.5rem (gap-2)
+```
+
+**Icon Buttons**:
+```css
+padding: 0.5rem (p-2)
+border-radius: 9999px (rounded-full)
+color: white/70
+icon-size: 1.25rem (20px)
+
+hover:
+  color: white
+  background: white/10
+
+open (dropdown active):
+  color: white
+  background: white/10
+```
+
+**Dropdown Menus**:
+```css
+background: black/95
+backdrop-filter: blur-md
+border: 1px solid white/10
+border-radius: 0.5rem
+width: 12rem (w-48)
+padding: 0.5rem
+
+menu-item:
+  padding: 0.5rem
+  border-radius: 0.375rem
+  color: white/70
+  font-size: 0.875rem
+  
+  hover:
+    color: white
+    background: white/10
+```
+
+**Buttons**:
+- Upload: Single action button
+- Tools: Dropdown with options (Import Library, Export Playlist, Scan Files)
+- Settings: Dropdown with options (Preferences, Audio Quality, Privacy)
 
 ---
 
@@ -357,15 +490,16 @@ padding: 1rem 1.5rem (py-4 px-6)
 
 ### Vertical Rhythm
 - Section spacing: `2rem` (space-y-8)
-- Component spacing: `1.5rem` (space-y-6)
-- Element spacing: `1rem` (space-y-4)
-- Tight spacing: `0.5rem` (space-y-2)
+- Component spacing: `1rem` (space-y-4)
+- Element spacing: `0.75rem` (space-y-3)
+- Tight spacing: `0.375rem` (space-y-1.5)
 
 ### Horizontal Spacing
-- Component gap: `2.5rem` (gap-10)
-- Element gap: `1rem` (gap-4)
-- Tag gap: `0.5rem` (gap-2)
-- Inline gap: `0.75rem` (gap-3)
+- Large component gap: `2rem` (gap-8)
+- Component gap: `1rem` (gap-4)
+- Element gap: `0.75rem` (gap-3)
+- Tag gap: `0.375rem` (gap-1.5)
+- Inline gap: `0.625rem` (gap-2.5)
 
 ---
 
@@ -420,14 +554,14 @@ desktop (md+): flex-row, left-aligned artwork
 
 **Typography**:
 ```css
-mobile: text-5xl titles
-desktop (md+): text-6xl titles
+mobile: text-4xl titles
+desktop (md+): text-5xl titles
 ```
 
 **Album Art**:
 ```css
 mobile: w-full (max constrainted by container)
-desktop (md+): w-96 (384px fixed)
+desktop (md+): w-72 (288px fixed)
 ```
 
 **Navigation**:
@@ -497,6 +631,130 @@ desktop: horizontal always
 - Design is dark-mode native
 - No light mode variant needed
 - High contrast available through white/opacity system
+
+---
+
+## Main Library Page
+
+### Layout Structure
+
+**Hierarchy**:
+```
+1. Tabs & Results Count
+2. Content Grid
+3. Pagination
+```
+
+**Note**: Search bar is integrated into the global navigation header (see Navigation section).
+
+### Filter Bar
+
+**Layout**:
+```css
+display: flex
+justify-content: space-between
+align-items: center
+margin-bottom: 1rem
+```
+
+**Tabs**:
+- Positioned left
+- Glass-morphism style with underline variant
+- Icons: 1rem (16px)
+
+**Results Count**:
+```css
+font-size: 0.875rem (text-sm)
+color: white/60
+```
+
+### Content Grid
+
+```css
+display: grid
+grid-template-columns:
+  mobile: repeat(2, 1fr)
+  md: repeat(3, 1fr)
+  lg: repeat(4, 1fr)
+  xl: repeat(6, 1fr)
+gap: 1rem
+```
+
+### Pagination
+
+**Container**:
+```css
+display: flex
+align-items: center
+justify-content: center
+gap: 0.5rem
+margin-top: 2rem
+```
+
+**Navigation Buttons** (Prev/Next):
+```css
+padding: 0.5rem (p-2)
+border-radius: 0.5rem (rounded-lg)
+background: white/10
+border: 1px solid white/20
+icon-size: 1rem (16px)
+
+hover:
+  background: white/20
+  border-color: white/30
+
+disabled:
+  opacity: 0.4
+  cursor: not-allowed
+  hover-effects: none
+```
+
+**Page Numbers**:
+
+Active:
+```css
+min-width: 2.25rem (min-w-9)
+height: 2.25rem (h-9)
+padding: 0 0.5rem
+border-radius: 0.5rem
+font-size: 0.875rem
+font-weight: 500
+background: white/20
+color: white
+border: 1px solid white/30
+```
+
+Inactive:
+```css
+min-width: 2.25rem
+height: 2.25rem
+padding: 0 0.5rem
+border-radius: 0.5rem
+font-size: 0.875rem
+color: white/70
+
+hover:
+  color: white
+  background: white/10
+```
+
+**Page Number Container**:
+```css
+display: flex
+gap: 0.25rem (gap-1)
+```
+
+### Spacing
+
+**Page Container**:
+```css
+container: mx-auto
+padding: 1rem (py-4 px-4)
+```
+
+**Section Spacing**:
+- Filters to Grid: `1rem`
+- Grid to Pagination: `2rem`
 
 ---
 
