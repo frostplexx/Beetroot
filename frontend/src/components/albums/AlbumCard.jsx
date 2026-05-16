@@ -9,7 +9,7 @@ export const AlbumCard = memo(function AlbumCard({ album, index = 0 }) {
 
   return (
     <div
-      className="group cursor-pointer aspect-square bg-neutral-900 border border-neutral-900 rounded-xl overflow-hidden relative transition-[border-color,box-shadow] duration-150 hover:border-rose-500/50 hover:shadow-lg hover:shadow-rose-500/5 active:scale-[0.99]"
+      className="group cursor-pointer aspect-square bg-neutral-900 border border-neutral-900 rounded-xl overflow-hidden relative transition-[border-color,box-shadow] duration-150 hover:border-rose-500/50 hover:shadow-lg hover:shadow-rose-500/5 active:scale-[0.99] w-full"
       style={{ willChange: 'border-color' }}
       onClick={() => navigate(`/album/${album.id}`)}
     >

@@ -1,7 +1,8 @@
-import { memo } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Kbd, KbdGroup } from '@/components/ui/kbd'
 
 export const SearchBar = memo(function SearchBar({
   searchQuery,
@@ -13,12 +14,15 @@ export const SearchBar = memo(function SearchBar({
   setShowHelp,
   handleSearch
 }) {
+  const [isMac, setIsMac] = useState(false)
+
+  useEffect(() => {
+    setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0)
+  }, [])
+
   return (
-    <div className="border-b border-neutral-800/50 bg-neutral-950/95 backdrop-blur-lg">
-      <div className="max-w-[1800px] mx-auto px-4 md:px-6">
-        {/* Search Bar */}
-        <div className="py-4 flex gap-2">
-          <form onSubmit={handleSearchSubmit} className="flex-1">
+    <div className="flex gap-2 w-full">
+      <form onSubmit={handleSearchSubmit} className="flex-1">
             <div className="relative group">
               <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
                 <i className="fa-solid fa-search text-muted-foreground text-xs group-focus-within:text-primary transition-colors duration-200"></i>
@@ -28,13 +32,19 @@ export const SearchBar = memo(function SearchBar({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="artist:name, year:2020..2024, genre:rock, ^exclude..."
-                className="pl-9 pr-10 bg-neutral-900 text-neutral-100 border-neutral-800 placeholder:text-neutral-500"
+                className="pl-9 pr-24 bg-neutral-900 text-neutral-100 border-neutral-800 placeholder:text-neutral-500"
               />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+                <KbdGroup>
+                  <Kbd>{isMac ? '⌘' : 'Ctrl'}</Kbd>
+                  <Kbd>K</Kbd>
+                </KbdGroup>
+              </div>
               {searchQuery && !searching && (
                 <button
                   type="button"
                   onClick={clearSearch}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-all duration-200 hover:scale-110 active:scale-95 hover:rotate-90 z-10"
+                  className="absolute right-20 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-all duration-200 hover:scale-110 active:scale-95 hover:rotate-90 z-10"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -42,15 +52,27 @@ export const SearchBar = memo(function SearchBar({
                 </button>
               )}
               {searching && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10">
+                <div className="absolute right-20 top-1/2 -translate-y-1/2 z-10">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-primary border-r-transparent"></div>
                 </div>
               )}
             </div>
           </form>
+          <Button variant="outline" size="icon" asChild>
+            <a
+              href="https://beets.readthedocs.io/en/stable/reference/query.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Beets Query Syntax Documentation"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </a>
+          </Button>
           <Popover open={showHelp} onOpenChange={setShowHelp}>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="icon">
+              <Button variant="outline" size="icon" className="hidden">
                 <svg className={`w-4 h-4 transition-transform duration-300 ${showHelp ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -97,61 +119,6 @@ export const SearchBar = memo(function SearchBar({
                 </div>
             </PopoverContent>
           </Popover>
-        </div>
-
-        {/* Search Examples */}
-        {!searchQuery && !showHelp && (
-          <div className="pb-3">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>Quick:</span>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setSearchQuery('year:2020..2024')
-                  handleSearch('year:2020..2024')
-                }}
-                className="font-mono h-7 text-xs"
-              >
-                year:2020..2024
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setSearchQuery('artist:beatles')
-                  handleSearch('artist:beatles')
-                }}
-                className="font-mono h-7 text-xs"
-              >
-                artist:beatles
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setSearchQuery('genre:rock')
-                  handleSearch('genre:rock')
-                }}
-                className="font-mono h-7 text-xs"
-              >
-                genre:rock
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setSearchQuery('added:-1w..')
-                  handleSearch('added:-1w..')
-                }}
-                className="font-mono h-7 text-xs"
-              >
-                added:-1w..
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   )
 })

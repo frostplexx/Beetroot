@@ -306,23 +306,12 @@ export function Dashboard() {
 
   return (
     <>
-      <SearchBar
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        handleSearchSubmit={handleSearchSubmit}
-        clearSearch={clearSearch}
-        searching={loading}
-        showHelp={showHelp}
-        setShowHelp={setShowHelp}
-        handleSearch={handleSearch}
-      />
-
-      <div className="mx-auto px-3 py-4 md:py-8 w-full max-w-[1800px] lg:max-w-[calc(min(1800px,100vw-512px))]">
+      <div className="w-full px-6 py-6 md:py-8">
         <div className="w-full">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            {/* Control Bar with Tabs + Pagination */}
-            <div className="flex items-center justify-between mb-6">
-              {/* Left: Tabs */}
+            {/* Control Bar with Tabs, Count, Search, and Pagination */}
+            <div className="flex flex-wrap items-center gap-4 mb-6 py-2">
+              {/* Left: Tabs + Count */}
               <div className="flex items-center gap-4">
                 <TabsList>
                   <TabsTrigger value="albums">Albums</TabsTrigger>
@@ -330,7 +319,7 @@ export function Dashboard() {
                 </TabsList>
 
                 {/* Count */}
-                <span className="text-sm text-muted-foreground">
+                <span className="text-sm text-muted-foreground whitespace-nowrap">
                   {isSearching ? (
                     activeTab === 'albums'
                       ? `${albums.length} results`
@@ -341,6 +330,20 @@ export function Dashboard() {
                       : `${itemsTotal.toLocaleString()} tracks`
                   )}
                 </span>
+              </div>
+
+              {/* Middle: Search Bar */}
+              <div className="flex-1 min-w-[300px]">
+                <SearchBar
+                  searchQuery={searchQuery}
+                  setSearchQuery={setSearchQuery}
+                  handleSearchSubmit={handleSearchSubmit}
+                  clearSearch={clearSearch}
+                  searching={loading}
+                  showHelp={showHelp}
+                  setShowHelp={setShowHelp}
+                  handleSearch={handleSearch}
+                />
               </div>
 
               {/* Right: Pagination (hidden when searching) */}

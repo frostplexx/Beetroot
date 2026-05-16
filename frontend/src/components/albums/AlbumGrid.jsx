@@ -9,10 +9,12 @@ export function AlbumGrid({ albums }) {
         </div>
       ) : (
         <div
-          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4"
+          className="grid gap-4"
           style={{
+            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 280px))',
             contentVisibility: 'auto',
-            containIntrinsicSize: 'auto 300px'
+            containIntrinsicSize: 'auto 300px',
+            justifyContent: 'center'
           }}
         >
           {albums.map((album) => (
