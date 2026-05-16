@@ -1,11 +1,16 @@
 import { getAllAlbums, getAlbumCount } from "@/lib/beets/db"
+import { getAllItems, getItemCount } from "@/lib/beets/db"
 import AlbumCard from "@/components/album_card"
 import { TabsContent, TabsList, TabsTrigger, Tabs } from "@/components/ui/tabs"
 import { Album, Music, ChevronLeft, ChevronRight } from "lucide-react"
+import { TracksTable } from "./tracks-table"
+import { tracksColumns } from "./tracks-columns"
 
 export default function Home() {
     const albums = getAllAlbums()
     const totalAlbums = getAlbumCount()
+    const tracks = getAllItems()
+    const totalTracks = getItemCount()
 
     // Pagination (placeholder - make this dynamic later)
     const itemsPerPage = 24
@@ -30,7 +35,7 @@ export default function Home() {
                     </TabsList>
 
                     <div className="text-sm text-white/60">
-                        {totalAlbums.toLocaleString()} albums
+                        {totalAlbums.toLocaleString()} albums • {totalTracks.toLocaleString()} tracks
                     </div>
                 </div>
 
@@ -82,10 +87,8 @@ export default function Home() {
                     )}
                 </TabsContent>
 
-                <TabsContent value="tracks">
-                    <div className="text-center text-white/60 py-12">
-                        Tracks view coming soon...
-                    </div>
+                <TabsContent value="tracks" className="mt-0">
+                    <TracksTable columns={tracksColumns} data={tracks} />
                 </TabsContent>
             </Tabs>
         </div>
