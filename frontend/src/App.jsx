@@ -52,7 +52,7 @@ function App() {
               </PreviewProvider>
             </Router>
           </ConfigErrorProvider>
-          <Toaster />
+          <Toaster position="top-center" />
         </TooltipProvider>
       </QueryClientProvider>
     </div>
