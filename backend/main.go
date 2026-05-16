@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"backend/beets"
+	"backend/extensions"
 	"backend/handlers"
 	"backend/logger"
 	"backend/middleware"
@@ -118,6 +119,89 @@ func main() {
 	mux.HandleFunc("/api/audit/logs/target", handlers.AuditLogsByTargetHandler())
 	mux.HandleFunc("/api/audit/stats", handlers.AuditStatsHandler())
 
+	// Initialize extension system
+	extensionDBPath := os.Getenv("EXTENSION_DB_PATH")
+	if extensionDBPath == "" {
+		extensionDBPath = "./extensions.db"
+	}
+	extDB, err := extensions.NewExtensionDB(extensionDBPath)
+	if err != nil {
+		log.Printf("Warning: Could not initialize extensions: %v", err)
+		log.Printf("Extension features will be unavailable")
+	} else {
+		defer extDB.Close()
+		log.Printf("Extensions initialized at %s", extensionDBPath)
+
+		// Initialize search and download services
+		searchService := extensions.NewSearchService(extDB)
+		downloadService := extensions.NewDownloadService(extDB, searchService, "./tmp/beetroot-downloads")
+
+		// Start download worker
+		worker := extensions.NewDownloadWorker(downloadService)
+		worker.Start()
+		defer worker.Stop()
+
+		// Extension endpoints
+		mux.HandleFunc("/api/extensions", handlers.ListExtensionsHandler(extDB))
+		mux.HandleFunc("/api/extensions/install", handlers.InstallExtensionHandler(extDB))
+		mux.HandleFunc("/api/extensions/install-from-registry", handlers.InstallFromRegistryHandler(extDB))
+		mux.HandleFunc("/api/extensions/registry", handlers.GetRegistryHandler())
+
+		// Search and download endpoints
+		mux.HandleFunc("/api/extensions/search", handlers.SearchHandler(searchService))
+		mux.HandleFunc("/api/downloads/queue", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				handlers.GetDownloadQueueHandler(downloadService)(w, r)
+			} else if r.Method == http.MethodPost {
+				handlers.QueueDownloadHandler(downloadService)(w, r)
+			} else {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		})
+
+		// Extension detail endpoints (handle both /api/extensions/{id} and /api/extensions/{id}/settings, etc.)
+		mux.HandleFunc("/api/extensions/", func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.Path
+			if path == "/api/extensions/" {
+				handlers.ListExtensionsHandler(extDB)(w, r)
+				return
+			}
+
+			// Check for specific actions
+			if r.Method == http.MethodPut {
+				if contains(path, "/settings") {
+					handlers.UpdateExtensionSettingsHandler(extDB)(w, r)
+					return
+				}
+				if contains(path, "/enable") {
+					handlers.EnableExtensionHandler(extDB)(w, r)
+					return
+				}
+			}
+
+			if r.Method == http.MethodDelete {
+				handlers.UninstallExtensionHandler(extDB)(w, r)
+				return
+			}
+
+			if r.Method == http.MethodGet {
+				handlers.GetExtensionHandler(extDB)(w, r)
+				return
+			}
+
+			http.Error(w, "Not found", http.StatusNotFound)
+		})
+
+		// Download cancel endpoint
+		mux.HandleFunc("/api/downloads/", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodDelete {
+				handlers.CancelDownloadHandler(downloadService)(w, r)
+			} else {
+				http.Error(w, "Not found", http.StatusNotFound)
+			}
+		})
+	}
+
 	if frontendDistDir := os.Getenv("FRONTEND_DIST_DIR"); frontendDistDir != "" {
 		mux.Handle("/", handlers.FrontendHandler(frontendDistDir))
 	}
@@ -143,4 +227,10 @@ func main() {
 	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// Helper function to check if string contains substring
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && s[len(s)-len(substr):] == substr ||
+		   (len(s) > len(substr) && s[len(s)-len(substr)-1:len(s)-1] == substr)
 }

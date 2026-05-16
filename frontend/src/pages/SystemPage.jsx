@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { ExtensionsPanel } from '../components/extensions/ExtensionsPanel'
 
 export function SystemPage() {
   const [activeTab, setActiveTab] = useState('stats')
@@ -279,6 +280,10 @@ export function SystemPage() {
           <TabsTrigger value="audit">
             <i className="fa-solid fa-clipboard-list mr-2"></i>
             Audit
+          </TabsTrigger>
+          <TabsTrigger value="extensions">
+            <i className="fa-solid fa-puzzle-piece mr-2"></i>
+            Extensions
           </TabsTrigger>
         </TabsList>
 
@@ -630,6 +635,11 @@ export function SystemPage() {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        {/* Extensions Tab */}
+        <TabsContent value="extensions">
+          <ExtensionsPanel />
         </TabsContent>
       </Tabs>
     </div>

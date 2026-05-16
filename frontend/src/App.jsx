@@ -11,6 +11,7 @@ import { AlbumDetailPage } from './pages/AlbumDetailPage'
 import { ToolsPage } from './pages/ToolsPage'
 import { SystemPage } from './pages/SystemPage'
 import { UploadPage } from './pages/UploadPage'
+import { DownloadPage } from './pages/DownloadPage'
 import { ComponentShowcase } from './pages/ComponentShowcase'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
@@ -45,6 +46,7 @@ function App() {
                     <Route path="/tools" element={<ToolsPage />} />
                     <Route path="/tools/*" element={<ToolsPage />} />
                     <Route path="/upload" element={<UploadPage />} />
+                    <Route path="/download" element={<DownloadPage />} />
                     <Route path="/system" element={<SystemPage />} />
                     <Route path="/showcase" element={<ComponentShowcase />} />
                   </Route>

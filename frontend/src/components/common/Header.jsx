@@ -14,6 +14,7 @@ export const Header = memo(function Header() {
   const isLibraryActive = location.pathname === '/'
   const isToolsActive = location.pathname.startsWith('/tools')
   const isUploadActive = location.pathname === '/upload'
+  const isDownloadActive = location.pathname === '/download'
   const isSystemActive = location.pathname === '/system'
 
   return (
@@ -55,6 +56,18 @@ export const Header = memo(function Header() {
             >
               <i className="fa-solid fa-cloud-arrow-up transition-transform duration-200 hover:-translate-y-1"></i>
               <span>Upload</span>
+            </Link>
+
+            <Link
+              to="/download"
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 hover:scale-105 active:scale-95 ${
+                isDownloadActive
+                  ? 'bg-rose-500/15 text-rose-400 shadow-lg shadow-rose-500/10'
+                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/50 hover:shadow-md'
+              }`}
+            >
+              <i className="fa-solid fa-download transition-transform duration-200 hover:translate-y-1"></i>
+              <span>Download</span>
             </Link>
 
             <Link
