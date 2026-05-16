@@ -1,11 +1,11 @@
-import { useState, memo } from 'react'
+import { memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAlbumArt } from '../../hooks/useAlbumArt'
 
 export const AlbumCard = memo(function AlbumCard({ album, index = 0 }) {
   const navigate = useNavigate()
-  const [imageError, setImageError] = useState(false)
-  const [imageLoaded, setImageLoaded] = useState(false)
+  const { imageUrl, isLoading, error } = useAlbumArt(album.id, 400)
 
   return (
     <div
@@ -15,19 +15,7 @@ export const AlbumCard = memo(function AlbumCard({ album, index = 0 }) {
     >
       {/* Album Art */}
       <div className="absolute inset-0 overflow-hidden">
-        {!imageError ? (
-          <img
-            src={`/api/beets/albums/${album.id}/art?size=400`}
-            alt={album.album}
-            loading="lazy"
-            decoding="async"
-            className={`w-full h-full object-cover transition-opacity duration-300 ${
-              imageLoaded ? 'opacity-100' : 'opacity-0'
-            }`}
-            onError={() => setImageError(true)}
-            onLoad={() => setImageLoaded(true)}
-          />
-        ) : (
+        {error || !imageUrl ? (
           <div className="w-full h-full flex items-center justify-center">
             <svg className="w-12 h-12 text-neutral-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -38,10 +26,16 @@ export const AlbumCard = memo(function AlbumCard({ album, index = 0 }) {
               />
             </svg>
           </div>
+        ) : (
+          <img
+            src={imageUrl}
+            alt={album.album}
+            className="w-full h-full object-cover"
+          />
         )}
 
         {/* Loading placeholder */}
-        {!imageLoaded && !imageError && (
+        {isLoading && (
           <Skeleton className="absolute inset-0" />
         )}
       </div>

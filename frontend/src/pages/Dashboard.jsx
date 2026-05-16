@@ -21,6 +21,7 @@ export function Dashboard() {
     // Initialize from URL first, then sessionStorage as fallback
     return searchParams.get('q') || sessionStorage.getItem('dashboard-search-query') || ''
   })
+  const [debouncedQuery, setDebouncedQuery] = useState(searchQuery)
   const [showHelp, setShowHelp] = useState(false)
 
   // Pagination state with localStorage persistence
@@ -141,6 +142,25 @@ export function Dashboard() {
     }
   }, [itemsPage])
 
+  // Debounce search query (wait 400ms after user stops typing)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery)
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Auto-trigger search when debounced query changes
+  useEffect(() => {
+    // Skip on initial mount if query matches URL (already loaded)
+    const urlQuery = searchParams.get('q') || ''
+    if (debouncedQuery !== urlQuery) {
+      handleSearch(debouncedQuery)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery])
+
   // Persist search query to sessionStorage
   useEffect(() => {
     if (searchQuery) {
@@ -156,6 +176,7 @@ export function Dashboard() {
     const sessionQuery = sessionStorage.getItem('dashboard-search-query')
     if (!urlQuery && sessionQuery && sessionQuery.trim()) {
       setSearchQuery(sessionQuery)
+      setDebouncedQuery(sessionQuery)
       setSearchParams({ q: sessionQuery })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

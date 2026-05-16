@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
 import { formatDuration } from '../utils/formatters'
 import { usePreview } from '../contexts/PreviewContext'
+import { useAlbumArt } from '../hooks/useAlbumArt'
 import { PreviewPanel } from '../components/tracks/PreviewPanel'
 import { ResizablePreviewPanel } from '../components/common/ResizablePreviewPanel'
 import { EditMetadataModal } from '../components/albums/EditMetadataModal'
@@ -34,9 +35,15 @@ export function AlbumDetailPage() {
   const [mbTracklist, setMbTracklist] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [artError, setArtError] = useState(false)
   const [artTimestamp, setArtTimestamp] = useState(null)
   const [refetchingArt, setRefetchingArt] = useState(false)
+
+  // Use cached album art
+  const { imageUrl: albumArtUrl, isLoading: artLoading, error: artError } = useAlbumArt(
+    id ? parseInt(id) : null,
+    800,
+    artTimestamp
+  )
   const [showEditModal, setShowEditModal] = useState(false)
   const [dominantColor, setDominantColor] = useState(null)
   const [deleteDialog, setDeleteDialog] = useState({ isOpen: false })
@@ -286,9 +293,13 @@ export function AlbumDetailPage() {
               {/* Album Art */}
               <div className="lg:col-span-1">
                 <div className="aspect-square bg-neutral-900 border border-neutral-800 rounded overflow-hidden mb-2 flex items-center justify-center">
-                  {!artError ? (
+                  {artError || !albumArtUrl ? (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <i className="fa-solid fa-compact-disc text-4xl text-neutral-700"></i>
+                    </div>
+                  ) : (
                     <img
-                      src={`/api/beets/albums/${album.id}/art?size=800${artTimestamp ? `&t=${artTimestamp}` : ''}`}
+                      src={albumArtUrl}
                       alt={album.album}
                       className="w-full h-full object-cover"
                       crossOrigin="anonymous"
@@ -296,12 +307,7 @@ export function AlbumDetailPage() {
                         const color = extractDominantColor(e.target)
                         if (color) setDominantColor(color)
                       }}
-                      onError={() => setArtError(true)}
                     />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <i className="fa-solid fa-compact-disc text-4xl text-neutral-700"></i>
-                    </div>
                   )}
                 </div>
                 <div className="flex gap-2">
