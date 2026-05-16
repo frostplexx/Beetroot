@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { usePreview } from '../contexts/PreviewContext'
 import { SearchBar } from '../components/common/SearchBar'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
@@ -11,16 +13,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export function Dashboard() {
   const { previewTrack, setPreviewTrack } = usePreview()
-  const [stats, setStats] = useState(null)
-  const [albums, setAlbums] = useState([])
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('dashboard-active-tab') || 'albums'
   })
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searching, setSearching] = useState(false)
+  const [searchQuery, setSearchQuery] = useState(() => {
+    // Initialize from URL first, then sessionStorage as fallback
+    return searchParams.get('q') || sessionStorage.getItem('dashboard-search-query') || ''
+  })
   const [showHelp, setShowHelp] = useState(false)
 
   // Pagination state with localStorage persistence
@@ -32,14 +32,88 @@ export function Dashboard() {
     const saved = localStorage.getItem('dashboard-items-page')
     return saved ? parseInt(saved, 10) : 0
   })
-  const [albumsTotal, setAlbumsTotal] = useState(0)
-  const [itemsTotal, setItemsTotal] = useState(0)
   const albumsPerPage = 50
   const itemsPerPage = 100
 
   // Track sorting state
   const [sortField, setSortField] = useState('title')
   const [sortDirection, setSortDirection] = useState('asc')
+
+  // Determine if we're searching
+  const urlQuery = searchParams.get('q')
+  const isSearching = !!(urlQuery && urlQuery.trim())
+
+  // React Query hooks for cached data fetching
+  const { data: stats } = useQuery({
+    queryKey: ['stats'],
+    queryFn: async () => {
+      const res = await fetch('/api/beets/stats')
+      if (!res.ok) throw new Error(`Stats: ${res.status} ${res.statusText}`)
+      return res.json()
+    }
+  })
+
+  const { data: counts } = useQuery({
+    queryKey: ['counts'],
+    queryFn: async () => {
+      const [albumsRes, itemsRes] = await Promise.all([
+        fetch('/api/beets/albums/count'),
+        fetch('/api/beets/items/count')
+      ])
+      const albumsCount = albumsRes.ok ? (await albumsRes.json()).count : 0
+      const itemsCount = itemsRes.ok ? (await itemsRes.json()).count : 0
+      return { albums: albumsCount, items: itemsCount }
+    }
+  })
+
+  // Paginated albums (only when not searching)
+  const { data: albumsData, isLoading: albumsLoading } = useQuery({
+    queryKey: ['albums', albumsPage, albumsPerPage],
+    queryFn: async () => {
+      const offset = albumsPage * albumsPerPage
+      const res = await fetch(`/api/beets/albums?limit=${albumsPerPage}&offset=${offset}`)
+      if (!res.ok) throw new Error(`Albums: ${res.status} ${res.statusText}`)
+      return res.json()
+    },
+    enabled: !isSearching
+  })
+
+  // Paginated items (only when not searching)
+  const { data: itemsData, isLoading: itemsLoading } = useQuery({
+    queryKey: ['items', itemsPage, itemsPerPage],
+    queryFn: async () => {
+      const offset = itemsPage * itemsPerPage
+      const res = await fetch(`/api/beets/items?limit=${itemsPerPage}&offset=${offset}`)
+      if (!res.ok) throw new Error(`Items: ${res.status} ${res.statusText}`)
+      return res.json()
+    },
+    enabled: !isSearching
+  })
+
+  // Search results (only when searching)
+  const { data: searchData, isLoading: searchLoading, error: searchError } = useQuery({
+    queryKey: ['search', urlQuery],
+    queryFn: async () => {
+      const [albumsRes, itemsRes] = await Promise.all([
+        fetch(`/api/beets/search/albums?q=${encodeURIComponent(urlQuery)}`),
+        fetch(`/api/beets/search/items?q=${encodeURIComponent(urlQuery)}`)
+      ])
+      if (!albumsRes.ok) throw new Error(`Search Albums: ${albumsRes.status}`)
+      if (!itemsRes.ok) throw new Error(`Search Items: ${itemsRes.status}`)
+      const albums = await albumsRes.json()
+      const items = await itemsRes.json()
+      return { albums: albums || [], items: items || [] }
+    },
+    enabled: isSearching
+  })
+
+  // Derive albums and items from either search or paginated data
+  const albums = isSearching ? (searchData?.albums || []) : (albumsData || [])
+  const items = isSearching ? (searchData?.items || []) : (itemsData || [])
+  const albumsTotal = counts?.albums || 0
+  const itemsTotal = counts?.items || 0
+  const loading = isSearching ? searchLoading : (albumsLoading || itemsLoading)
+  const error = searchError
 
   // Persist active tab to localStorage and scroll to top when changing tabs
   useEffect(() => {
@@ -67,18 +141,25 @@ export function Dashboard() {
     }
   }, [itemsPage])
 
+  // Persist search query to sessionStorage
   useEffect(() => {
-    loadStats()
-    loadCounts()
-  }, [])
-
-  useEffect(() => {
-    if (activeTab === 'albums') {
-      loadAlbums(albumsPage)
-    } else if (activeTab === 'tracks') {
-      loadItems(itemsPage)
+    if (searchQuery) {
+      sessionStorage.setItem('dashboard-search-query', searchQuery)
+    } else {
+      sessionStorage.removeItem('dashboard-search-query')
     }
-  }, [activeTab, albumsPage, itemsPage])
+  }, [searchQuery])
+
+  // On mount, restore search from sessionStorage if not in URL
+  useEffect(() => {
+    const urlQuery = searchParams.get('q')
+    const sessionQuery = sessionStorage.getItem('dashboard-search-query')
+    if (!urlQuery && sessionQuery && sessionQuery.trim()) {
+      setSearchQuery(sessionQuery)
+      setSearchParams({ q: sessionQuery })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Save scroll position before unmounting
   useEffect(() => {
@@ -101,65 +182,6 @@ export function Dashboard() {
     }
   }, [loading, albums, items])
 
-  const loadStats = async () => {
-    try {
-      const res = await fetch('/api/beets/stats')
-      if (!res.ok) throw new Error(`Stats: ${res.status} ${res.statusText}`)
-      const data = await res.json()
-      setStats(data)
-    } catch (err) {
-      setError(err.message)
-    }
-  }
-
-  const loadCounts = async () => {
-    try {
-      const [albumsRes, itemsRes] = await Promise.all([
-        fetch('/api/beets/albums/count'),
-        fetch('/api/beets/items/count')
-      ])
-      if (albumsRes.ok) {
-        const data = await albumsRes.json()
-        setAlbumsTotal(data.count)
-      }
-      if (itemsRes.ok) {
-        const data = await itemsRes.json()
-        setItemsTotal(data.count)
-      }
-    } catch (err) {
-      console.error('Error loading counts:', err)
-    }
-  }
-
-  const loadAlbums = async (page) => {
-    setLoading(true)
-    try {
-      const offset = page * albumsPerPage
-      const res = await fetch(`/api/beets/albums?limit=${albumsPerPage}&offset=${offset}`)
-      if (!res.ok) throw new Error(`Albums: ${res.status} ${res.statusText}`)
-      const data = await res.json()
-      setAlbums(data || [])
-      setLoading(false)
-    } catch (err) {
-      setError(err.message)
-      setLoading(false)
-    }
-  }
-
-  const loadItems = async (page) => {
-    setLoading(true)
-    try {
-      const offset = page * itemsPerPage
-      const res = await fetch(`/api/beets/items?limit=${itemsPerPage}&offset=${offset}`)
-      if (!res.ok) throw new Error(`Items: ${res.status} ${res.statusText}`)
-      const data = await res.json()
-      setItems(sortItems(data || [], sortField, sortDirection))
-      setLoading(false)
-    } catch (err) {
-      setError(err.message)
-      setLoading(false)
-    }
-  }
 
   const sortItems = (itemsToSort, field, direction) => {
     const sorted = [...itemsToSort].sort((a, b) => {
@@ -213,49 +235,17 @@ export function Dashboard() {
     const newDirection = sortField === field && sortDirection === 'asc' ? 'desc' : 'asc'
     setSortField(field)
     setSortDirection(newDirection)
-    setItems(sortItems(items, field, newDirection))
   }
 
-  const loadAllData = () => {
-    setAlbumsPage(0)
-    setItemsPage(0)
-    loadStats()
-    loadCounts()
-    if (activeTab === 'albums') {
-      loadAlbums(0)
-    } else {
-      loadItems(0)
-    }
-  }
-
-  const handleSearch = async (query) => {
+  // User-triggered search that updates the URL
+  const handleSearch = (query) => {
     if (!query.trim()) {
-      loadAllData()
+      setSearchParams({})
+      setAlbumsPage(0)
+      setItemsPage(0)
       return
     }
-
-    // Scroll to top when searching
-    window.scrollTo(0, 0)
-
-    setSearching(true)
-    try {
-      const [albumsData, itemsData] = await Promise.all([
-        fetch(`/api/beets/search/albums?q=${encodeURIComponent(query)}`).then(res => {
-          if (!res.ok) throw new Error(`Search Albums: ${res.status} ${res.statusText}`)
-          return res.json()
-        }),
-        fetch(`/api/beets/search/items?q=${encodeURIComponent(query)}`).then(res => {
-          if (!res.ok) throw new Error(`Search Items: ${res.status} ${res.statusText}`)
-          return res.json()
-        })
-      ])
-      setAlbums(albumsData || [])
-      setItems(itemsData || [])
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSearching(false)
-    }
+    setSearchParams({ q: query })
   }
 
   const handleSearchSubmit = (e) => {
@@ -265,10 +255,17 @@ export function Dashboard() {
 
   const clearSearch = () => {
     setSearchQuery('')
-    loadAllData()
+    setSearchParams({})
+    setAlbumsPage(0)
+    setItemsPage(0)
   }
 
-  if (loading && !albums.length && !items.length) {
+  // Apply sorting to items
+  const sortedItems = sortItems(items, sortField, sortDirection)
+
+  // Only show full-screen loader on initial load (not when searching)
+  const isInitialLoad = loading && !albums.length && !items.length && !isSearching && !searchQuery
+  if (isInitialLoad) {
     return <LoadingSpinner message="Loading library..." />
   }
 
@@ -277,8 +274,8 @@ export function Dashboard() {
       <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6">
         <div className="border border-red-900/50 bg-red-950/20 rounded-xl p-8 max-w-lg w-full">
           <h2 className="text-xl font-bold text-red-200">System Error</h2>
-          <p className="text-red-400 mt-2">{error}</p>
-          <button onClick={loadAllData} className="mt-4 px-4 py-2 bg-neutral-900 rounded text-neutral-200">
+          <p className="text-red-400 mt-2">{error.message || String(error)}</p>
+          <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-neutral-900 rounded text-neutral-200">
             Retry
           </button>
         </div>
@@ -293,7 +290,7 @@ export function Dashboard() {
         setSearchQuery={setSearchQuery}
         handleSearchSubmit={handleSearchSubmit}
         clearSearch={clearSearch}
-        searching={searching}
+        searching={loading}
         showHelp={showHelp}
         setShowHelp={setShowHelp}
         handleSearch={handleSearch}
@@ -313,15 +310,20 @@ export function Dashboard() {
 
                 {/* Count */}
                 <span className="text-sm text-muted-foreground">
-                  {activeTab === 'albums'
-                    ? `${albumsTotal.toLocaleString()} albums`
-                    : `${itemsTotal.toLocaleString()} tracks`
-                  }
+                  {isSearching ? (
+                    activeTab === 'albums'
+                      ? `${albums.length} results`
+                      : `${sortedItems.length} results`
+                  ) : (
+                    activeTab === 'albums'
+                      ? `${albumsTotal.toLocaleString()} albums`
+                      : `${itemsTotal.toLocaleString()} tracks`
+                  )}
                 </span>
               </div>
 
-              {/* Right: Pagination */}
-              {activeTab === 'albums' && (
+              {/* Right: Pagination (hidden when searching) */}
+              {!isSearching && activeTab === 'albums' && (
                 <Pagination
                   currentPage={albumsPage}
                   totalItems={albumsTotal}
@@ -329,7 +331,7 @@ export function Dashboard() {
                   onPageChange={setAlbumsPage}
                 />
               )}
-              {activeTab === 'tracks' && (
+              {!isSearching && activeTab === 'tracks' && (
                 <Pagination
                   currentPage={itemsPage}
                   totalItems={itemsTotal}
@@ -340,18 +342,30 @@ export function Dashboard() {
             </div>
 
             <TabsContent value="albums">
-              <AlbumGrid albums={albums} />
+              {loading && albums.length === 0 ? (
+                <div className="flex items-center justify-center py-20">
+                  <LoadingSpinner message="Loading albums..." />
+                </div>
+              ) : (
+                <AlbumGrid albums={albums} />
+              )}
             </TabsContent>
 
             <TabsContent value="tracks">
-              <TrackTable
-                items={items}
-                currentPage={itemsPage}
-                itemsPerPage={itemsPerPage}
-                sortField={sortField}
-                sortDirection={sortDirection}
-                onSort={handleSort}
-              />
+              {loading && sortedItems.length === 0 ? (
+                <div className="flex items-center justify-center py-20">
+                  <LoadingSpinner message="Loading tracks..." />
+                </div>
+              ) : (
+                <TrackTable
+                  items={sortedItems}
+                  currentPage={itemsPage}
+                  itemsPerPage={itemsPerPage}
+                  sortField={sortField}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                />
+              )}
             </TabsContent>
           </Tabs>
 
