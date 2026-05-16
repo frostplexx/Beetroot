@@ -69,21 +69,31 @@ export function PaginationControls({ currentPage, totalItems, itemsPerPage, onPa
           />
         </PaginationItem>
 
-        {pageNumbers.map((page, idx) => (
-          <PaginationItem key={idx}>
-            {page === 'ellipsis' ? (
-              <PaginationEllipsis />
-            ) : (
-              <PaginationLink
-                onClick={() => onPageChange(page)}
-                isActive={currentPage === page}
-                className="cursor-pointer"
-              >
-                {page + 1}
-              </PaginationLink>
-            )}
-          </PaginationItem>
-        ))}
+        {/* Mobile: Show only current page */}
+        <PaginationItem className="md:hidden">
+          <PaginationLink isActive className="cursor-default min-w-10">
+            {currentPage + 1}
+          </PaginationLink>
+        </PaginationItem>
+
+        {/* Desktop: Show all page numbers */}
+        <div className="hidden md:contents">
+          {pageNumbers.map((page, idx) => (
+            <PaginationItem key={idx}>
+              {page === 'ellipsis' ? (
+                <PaginationEllipsis />
+              ) : (
+                <PaginationLink
+                  onClick={() => onPageChange(page)}
+                  isActive={currentPage === page}
+                  className="cursor-pointer"
+                >
+                  {page + 1}
+                </PaginationLink>
+              )}
+            </PaginationItem>
+          ))}
+        </div>
 
         <PaginationItem>
           <PaginationNext

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { usePreview } from '../contexts/PreviewContext'
+import { useScrollRestoration } from '../hooks/useScrollRestoration'
 import { SearchBar } from '../components/common/SearchBar'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
 import { PaginationControls } from '../components/common/PaginationControls'
@@ -16,6 +17,7 @@ import { toast } from 'sonner'
 export function Dashboard() {
   const { previewTrack, setPreviewTrack } = usePreview()
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('dashboard-active-tab') || 'albums'
   })
@@ -24,7 +26,6 @@ export function Dashboard() {
     return searchParams.get('q') || sessionStorage.getItem('dashboard-search-query') || ''
   })
   const [debouncedQuery, setDebouncedQuery] = useState(searchQuery)
-  const [showHelp, setShowHelp] = useState(false)
 
   // Pagination state with localStorage persistence
   const [albumsPage, setAlbumsPage] = useState(() => {
@@ -119,22 +120,22 @@ export function Dashboard() {
   const loading = isSearching ? searchLoading : (albumsLoading || itemsLoading)
   const error = searchError
 
-  // Persist active tab to localStorage and scroll to top when changing tabs
+  // Scroll position restoration - restore after data loads
+  // Key includes search params to preserve scroll per page/filter
+  useScrollRestoration({
+    key: `${location.pathname}${location.search}`,
+    dataLoaded: !loading,
+    enabled: true
+  })
+
+  // Persist active tab to localStorage
   useEffect(() => {
     localStorage.setItem('dashboard-active-tab', activeTab)
-    // Don't scroll to top on initial mount, only when tab changes
-    if (albums.length > 0 || items.length > 0) {
-      window.scrollTo(0, 0)
-    }
   }, [activeTab])
 
-  // Persist pagination to localStorage and scroll to top on page change
+  // Persist pagination to localStorage
   useEffect(() => {
     localStorage.setItem('dashboard-albums-page', albumsPage.toString())
-    // Scroll to top when changing pages (but not on initial mount)
-    if (albums.length > 0) {
-      window.scrollTo(0, 0)
-    }
   }, [albumsPage])
 
   useEffect(() => {
@@ -361,13 +362,13 @@ export function Dashboard() {
 
   return (
     <>
-      <div className="w-full px-6 py-6 md:py-8">
+      <div className="w-full px-4 md:px-6 py-4 md:py-8">
         <div className="w-full">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             {/* Control Bar with Tabs, Count, Search, and Pagination */}
-            <div className="flex flex-wrap items-center gap-4 mb-6 py-2">
+            <div className="flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-2 md:gap-4 mb-3 md:mb-6">
               {/* Left: Tabs + Count */}
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 md:gap-4">
                 <TabsList>
                   <TabsTrigger value="albums">Albums</TabsTrigger>
                   <TabsTrigger value="tracks">Tracks</TabsTrigger>
@@ -388,16 +389,13 @@ export function Dashboard() {
               </div>
 
               {/* Middle: Search Bar */}
-              <div className="flex-1 min-w-[300px]">
+              <div className="flex-1 w-full md:w-auto md:min-w-[300px]">
                 <SearchBar
                   searchQuery={searchQuery}
                   setSearchQuery={setSearchQuery}
                   handleSearchSubmit={handleSearchSubmit}
                   clearSearch={clearSearch}
                   searching={loading}
-                  showHelp={showHelp}
-                  setShowHelp={setShowHelp}
-                  handleSearch={handleSearch}
                 />
               </div>
 

@@ -8,15 +8,7 @@ export function AlbumGrid({ albums }) {
           <p className="text-neutral-500">No albums found</p>
         </div>
       ) : (
-        <div
-          className="grid gap-4"
-          style={{
-            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 280px))',
-            contentVisibility: 'auto',
-            containIntrinsicSize: 'auto 300px',
-            justifyContent: 'center'
-          }}
-        >
+        <div className="grid gap-2 md:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {albums.map((album) => (
             <AlbumCard key={album.id} album={album} />
           ))}

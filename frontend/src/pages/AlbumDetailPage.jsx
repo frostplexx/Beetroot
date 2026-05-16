@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { useScrollRestoration } from '../hooks/useScrollRestoration'
 import { LoadingSpinner } from '../components/common/LoadingSpinner'
 import { formatDuration } from '../utils/formatters'
 import { usePreview } from '../contexts/PreviewContext'
@@ -29,6 +30,7 @@ import { toast } from 'sonner'
 export function AlbumDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { previewTrack, setPreviewTrack } = usePreview()
   const [album, setAlbum] = useState(null)
   const [tracks, setTracks] = useState([])
@@ -37,6 +39,13 @@ export function AlbumDetailPage() {
   const [error, setError] = useState(null)
   const [artTimestamp, setArtTimestamp] = useState(null)
   const [refetchingArt, setRefetchingArt] = useState(false)
+
+  // Scroll position restoration - restore after album data loads
+  useScrollRestoration({
+    key: location.pathname,
+    dataLoaded: !loading && !!album,
+    enabled: true
+  })
 
   // Use cached album art
   const { imageUrl: albumArtUrl, isLoading: artLoading, error: artError } = useAlbumArt(
@@ -361,7 +370,7 @@ export function AlbumDetailPage() {
                 </div>
                 <div className="flex gap-2">
                   <Tooltip>
-                    <TooltipTrigger asChild>
+                    <TooltipTrigger>
                       <Button
                         onClick={handleRefetchArt}
                         disabled={refetchingArt}
@@ -375,7 +384,7 @@ export function AlbumDetailPage() {
                     <TooltipContent>Download album art from online sources</TooltipContent>
                   </Tooltip>
                   <Tooltip>
-                    <TooltipTrigger asChild>
+                    <TooltipTrigger>
                       <Button
                         asChild
                         variant="outline"
@@ -448,7 +457,7 @@ export function AlbumDetailPage() {
                 {/* Metadata Tools */}
                 <div className="flex flex-col sm:flex-row gap-2 mb-4 md:mb-6">
                   <Tooltip>
-                    <TooltipTrigger asChild>
+                    <TooltipTrigger>
                       <Button
                         onClick={() => setShowEditModal(true)}
                         variant="outline"
@@ -460,7 +469,7 @@ export function AlbumDetailPage() {
                     <TooltipContent>Edit album information and tags</TooltipContent>
                   </Tooltip>
                   <Tooltip>
-                    <TooltipTrigger asChild>
+                    <TooltipTrigger>
                       <Button
                         onClick={handleDeleteAlbum}
                         variant="outline"

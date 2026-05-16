@@ -287,7 +287,7 @@ export function PreviewPanel({ track, onClose, setPreviewTrack, onDeleteTrack })
               </div>
               <div className="flex flex-col lg:flex-row gap-1 lg:gap-2 flex-shrink-0 ml-2">
                 <Tooltip>
-                  <TooltipTrigger asChild>
+                  <TooltipTrigger>
                     <Button
                       onClick={() => setEditMode(true)}
                       variant="outline"
@@ -301,7 +301,7 @@ export function PreviewPanel({ track, onClose, setPreviewTrack, onDeleteTrack })
                   <TooltipContent>Edit track metadata</TooltipContent>
                 </Tooltip>
                 <Tooltip>
-                  <TooltipTrigger asChild>
+                  <TooltipTrigger>
                     <Button
                       onClick={handleDeleteTrack}
                       variant="outline"

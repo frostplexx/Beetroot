@@ -4,6 +4,7 @@ import { PreviewProvider } from './contexts/PreviewContext'
 import { ConfigErrorProvider } from './contexts/ConfigContext'
 import { ConfigErrorToast } from './components/common/ConfigErrorToast'
 import { CommandPalette } from './components/common/CommandPalette'
+import { ScrollRestoration } from './components/common/ScrollRestoration'
 import { Layout } from './components/layout/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { AlbumDetailPage } from './pages/AlbumDetailPage'
@@ -34,6 +35,7 @@ function App() {
         <TooltipProvider>
           <ConfigErrorProvider>
             <Router>
+              <ScrollRestoration />
               <PreviewProvider>
                 <Routes>
                   {/* Shared layout with Header */}

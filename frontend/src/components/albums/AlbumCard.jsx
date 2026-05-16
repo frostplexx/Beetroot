@@ -1,17 +1,29 @@
 import { memo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAlbumArt } from '../../hooks/useAlbumArt'
 
 export const AlbumCard = memo(function AlbumCard({ album, index = 0 }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { imageUrl, isLoading, error } = useAlbumArt(album.id, 400)
+
+  const handleClick = () => {
+    // Save scroll position before navigating (key pattern from Stack Overflow solution)
+    const scrollKey = `scroll-${location.pathname}${location.search}`
+
+    // Use window.scrollY (better mobile support than pageYOffset)
+    sessionStorage.setItem(scrollKey, window.scrollY.toString())
+
+    // Navigate to album detail
+    navigate(`/album/${album.id}`)
+  }
 
   return (
     <div
       className="group cursor-pointer aspect-square bg-neutral-900 border border-neutral-900 rounded-xl overflow-hidden relative transition-[border-color,box-shadow] duration-150 hover:border-rose-500/50 hover:shadow-lg hover:shadow-rose-500/5 active:scale-[0.99] w-full"
       style={{ willChange: 'border-color' }}
-      onClick={() => navigate(`/album/${album.id}`)}
+      onClick={handleClick}
     >
       {/* Album Art */}
       <div className="absolute inset-0 overflow-hidden">
@@ -42,16 +54,16 @@ export const AlbumCard = memo(function AlbumCard({ album, index = 0 }) {
 
       {/* Simple gradient overlay - no blur, no animations */}
       <div
-        className="absolute inset-x-0 bottom-0 h-20 pointer-events-none"
+        className="absolute inset-x-0 bottom-0 h-14 md:h-20 pointer-events-none"
         style={{
           background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 50%, transparent 100%)'
         }}
       >
-        <div className="absolute inset-x-0 bottom-0 p-3">
-          <div className="text-sm font-medium text-white truncate group-hover:text-rose-400 transition-colors duration-150">
+        <div className="absolute inset-x-0 bottom-0 p-1.5 md:p-3">
+          <div className="text-[11px] md:text-sm font-medium text-white truncate group-hover:text-rose-400 transition-colors duration-150 leading-tight">
             {album.album}
           </div>
-          <div className="text-xs text-neutral-300 truncate mt-0.5">
+          <div className="text-[9px] md:text-xs text-neutral-300 truncate mt-0.5 leading-tight">
             {album.albumartist}
           </div>
         </div>
