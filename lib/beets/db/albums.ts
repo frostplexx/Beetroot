@@ -31,6 +31,23 @@ export function getAllAlbums(): Album[] {
     }
 }
 
+export function getAlbumsPaginated(page: number = 0, pageSize: number = 24): Album[] {
+    try {
+        const offset = page * pageSize
+        const stmt = db.prepare(`
+            SELECT *
+            FROM albums
+            ORDER BY added DESC
+            LIMIT ? OFFSET ?
+        `)
+        const rows = stmt.all(pageSize, offset)
+        return decodeRows(rows) as Album[]
+    } catch (error) {
+        console.error("Error fetching paginated albums:", error)
+        return []
+    }
+}
+
 export function getAlbumById(id: number): Album | null {
     try {
         const stmt = db.prepare(`

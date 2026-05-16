@@ -26,21 +26,25 @@ import { ChevronLeft, ChevronRight } from "lucide-react"
 interface TracksTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
+  currentPage: number
+  totalPages: number
+  onPageChange: (page: number) => void
 }
 
 export function TracksTable<TData, TValue>({
   columns,
   data,
+  currentPage,
+  totalPages,
+  onPageChange,
 }: TracksTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
-  const [currentPage, setCurrentPage] = React.useState(0)
 
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     onSortingChange: setSorting,
     getSortedRowModel: getSortedRowModel(),
     onColumnFiltersChange: setColumnFilters,
@@ -48,14 +52,8 @@ export function TracksTable<TData, TValue>({
     state: {
       sorting,
       columnFilters,
-      pagination: {
-        pageIndex: currentPage,
-        pageSize: 50,
-      },
     },
   })
-
-  const totalPages = table.getPageCount()
 
   return (
     <div className="space-y-4">
@@ -109,11 +107,8 @@ export function TracksTable<TData, TValue>({
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
           <button
-            onClick={() => {
-              table.previousPage()
-              setCurrentPage(currentPage - 1)
-            }}
-            disabled={!table.getCanPreviousPage()}
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 0}
             className="p-2 rounded-lg bg-white/10 border border-white/20 text-white transition-all hover:bg-white/20 hover:border-white/30 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/10"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -137,10 +132,7 @@ export function TracksTable<TData, TValue>({
               return (
                 <button
                   key={pageNum}
-                  onClick={() => {
-                    table.setPageIndex(pageNum)
-                    setCurrentPage(pageNum)
-                  }}
+                  onClick={() => onPageChange(pageNum)}
                   className={`min-w-9 h-9 px-2 rounded-lg text-sm font-medium transition-all ${
                     isActive
                       ? 'bg-white/20 text-white border border-white/30'
@@ -154,11 +146,8 @@ export function TracksTable<TData, TValue>({
           </div>
 
           <button
-            onClick={() => {
-              table.nextPage()
-              setCurrentPage(currentPage + 1)
-            }}
-            disabled={!table.getCanNextPage()}
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages - 1}
             className="p-2 rounded-lg bg-white/10 border border-white/20 text-white transition-all hover:bg-white/20 hover:border-white/30 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/10"
           >
             <ChevronRight className="w-4 h-4" />

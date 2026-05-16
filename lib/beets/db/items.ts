@@ -29,6 +29,23 @@ export function getAllItems(): Item[] {
     }
 }
 
+export function getItemsPaginated(page: number = 0, pageSize: number = 50): Item[] {
+    try {
+        const offset = page * pageSize
+        const stmt = db.prepare(`
+            SELECT *
+            FROM items
+            ORDER BY album_id, track
+            LIMIT ? OFFSET ?
+        `)
+        const rows = stmt.all(pageSize, offset)
+        return decodeRows(rows) as Item[]
+    } catch (error) {
+        console.error("Error fetching paginated items:", error)
+        return []
+    }
+}
+
 export function getItemsByAlbum(albumId: number): Item[] {
     try {
         const stmt = db.prepare(`
