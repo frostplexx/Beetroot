@@ -14,7 +14,7 @@
     in
     {
       devShells.${system}.default = pkgs.mkShell {
-        packages = with pkgs; [ nodejs pnpm ];
+        packages = with pkgs; [ nodejs yarn sqlit-tui ];
 
         shellHook = "";
       };
