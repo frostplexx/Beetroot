@@ -89,19 +89,54 @@ export function getItemCount(): number {
     }
 }
 
-export function searchItems(query: string): Item[] {
+export function searchItems(query: string, page: number = 0, pageSize: number = 50): Item[] {
     try {
+        const offset = page * pageSize
+        const searchTerms = query.trim().split(/\s+/).map(term => `%${term}%`)
+
+        // Build dynamic WHERE clause for fuzzy matching
+        const whereConditions = searchTerms.map(() =>
+            '(title LIKE ? OR artist LIKE ? OR album LIKE ?)'
+        ).join(' AND ')
+
         const stmt = db.prepare(`
             SELECT *
             FROM items
-            WHERE title LIKE ? OR artist LIKE ? OR album LIKE ?
+            WHERE ${whereConditions}
             ORDER BY album_id, track
+            LIMIT ? OFFSET ?
         `)
-        const searchTerm = `%${query}%`
-        const rows = stmt.all(searchTerm, searchTerm, searchTerm)
+
+        // Flatten search terms for each condition
+        const params = searchTerms.flatMap(term => [term, term, term])
+        params.push(pageSize, offset)
+
+        const rows = stmt.all(...params)
         return decodeRows(rows) as Item[]
     } catch (error) {
         console.error("Error searching items:", error)
         return []
+    }
+}
+
+export function getItemsSearchCount(query: string): number {
+    try {
+        const searchTerms = query.trim().split(/\s+/).map(term => `%${term}%`)
+        const whereConditions = searchTerms.map(() =>
+            '(title LIKE ? OR artist LIKE ? OR album LIKE ?)'
+        ).join(' AND ')
+
+        const stmt = db.prepare(`
+            SELECT COUNT(*) as count
+            FROM items
+            WHERE ${whereConditions}
+        `)
+
+        const params = searchTerms.flatMap(term => [term, term, term])
+        const result = stmt.get(...params) as { count: number }
+        return result.count
+    } catch (error) {
+        console.error("Error counting search results:", error)
+        return 0
     }
 }

@@ -1,5 +1,15 @@
-import { getAlbumsPaginated, getAlbumCount } from "@/lib/beets/db"
-import { getItemsPaginated, getItemCount } from "@/lib/beets/db"
+import {
+    getAlbumsPaginated,
+    getAlbumCount,
+    searchAlbums,
+    getAlbumsSearchCount,
+} from "@/lib/beets/db"
+import {
+    getItemsPaginated,
+    getItemCount,
+    searchItems,
+    getItemsSearchCount,
+} from "@/lib/beets/db"
 import { LibraryClient } from "./library-client"
 
 interface PageProps {
@@ -10,14 +20,29 @@ export default async function Home({ searchParams }: PageProps) {
     const params = await searchParams
     const albumsPage = Number(params.albumsPage) || 0
     const tracksPage = Number(params.tracksPage) || 0
+    const query = typeof params.q === 'string' ? params.q : ''
 
     const albumsPerPage = 24
     const tracksPerPage = 50
 
-    const albums = getAlbumsPaginated(albumsPage, albumsPerPage)
-    const totalAlbums = getAlbumCount()
-    const tracks = getItemsPaginated(tracksPage, tracksPerPage)
-    const totalTracks = getItemCount()
+    const isSearching = query.length > 0
+
+    // Fetch data based on whether we're searching or not
+    const albums = isSearching
+        ? searchAlbums(query, albumsPage, albumsPerPage)
+        : getAlbumsPaginated(albumsPage, albumsPerPage)
+
+    const totalAlbums = isSearching
+        ? getAlbumsSearchCount(query)
+        : getAlbumCount()
+
+    const tracks = isSearching
+        ? searchItems(query, tracksPage, tracksPerPage)
+        : getItemsPaginated(tracksPage, tracksPerPage)
+
+    const totalTracks = isSearching
+        ? getItemsSearchCount(query)
+        : getItemCount()
 
     const totalAlbumPages = Math.ceil(totalAlbums / albumsPerPage)
     const totalTrackPages = Math.ceil(totalTracks / tracksPerPage)
@@ -32,6 +57,7 @@ export default async function Home({ searchParams }: PageProps) {
             tracksPage={tracksPage}
             totalAlbumPages={totalAlbumPages}
             totalTrackPages={totalTrackPages}
+            searchQuery={query}
         />
     )
 }

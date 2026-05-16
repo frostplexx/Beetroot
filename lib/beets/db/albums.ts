@@ -75,19 +75,54 @@ export function getAlbumCount(): number {
     }
 }
 
-export function searchAlbums(query: string): Album[] {
+export function searchAlbums(query: string, page: number = 0, pageSize: number = 24): Album[] {
     try {
+        const offset = page * pageSize
+        const searchTerms = query.trim().split(/\s+/).map(term => `%${term}%`)
+
+        // Build dynamic WHERE clause for fuzzy matching
+        const whereConditions = searchTerms.map(() =>
+            '(album LIKE ? OR albumartist LIKE ? OR label LIKE ? OR genres LIKE ?)'
+        ).join(' AND ')
+
         const stmt = db.prepare(`
             SELECT *
             FROM albums
-            WHERE album LIKE ? OR albumartist LIKE ?
+            WHERE ${whereConditions}
             ORDER BY added DESC
+            LIMIT ? OFFSET ?
         `)
-        const searchTerm = `%${query}%`
-        const rows = stmt.all(searchTerm, searchTerm)
+
+        // Flatten search terms for each condition
+        const params = searchTerms.flatMap(term => [term, term, term, term])
+        params.push(pageSize, offset)
+
+        const rows = stmt.all(...params)
         return decodeRows(rows) as Album[]
     } catch (error) {
         console.error("Error searching albums:", error)
         return []
+    }
+}
+
+export function getAlbumsSearchCount(query: string): number {
+    try {
+        const searchTerms = query.trim().split(/\s+/).map(term => `%${term}%`)
+        const whereConditions = searchTerms.map(() =>
+            '(album LIKE ? OR albumartist LIKE ? OR label LIKE ? OR genres LIKE ?)'
+        ).join(' AND ')
+
+        const stmt = db.prepare(`
+            SELECT COUNT(*) as count
+            FROM albums
+            WHERE ${whereConditions}
+        `)
+
+        const params = searchTerms.flatMap(term => [term, term, term, term])
+        const result = stmt.get(...params) as { count: number }
+        return result.count
+    } catch (error) {
+        console.error("Error counting search results:", error)
+        return 0
     }
 }

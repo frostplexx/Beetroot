@@ -17,6 +17,7 @@ interface LibraryClientProps {
     tracksPage: number
     totalAlbumPages: number
     totalTrackPages: number
+    searchQuery: string
 }
 
 export function LibraryClient({
@@ -28,6 +29,7 @@ export function LibraryClient({
     tracksPage,
     totalAlbumPages,
     totalTrackPages,
+    searchQuery,
 }: LibraryClientProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -99,37 +101,68 @@ export function LibraryClient({
         )
     }
 
+    const isSearching = searchQuery.length > 0
+
     return (
         <div className="container mx-auto py-4 px-4">
+            {isSearching && (
+                <div className="mb-6">
+                    <h2 className="text-2xl font-heading font-bold text-white mb-2">
+                        Search results for "{searchQuery}"
+                    </h2>
+                    <p className="text-white/60 text-sm">
+                        Found {totalAlbums} {totalAlbums === 1 ? 'album' : 'albums'} and {totalTracks} {totalTracks === 1 ? 'track' : 'tracks'}
+                    </p>
+                </div>
+            )}
+
             <Tabs defaultValue="albums">
                 {/* Tabs & Results Count */}
                 <div className="flex items-center justify-between mb-4">
                     <TabsList className="bg-transparent border-b" variant="line">
                         <TabsTrigger value="albums">
                             <Album className="w-4 h-4" />
-                            Albums
+                            Albums {isSearching && `(${totalAlbums})`}
                         </TabsTrigger>
                         <TabsTrigger value="tracks">
                             <Music className="w-4 h-4" />
-                            Tracks
+                            Tracks {isSearching && `(${totalTracks})`}
                         </TabsTrigger>
                     </TabsList>
 
-                    <div className="text-sm text-white/60">
-                        {totalAlbums.toLocaleString()} albums • {totalTracks.toLocaleString()} tracks
-                    </div>
+                    {!isSearching && (
+                        <div className="text-sm text-white/60">
+                            {totalAlbums.toLocaleString()} albums • {totalTracks.toLocaleString()} tracks
+                        </div>
+                    )}
                 </div>
 
                 <TabsContent value="albums" className="mt-0">
-                    {/* Album Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-                        {albums.map((album) => (
-                            <AlbumCard key={album.id} album={album} />
-                        ))}
-                    </div>
+                    {albums.length > 0 ? (
+                        <>
+                            {/* Album Grid */}
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+                                {albums.map((album) => (
+                                    <AlbumCard key={album.id} album={album} />
+                                ))}
+                            </div>
 
-                    {/* Pagination */}
-                    {renderPagination(albumsPage, totalAlbumPages, handleAlbumsPageChange)}
+                            {/* Pagination */}
+                            {renderPagination(albumsPage, totalAlbumPages, handleAlbumsPageChange)}
+                        </>
+                    ) : (
+                        <div className="text-center py-16">
+                            <div className="inline-flex p-4 rounded-full bg-white/5 mb-4">
+                                <Album className="w-8 h-8 text-white/40" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-white mb-2">No albums found</h3>
+                            <p className="text-white/60 text-sm">
+                                {isSearching
+                                    ? `No albums match "${searchQuery}". Try different keywords.`
+                                    : 'Your library is empty.'}
+                            </p>
+                        </div>
+                    )}
                 </TabsContent>
 
                 <TabsContent value="tracks" className="mt-0">

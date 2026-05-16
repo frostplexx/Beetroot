@@ -11,6 +11,7 @@ import "./globals.css"
 import { cn } from "@/lib/utils"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Navbar } from "@/components/navbar"
+import { CommandMenu } from "@/components/command-menu"
 
 const spaceGroteskHeading = Space_Grotesk({
     subsets: ["latin"],
@@ -63,6 +64,7 @@ export default function RootLayout({
                     enableSystem
                     disableTransitionOnChange
                 >
+                    <CommandMenu />
                     <header className="sticky top-0 z-50 backdrop-blur-md bg-black/60 border-b border-white/10">
                         <div className="container mx-auto px-4 py-3">
                             <Navbar />
