@@ -63,8 +63,10 @@ export default function RootLayout({
                     enableSystem
                     disableTransitionOnChange
                 >
-                    <header className="border-b px-4 py-2">
-                        <Navbar />
+                    <header className="sticky top-0 z-50 backdrop-blur-md bg-black/60 border-b border-white/10">
+                        <div className="container mx-auto px-6 py-4">
+                            <Navbar />
+                        </div>
                     </header>
 
                     <main className="flex-1">{children}</main>
