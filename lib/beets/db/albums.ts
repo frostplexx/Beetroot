@@ -10,6 +10,9 @@ export interface Album {
     added: number
     albumtotal: number
     path: string | null
+    label: string | null
+    genres: string | null
+    country: string | null
     [key: string]: any
 }
 
