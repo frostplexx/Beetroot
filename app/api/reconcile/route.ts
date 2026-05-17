@@ -110,20 +110,26 @@ export async function DELETE() {
  * Reconcile database with filesystem
  */
 export async function POST(request: NextRequest) {
+    console.log('\n========== RECONCILE START ==========');
     try {
         const body = await request.json();
         const action = body.action; // 'start' or 'progress'
 
         if (action === 'start') {
+            console.log('Action: start (background mode - not yet implemented)');
             // Return immediately, actual work happens in background
             // Client will poll for progress
             return NextResponse.json({ success: true, message: 'Reconcile started' });
         }
 
+        console.log('Action: full reconcile (foreground mode)');
+
         // Full reconcile process
         const musicDir = expandPath(globalConfig.music_directory);
+        console.log('Music directory:', musicDir);
 
         if (!fs.existsSync(musicDir)) {
+            console.error('✗ Music directory not found:', musicDir);
             return NextResponse.json(
                 { error: `Music directory not found: ${musicDir}` },
                 { status: 400 }
@@ -138,13 +144,19 @@ export async function POST(request: NextRequest) {
         };
 
         // Step 1: Find all audio files
+        console.log('\n→ STEP 1: Scanning for audio files...');
         const audioFiles = await findAudioFiles(musicDir);
         results.scanned = audioFiles.length;
+        console.log(`  ✓ Found ${audioFiles.length} audio files`);
 
         // Step 2: Import new files
+        console.log('\n→ STEP 2: Importing new files...');
+        let newFileCount = 0;
         for (const file of audioFiles) {
             const existing = db.prepare('SELECT id FROM items WHERE path = ?').get(file);
             if (!existing) {
+                newFileCount++;
+                console.log(`\n  [${newFileCount}] New file: ${file}`);
                 try {
                     await repository.importTrack(file, {
                         skipMusicBrainz: false,
@@ -154,36 +166,52 @@ export async function POST(request: NextRequest) {
                         organizeFiles: true
                     });
                     results.imported++;
+                    console.log(`  ✓ Successfully imported`);
                 } catch (error) {
-                    results.errors.push(`Failed to import ${file}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    const errorMsg = `Failed to import ${file}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                    console.error(`  ✗ ${errorMsg}`);
+                    results.errors.push(errorMsg);
                 }
             }
         }
+        console.log(`\n  Summary: ${results.imported} imported, ${results.errors.length} errors`);
 
         // Step 3: Mark missing files
+        console.log('\n→ STEP 3: Checking for missing files...');
         const dbFiles = db.prepare('SELECT id, path FROM items WHERE missing_since IS NULL').all() as Array<{ id: number, path: string }>;
+        console.log(`  Checking ${dbFiles.length} files in database...`);
         for (const dbFile of dbFiles) {
             if (!fs.existsSync(dbFile.path)) {
+                console.log(`  ⚠ Missing: ${dbFile.path} (id=${dbFile.id})`);
                 repository.markMissing(dbFile.id);
                 results.missing++;
             }
         }
+        console.log(`  Summary: ${results.missing} files marked as missing`);
 
         // Step 4: Rebuild albums from tracks
+        console.log('\n→ STEP 4: Rebuilding albums...');
         const rebuildResponse = await fetch(`http://localhost:${process.env.PORT || 3000}/api/albums/rebuild`, {
             method: 'POST'
         });
 
         if (!rebuildResponse.ok) {
-            console.warn('Failed to rebuild albums during reconcile');
+            console.warn('  ⚠ Failed to rebuild albums during reconcile');
+        } else {
+            console.log('  ✓ Albums rebuilt');
         }
+
+        console.log('\n========== RECONCILE COMPLETE ==========');
+        console.log('Summary:', results);
+        console.log('=========================================\n');
 
         return NextResponse.json({
             success: true,
             ...results
         });
     } catch (error) {
-        console.error('Reconcile error:', error);
+        console.error('\n✗ RECONCILE ERROR:', error);
+        console.error('Stack:', error instanceof Error ? error.stack : 'no stack');
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Reconcile failed' },
             { status: 500 }

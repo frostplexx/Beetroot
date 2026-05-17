@@ -118,7 +118,7 @@ async function writeM4aTags(filePath: string, track: TrackData): Promise<WriteBa
 }
 
 /**
- * Creates folder structure for a track based on path template
+ * Creates full file path (without extension) for a track based on path template
  * Template syntax matches beets config
  *
  * Examples:
@@ -126,27 +126,42 @@ async function writeM4aTags(filePath: string, track: TrackData): Promise<WriteBa
  * - '%bucket{$albumartist,alpha}/$albumartist/$album/$track $title'
  * - 'Compilations/$album/$track $title' (for compilations)
  */
-export function createFolderPath(
+export function createFullPath(
     track: TrackData,
     template: string,
     baseDir: string
 ): string {
+    console.log('    → Creating full path from template...');
+    console.log('      Template:', template);
+    console.log('      Base dir:', baseDir);
+
     let result = template;
 
     // Handle bucket function
+    console.log('      → Processing bucket functions...');
     const bucketRegex = /%bucket\{([^,]+),alpha\}/g;
-    result = result.replace(bucketRegex, (_, field) => {
-        const value = getFieldValue(track, field);
-        return getAlphaBucket(value);
+    result = result.replace(bucketRegex, (match, field) => {
+        // Remove leading $ from field name
+        const fieldName = field.startsWith('$') ? field.substring(1) : field;
+        const value = getFieldValue(track, fieldName);
+        const bucket = getAlphaBucket(value);
+        console.log(`        %bucket{${field}} = "${value}" → "${bucket}"`);
+        return bucket;
     });
 
     // Replace field variables
+    console.log('      → Replacing field variables...');
     const fieldRegex = /\$(\w+)/g;
-    result = result.replace(fieldRegex, (_, field) => {
-        return sanitizePathComponent(getFieldValue(track, field));
+    result = result.replace(fieldRegex, (match, field) => {
+        const value = getFieldValue(track, field);
+        const sanitized = sanitizePathComponent(value);
+        console.log(`        $${field} = "${value}" → "${sanitized}"`);
+        return sanitized;
     });
 
-    return path.join(baseDir, result);
+    const fullPath = path.join(baseDir, result);
+    console.log('      → Final path (without extension):', fullPath);
+    return fullPath;
 }
 
 /**
@@ -166,7 +181,8 @@ function getFieldValue(track: TrackData, field: string): string {
 }
 
 /**
- * Gets alphabetic bucket for a value (e.g., "A-D", "E-H", etc.)
+ * Gets alphabetic bucket for a value, matching beets' behavior
+ * Buckets: A-D (4), E-L (8), M-R (6), S-Z (8)
  */
 function getAlphaBucket(value: string): string {
     if (!value) return 'Unknown';
@@ -177,9 +193,10 @@ function getAlphaBucket(value: string): string {
     // Check if it's a letter
     if (code >= 65 && code <= 90) {
         // A=65, Z=90
-        const buckets = ['A-D', 'E-H', 'I-L', 'M-P', 'Q-T', 'U-Z'];
-        const bucketIndex = Math.min(Math.floor((code - 65) / 4), buckets.length - 1);
-        return buckets[bucketIndex];
+        if (code <= 68) return 'A-D';      // A-D: 65-68
+        if (code <= 76) return 'E-L';      // E-L: 69-76
+        if (code <= 82) return 'M-R';      // M-R: 77-82
+        return 'S-Z';                       // S-Z: 83-90
     }
 
     // Non-alphabetic characters
@@ -208,17 +225,36 @@ export async function moveTrackToLocation(
     template: string,
     baseDir: string
 ): Promise<string> {
-    const targetDir = createFolderPath(track, template, baseDir);
+    console.log('    → Moving track to organized location...');
+    console.log('      Current location:', track.filePath);
+
+    // The template includes both directory and filename parts
+    // We need to build the full path from the template, including the filename
+    const fullPathWithoutExt = createFullPath(track, template, baseDir);
     const ext = path.extname(track.filePath);
-    const filename = sanitizePathComponent(`${track.trackNumber?.toString().padStart(2, '0')} ${track.title}${ext}`);
-    const targetPath = path.join(targetDir, filename);
+    const targetPath = fullPathWithoutExt + ext;
+    const targetDir = path.dirname(targetPath);
+
+    console.log('      Target directory:', targetDir);
+    console.log('      Full target path:', targetPath);
 
     // Create directory if it doesn't exist
+    console.log('      → Creating directory structure...');
     await fs.promises.mkdir(targetDir, { recursive: true });
+    console.log('      ✓ Directory ready');
 
     // Move file
     if (track.filePath !== targetPath) {
-        await fs.promises.rename(track.filePath, targetPath);
+        console.log('      → Moving file...');
+        try {
+            await fs.promises.rename(track.filePath, targetPath);
+            console.log('      ✓ File moved successfully');
+        } catch (error) {
+            console.error('      ✗ File move failed:', error);
+            throw error;
+        }
+    } else {
+        console.log('      ℹ File already at target location, no move needed');
     }
 
     return targetPath;

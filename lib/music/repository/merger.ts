@@ -16,6 +16,11 @@ export function mergeTrackData(
     existingSources?: Partial<Record<keyof TrackData, DataSource>>,
     conflictResolution: ConflictResolution = 'keep-db'
 ): { merged: TrackData; conflicts: Omit<SyncConflict, 'trackId' | 'timestamp'>[] } {
+    console.log('  → Merge process starting...');
+    console.log('    Sources:', sources.map(s => `${s.source} (conf=${s.confidence})`).join(', '));
+    console.log('    Conflict resolution:', conflictResolution);
+    console.log('    Has existing data:', !!existingData);
+
     const merged: any = {};
     const conflicts: Omit<SyncConflict, 'trackId' | 'timestamp'>[] = [];
     const fieldSources: Partial<Record<keyof TrackData, DataSource>> = {};
@@ -25,6 +30,8 @@ export function mergeTrackData(
     sources.forEach(source => {
         Object.keys(source.data).forEach(key => allFields.add(key as keyof TrackData));
     });
+
+    console.log('    Fields to merge:', Array.from(allFields).join(', '));
 
     const fieldArray = Array.from(allFields);
     for (const field of fieldArray) {
@@ -52,6 +59,7 @@ export function mergeTrackData(
             // Only flag as conflict if values actually differ
             if (JSON.stringify(dbValue) !== JSON.stringify(fileValue) ||
                 (mbValue && JSON.stringify(dbValue) !== JSON.stringify(mbValue))) {
+                console.log(`    ⚠ CONFLICT on field "${field}":`, { dbValue, fileValue, mbValue });
                 conflicts.push({
                     field,
                     dbValue,
@@ -61,26 +69,38 @@ export function mergeTrackData(
                 });
 
                 // Apply conflict resolution
+                let resolvedValue: any;
+                let resolvedSource: DataSource;
                 switch (conflictResolution) {
                     case 'keep-db':
-                        merged[field] = dbValue as any;
-                        fieldSources[field] = dbSource;
+                        resolvedValue = dbValue;
+                        resolvedSource = dbSource;
+                        console.log(`    → Resolved: keeping DB value (${dbSource})`);
+                        merged[field] = resolvedValue as any;
+                        fieldSources[field] = resolvedSource;
                         continue;
                     case 'keep-file':
                         if (fileValue !== undefined) {
-                            merged[field] = fileValue as any;
-                            fieldSources[field] = 'tags';
+                            resolvedValue = fileValue;
+                            resolvedSource = 'tags';
+                            console.log(`    → Resolved: keeping file value`);
+                            merged[field] = resolvedValue as any;
+                            fieldSources[field] = resolvedSource;
                             continue;
                         }
                         break;
                     case 'keep-mb':
                         if (mbValue !== undefined) {
-                            merged[field] = mbValue as any;
-                            fieldSources[field] = 'musicbrainz';
+                            resolvedValue = mbValue;
+                            resolvedSource = 'musicbrainz';
+                            console.log(`    → Resolved: keeping MusicBrainz value`);
+                            merged[field] = resolvedValue as any;
+                            fieldSources[field] = resolvedSource;
                             continue;
                         }
                         break;
                     case 'manual':
+                        console.log(`    → Resolved: flagged for manual resolution, keeping DB value for now`);
                         // Keep DB value for now, user will resolve manually
                         merged[field] = dbValue as any;
                         fieldSources[field] = dbSource;
@@ -95,29 +115,44 @@ export function mergeTrackData(
     }
 
     // Handle genres separately with canonicalization
+    console.log('    → Processing genres...');
     const genreSources = sources.filter(s => s.data.genres && s.data.genres.length > 0);
     if (genreSources.length > 0) {
         const allGenres = genreSources.flatMap(s => s.data.genres || []);
+        console.log('      Raw genres:', allGenres);
         merged.genres = canonicalizeGenres(allGenres);
+        console.log('      Canonicalized:', merged.genres);
         fieldSources.genres = genreSources[0].source; // Use source of first genre provider
+    } else {
+        console.log('      No genres found in sources');
     }
 
     // Handle duration specially - prefer file tags over MusicBrainz
+    console.log('    → Processing duration...');
     const tagsDuration = sources.find(s => s.source === 'tags')?.data.duration;
     if (tagsDuration !== undefined) {
+        console.log('      Using file tags duration:', tagsDuration);
         merged.duration = tagsDuration;
         fieldSources.duration = 'tags';
     }
 
     // Ensure filePath is set
     if (!merged.filePath) {
+        console.log('    → FilePath not set, using first source');
         merged.filePath = sources[0]?.data.filePath || '';
     }
 
     // Calculate file hash
+    console.log('    → Calculating file hash...');
     if (merged.filePath) {
         merged.fileHash = calculateFileHash(merged.filePath);
+        console.log('      Hash:', merged.fileHash);
     }
+
+    console.log('  ✓ Merge complete:', {
+        conflictsFound: conflicts.length,
+        fieldsSet: Object.keys(merged).length
+    });
 
     return {
         merged: merged as TrackData,

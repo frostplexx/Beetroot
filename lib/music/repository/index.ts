@@ -16,7 +16,9 @@ import {
 } from './types';
 import { writeTagsToFile, moveTrackToLocation } from './writeback';
 import { albumArtManager } from './albumart';
+import { stripEmbeddedAlbumArt } from './albumart/strip';
 import { expandPath } from './utils';
+import { globalConfig } from '@/lib/config';
 
 export class TrackRepository {
     constructor(private db: Database.Database) { }
@@ -28,55 +30,102 @@ export class TrackRepository {
         filePath: string,
         options: ImportOptions = {}
     ): Promise<{ trackId: number; conflicts: SyncConflict[] }> {
+        console.log('\n========== IMPORT TRACK START ==========');
+        console.log('File:', filePath);
+        console.log('Options:', JSON.stringify(options, null, 2));
+
         const {
             skipMusicBrainz = false,
             skipLastFm = false,
             writeBack = 'never',
-            conflictResolution = 'keep-db'
+            conflictResolution = 'keep-db',
+            organizeFiles = false
         } = options;
 
+        console.log('Parsed options:', { skipMusicBrainz, skipLastFm, writeBack, conflictResolution, organizeFiles });
+
         // Check if track already exists
+        console.log('→ Checking if track already exists in database...');
         const existingTrack = this.findTrackByPath(filePath);
+        console.log('  Existing track:', existingTrack ? `Found (id=${existingTrack.id})` : 'Not found (new import)');
 
         // Gather data from sources
+        console.log('\n→ Gathering data from sources...');
         const sources: ScoredTrackData[] = [];
 
         // 1. Read local tags (always)
+        console.log('  [1/3] Reading local file tags...');
         const localTags = await readLocalTags(filePath);
+        console.log('  ✓ Local tags:', {
+            title: localTags.data.title,
+            artists: localTags.data.artists,
+            album: localTags.data.album,
+            duration: localTags.data.duration,
+            confidence: localTags.confidence
+        });
         sources.push(localTags);
 
         // 2. Fetch MusicBrainz data (optional)
+        console.log('  [2/3] MusicBrainz lookup...');
         if (!skipMusicBrainz && localTags.data.duration) {
+            console.log('    → Enabled, has duration - fetching...');
             try {
                 const chromaprint = await getAcoustidFingerprint(filePath);
+                console.log('    → Got fingerprint:', chromaprint.fingerprint.substring(0, 50) + '...');
                 const mbData = await fetchMusicBrainzData(
                     filePath,
                     chromaprint.fingerprint,
                     chromaprint.duration
                 );
                 if (mbData) {
+                    console.log('    ✓ MusicBrainz data:', {
+                        title: mbData.data.title,
+                        artists: mbData.data.artists,
+                        album: mbData.data.album,
+                        releaseId: mbData.data.releaseId,
+                        confidence: mbData.confidence
+                    });
                     sources.push(mbData);
+                } else {
+                    console.log('    ⚠ No MusicBrainz match found');
                 }
             } catch (error) {
-                console.warn('Failed to fetch MusicBrainz data:', error);
+                console.warn('    ✗ Failed to fetch MusicBrainz data:', error);
             }
+        } else {
+            console.log('    ⊘ Skipped:', skipMusicBrainz ? 'disabled in options' : 'no duration in tags');
         }
 
         // 3. Fetch Last.fm genres (optional)
+        console.log('  [3/3] Last.fm genre lookup...');
         if (!skipLastFm && localTags.data.artists?.[0] && localTags.data.album) {
+            console.log(`    → Enabled, fetching genres for "${localTags.data.artists[0]}" - "${localTags.data.album}"...`);
             const lfmGenres = await fetchLastFmGenres(
                 localTags.data.artists[0],
                 localTags.data.album,
                 filePath
             );
             if (lfmGenres) {
+                console.log('    ✓ Last.fm genres:', lfmGenres.data.genres);
                 sources.push(lfmGenres);
+            } else {
+                console.log('    ⚠ No Last.fm data found');
             }
+        } else {
+            const reason = skipLastFm ? 'disabled in options' : 'missing artist or album in tags';
+            console.log(`    ⊘ Skipped: ${reason}`);
         }
 
+        console.log('\n→ Total sources gathered:', sources.length);
+
         // Merge data
+        console.log('\n→ Merging data from all sources...');
         const existingData = existingTrack ? this.getTrackData(existingTrack.id) : undefined;
         const existingSources = existingTrack ? this.getTrackSources(existingTrack.id) : undefined;
+
+        if (existingData) {
+            console.log('  Using existing DB data for conflict resolution');
+        }
 
         const { merged, conflicts: mergeConflicts } = mergeTrackData(
             sources,
@@ -85,13 +134,32 @@ export class TrackRepository {
             conflictResolution
         );
 
+        console.log('  ✓ Merged track data:', {
+            title: merged.title,
+            artists: merged.artists,
+            album: merged.album,
+            albumArtist: merged.albumArtist,
+            year: merged.year,
+            trackNumber: merged.trackNumber,
+            compilation: merged.compilation,
+            genres: merged.genres
+        });
+        console.log('  Conflicts found:', mergeConflicts.length);
+
         // Upsert to database
+        console.log('\n→ Saving to database...');
         const trackId = this.upsertTrack(merged, sources);
+        console.log(`  ✓ Track saved with id=${trackId}`);
 
         // Create/update album and link track to it
         if (merged.album && merged.albumArtist) {
+            console.log(`\n→ Creating/updating album "${merged.album}" by ${merged.albumArtist}...`);
             const albumId = this.upsertAlbum(merged);
+            console.log(`  ✓ Album id=${albumId}`);
             this.linkTrackToAlbum(trackId, albumId);
+            console.log(`  ✓ Linked track ${trackId} to album ${albumId}`);
+        } else {
+            console.log('\n→ No album info, skipping album creation');
         }
 
         // Store conflicts
@@ -102,15 +170,80 @@ export class TrackRepository {
         }));
 
         if (conflicts.length > 0) {
+            console.log(`\n→ Storing ${conflicts.length} conflicts for manual resolution`);
             this.storeConflicts(conflicts);
         }
 
-        // Fetch and save album art
+        // Organize files BEFORE fetching album art so cover is saved in the right place
+        console.log('\n→ File organization...');
+        console.log(`  organizeFiles=${organizeFiles}, has paths config=${!!globalConfig.paths}`);
+
+        let finalFilePath = merged.filePath; // Track the current file path
+
+        if (organizeFiles && globalConfig.paths) {
+            try {
+                console.log('  → Organizing file into folder structure...');
+                const musicDir = expandPath(globalConfig.music_directory);
+                console.log('  Music directory:', musicDir);
+
+                // Choose template based on track type
+                let template = globalConfig.paths.default;
+                let templateType = 'default';
+
+                if (merged.compilation && globalConfig.paths.comp) {
+                    template = globalConfig.paths.comp;
+                    templateType = 'compilation';
+                } else if (!merged.album && globalConfig.paths.singleton) {
+                    template = globalConfig.paths.singleton;
+                    templateType = 'singleton';
+                }
+
+                console.log(`  Template type: ${templateType}`);
+                console.log(`  Template: "${template}"`);
+                console.log('  Track data for template:', {
+                    albumArtist: merged.albumArtist,
+                    artist: merged.artists?.[0],
+                    album: merged.album,
+                    title: merged.title,
+                    trackNumber: merged.trackNumber,
+                    compilation: merged.compilation
+                });
+
+                const oldPath = merged.filePath;
+                console.log('  Current path:', oldPath);
+
+                const newPath = await moveTrackToLocation(merged, template, musicDir);
+
+                console.log('  New path:', newPath);
+
+                if (oldPath !== newPath) {
+                    // Update track path in database and in-memory
+                    console.log('  → Updating path in database...');
+                    this.db.prepare('UPDATE items SET path = ? WHERE id = ?').run(newPath, trackId);
+                    finalFilePath = newPath; // Update for album art fetching
+                    merged.filePath = newPath; // Update merged data
+                    console.log('  ✓ File moved and database updated');
+                } else {
+                    console.log('  ℹ File already in correct location');
+                }
+            } catch (error) {
+                console.error('  ✗ File organization failed:', error);
+                console.error('  Stack:', error instanceof Error ? error.stack : 'no stack');
+                // Don't abort import if file move fails
+            }
+        } else {
+            const reason = !organizeFiles ? 'organizeFiles=false' : 'no paths config';
+            console.log(`  ⊘ Skipped: ${reason}`);
+        }
+
+        // Fetch and save album art (after file has been moved)
+        console.log('\n→ Fetching album art...');
         try {
-            const albumFolder = albumArtManager.getAlbumFolder(filePath);
+            const albumFolder = albumArtManager.getAlbumFolder(finalFilePath);
+            console.log('  Album folder:', albumFolder);
             const coverPath = await albumArtManager.fetchAndSave(
                 {
-                    filePath,
+                    filePath: finalFilePath,
                     releaseId: merged.releaseId,
                     artist: merged.artists?.[0] || merged.albumArtist,
                     album: merged.album
@@ -120,55 +253,50 @@ export class TrackRepository {
             );
 
             if (coverPath) {
+                console.log('  ✓ Album art saved:', coverPath);
                 // Update track with cover path
                 merged.coverPath = coverPath;
                 this.updateCoverPath(trackId, coverPath);
+
+                // Strip embedded album art from FLAC files to avoid duplication
+                console.log('  → Checking if embedded art should be stripped...');
+                try {
+                    const wasStripped = await stripEmbeddedAlbumArt(finalFilePath);
+                    if (wasStripped) {
+                        console.log('  ✓ Embedded art removed from file');
+                    }
+                } catch (stripError) {
+                    console.warn('  ⚠ Failed to strip embedded art (non-critical):', stripError);
+                }
+            } else {
+                console.log('  ⚠ No album art found');
             }
         } catch (error) {
             // Don't abort import if album art fails
-            console.warn('Album art fetch failed (non-critical):', error);
+            console.warn('  ✗ Album art fetch failed (non-critical):', error);
         }
 
         // Write back to file if requested
-        if (writeBack === 'always' || (writeBack === 'missing-only' && !existingTrack)) {
+        console.log('\n→ Write-back to file...');
+        const shouldWriteback = writeBack === 'always' || (writeBack === 'missing-only' && !existingTrack);
+        console.log(`  Mode: ${writeBack}, Existing track: ${!!existingTrack}, Should writeback: ${shouldWriteback}`);
+        if (shouldWriteback) {
+            console.log('  → Writing tags to file...');
             try {
-                await writeTagsToFile(filePath, merged);
+                await writeTagsToFile(finalFilePath, merged);
+                console.log('  ✓ Tags written successfully');
             } catch (error) {
-                console.error('Write-back failed:', error);
+                console.error('  ✗ Write-back failed:', error);
                 throw error; // Abort import on write-back failure
             }
-        }
-
-        // Organize files if requested
-        console.log('DEBUG organizeFiles:', organizeFiles, 'paths:', globalConfig.paths);
-        if (organizeFiles && globalConfig.paths) {
-            try {
-                const musicDir = expandPath(globalConfig.music_directory);
-
-                // Choose template based on track type
-                let template = globalConfig.paths.default;
-                if (merged.compilation && globalConfig.paths.comp) {
-                    template = globalConfig.paths.comp;
-                } else if (!merged.album && globalConfig.paths.singleton) {
-                    template = globalConfig.paths.singleton;
-                }
-
-                console.log('DEBUG template:', template, 'musicDir:', musicDir);
-
-                const newPath = await moveTrackToLocation(merged, template, musicDir);
-
-                // Update track path in database
-                this.db.prepare('UPDATE items SET path = ? WHERE id = ?').run(newPath, trackId);
-
-                console.log(`✓ Moved file to: ${newPath}`);
-            } catch (error) {
-                console.error('File organization failed:', error);
-                console.error('Stack:', error instanceof Error ? error.stack : 'no stack');
-                // Don't abort import if file move fails
-            }
         } else {
-            console.log('DEBUG: Skipping file organization - organizeFiles:', organizeFiles, 'has paths:', !!globalConfig.paths);
+            console.log('  ⊘ Skipped');
         }
+
+        console.log('\n========== IMPORT TRACK COMPLETE ==========');
+        console.log('Track ID:', trackId);
+        console.log('Conflicts:', conflicts.length);
+        console.log('===========================================\n');
 
         return { trackId, conflicts };
     }
@@ -333,6 +461,7 @@ export class TrackRepository {
      * Inserts or updates a track in the database
      */
     private upsertTrack(track: TrackData, sources: ScoredTrackData[]): number {
+        console.log('  → Building source map...');
         // Build source map
         const sourceMap: Partial<Record<keyof TrackData, DataSource>> = {};
         for (const source of sources) {
@@ -342,12 +471,14 @@ export class TrackRepository {
                 }
             }
         }
+        console.log('  Source map:', Object.entries(sourceMap).map(([k, v]) => `${k}=${v}`).join(', '));
 
         const existing = this.findTrackByPath(track.filePath);
 
         if (existing) {
+            console.log(`  → Updating existing track (id=${existing.id})...`);
             // Update existing
-            this.db.prepare(`
+            const result = this.db.prepare(`
                 UPDATE items SET
                     title = ?, title_source = ?,
                     artist = ?, artists = ?, artists_source = ?,
@@ -385,8 +516,10 @@ export class TrackRepository {
                 Date.now(),
                 existing.id
             );
+            console.log(`  ✓ Updated ${result.changes} rows`);
             return existing.id;
         } else {
+            console.log('  → Inserting new track...');
             // Insert new
             const result = this.db.prepare(`
                 INSERT INTO items (
@@ -420,7 +553,9 @@ export class TrackRepository {
                 track.releaseId, track.fileHash,
                 track.filePath, Date.now(), Date.now()
             );
-            return Number(result.lastInsertRowid);
+            const newId = Number(result.lastInsertRowid);
+            console.log(`  ✓ Inserted new track with id=${newId}`);
+            return newId;
         }
     }
 
@@ -428,6 +563,7 @@ export class TrackRepository {
      * Creates or updates an album from track data
      */
     private upsertAlbum(track: TrackData): number {
+        console.log(`  → Looking for existing album "${track.album}" by ${track.albumArtist}...`);
         // Find existing album by album name + albumartist
         const existing = this.db.prepare(`
             SELECT id FROM albums
@@ -435,9 +571,10 @@ export class TrackRepository {
         `).get(track.album, track.albumArtist) as { id: number } | undefined;
 
         if (existing) {
+            console.log(`  → Updating existing album (id=${existing.id})...`);
             // Update existing album with any new data
             // Note: artpath can be overwritten if track has newer/better cover
-            this.db.prepare(`
+            const result = this.db.prepare(`
                 UPDATE albums SET
                     albumartists = ?,
                     year = COALESCE(year, ?),
@@ -463,8 +600,10 @@ export class TrackRepository {
                 track.coverPath,
                 existing.id
             );
+            console.log(`  ✓ Updated ${result.changes} rows`);
             return existing.id;
         } else {
+            console.log('  → Creating new album...');
             // Create new album
             const result = this.db.prepare(`
                 INSERT INTO albums (
@@ -489,7 +628,9 @@ export class TrackRepository {
                 track.coverPath,
                 Date.now()
             );
-            return Number(result.lastInsertRowid);
+            const newId = Number(result.lastInsertRowid);
+            console.log(`  ✓ Created new album with id=${newId}`);
+            return newId;
         }
     }
 

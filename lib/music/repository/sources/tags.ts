@@ -6,7 +6,21 @@ import { ScoredTrackData, TrackData } from '../types';
  * Confidence: 0.5 (file tags are present but may be incorrect)
  */
 export async function readLocalTags(filePath: string): Promise<ScoredTrackData> {
+    console.log('    → Reading file tags from:', filePath);
     const tags = await getLocalTags(filePath);
+
+    console.log('    → Raw tags read:', {
+        title: tags.title,
+        artist: tags.artist,
+        artists: tags.artists,
+        album: tags.album,
+        albumArtist: tags.albumArtist,
+        track: tags.track,
+        year: tags.year,
+        duration: tags.duration,
+        hasMusicBrainzId: !!tags.musicbrainzRecordingId,
+        hasReleaseId: !!tags.musicbrainzReleaseId
+    });
 
     const trackData: Partial<TrackData> = {
         title: tags.title || undefined,
@@ -28,6 +42,8 @@ export async function readLocalTags(filePath: string): Promise<ScoredTrackData> 
         acoustId: tags.acoustidId || undefined,
         filePath,
     };
+
+    console.log('    → Parsed track data with confidence 0.5');
 
     return {
         data: trackData,
