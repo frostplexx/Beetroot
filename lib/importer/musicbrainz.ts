@@ -159,21 +159,3 @@ export async function getMusicBrainzData(
     throw new Error('All AcoustID results failed MusicBrainz lookup');
 }
 
-async function test() {
-    const filePath = '/Users/daniel/Music/Download/Mic Check - Rage Against The Machine.flac';
-    try {
-        const fingerprint = await getAcoustidFingerprint(filePath);
-        const acoustID = await acoustIDLookup(fingerprint.fingerprint, fingerprint.duration);
-
-        if (acoustID.status !== 'ok' || !acoustID.results?.length) {
-            throw new Error('No AcoustID results');
-        }
-
-        const recording = await getMusicBrainzData(acoustID.results, filePath);
-        console.log(recording);
-    } catch (error) {
-        console.error('Error:', error);
-    }
-}
-
-test();
