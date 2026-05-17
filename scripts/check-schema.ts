@@ -1,4 +1,4 @@
-import db from "../lib/db"
+import db from "../lib/music/database/db"
 
 console.log("Albums table schema:")
 const schema = db.prepare("PRAGMA table_info(albums)").all()

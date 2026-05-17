@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { searchAlbums } from "@/lib/beets/db"
-import { searchItems } from "@/lib/beets/db"
+import { searchAlbums } from "@/lib/music/database/index"
+import { searchItems } from "@/lib/music/database/index"
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams

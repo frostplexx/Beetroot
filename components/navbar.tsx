@@ -14,9 +14,9 @@ import {
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu"
 import { SearchSuggestions } from "./search-suggestions"
-import type { Album, Item } from "@/lib/beets/db"
+import type { Album, Item } from "@/lib/music/database/index"
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 const routes = [
   {

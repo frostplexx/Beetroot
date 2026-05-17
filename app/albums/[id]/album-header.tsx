@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { prominent } from "color.js"
 import { Music, Pencil } from "lucide-react"
-import type { Album } from "@/lib/beets/db"
+import type { Album } from "@/lib/music/database/index"
 
 interface AlbumHeaderProps {
     album: Album

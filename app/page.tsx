@@ -3,13 +3,13 @@ import {
     getAlbumCount,
     searchAlbums,
     getAlbumsSearchCount,
-} from "@/lib/beets/db"
+} from "@/lib/music/database/index"
 import {
     getItemsPaginated,
     getItemCount,
     searchItems,
     getItemsSearchCount,
-} from "@/lib/beets/db"
+} from "@/lib/music/database/index"
 import { LibraryClient } from "./library-client"
 
 interface PageProps {

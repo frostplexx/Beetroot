@@ -1,0 +1,4 @@
+database_path: ./db.sqlite3
+acoustid_api_key: XHzreNgplB
+music_directory: ~/Music/BeetsTest
+lastfm_api_key: fad7b6b91a239d303f6a87f6ac8d3a20

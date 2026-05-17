@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { resolveArtPath } from "@/lib/beets/db"
+import { resolveArtPath } from "@/lib/music/database/index"
 import fs from "fs"
 import path from "path"
 

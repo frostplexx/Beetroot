@@ -8,7 +8,7 @@ import {
 
 import "./globals.css"
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Navbar } from "@/components/navbar"
 import { CommandMenu } from "@/components/command-menu"

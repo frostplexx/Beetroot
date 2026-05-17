@@ -6,7 +6,7 @@ import { TabsContent, TabsList, TabsTrigger, Tabs } from "@/components/ui/tabs"
 import { Album, Music, ChevronLeft, ChevronRight } from "lucide-react"
 import { TracksTable } from "./tracks-table"
 import { tracksColumns } from "./tracks-columns"
-import type { Album as AlbumType, Item } from "@/lib/beets/db"
+import type { Album as AlbumType, Item } from "@/lib/music/database/index"
 
 interface LibraryClientProps {
     albums: AlbumType[]

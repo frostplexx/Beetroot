@@ -7,7 +7,7 @@ import { AlbumHeader } from "./album-header"
 import { DataTable } from "./data-table"
 import { columns } from "./columns"
 import { Button } from "@/components/ui/button"
-import type { Album, Item } from "@/lib/beets/db"
+import type { Album, Item } from "@/lib/music/database/index"
 
 interface AlbumPageClientProps {
     album: Album

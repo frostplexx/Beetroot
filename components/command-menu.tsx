@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/command"
 import { Album, Music, Loader2 } from "lucide-react"
 import Image from "next/image"
-import type { Album as AlbumType, Item } from "@/lib/beets/db"
+import type { Album as AlbumType, Item } from "@/lib/music/database/index"
 
 export function CommandMenu() {
   const router = useRouter()

@@ -3,7 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
 import { ArrowUpDown, Play } from "lucide-react"
-import type { Item } from "@/lib/beets/db"
+import type { Item } from "@/lib/music/database/index"
 
 const formatDuration = (seconds: number | null) => {
   if (!seconds) return "--:--"

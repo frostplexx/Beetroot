@@ -1,6 +1,6 @@
 "use client"
 
-import { Album } from "@/lib/beets/db"
+import { Album } from "@/lib/music/database/index"
 import { Music } from "lucide-react"
 import Link from "next/link"
 

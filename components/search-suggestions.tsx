@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Album, Music, ArrowRight } from "lucide-react"
 import Image from "next/image"
-import type { Album as AlbumType, Item } from "@/lib/beets/db"
+import type { Album as AlbumType, Item } from "@/lib/music/database/index"
 
 interface SearchSuggestionsProps {
     albums: AlbumType[]

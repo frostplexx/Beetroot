@@ -1,4 +1,4 @@
-import { getAlbumById, getItemsByAlbum } from "@/lib/beets/db"
+import { getAlbumById, getItemsByAlbum } from "@/lib/music/database/index"
 import { notFound } from "next/navigation"
 import { DataTable } from "./data-table"
 import { columns } from "./columns"
