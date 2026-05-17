@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Library, Info, Search, Upload, Wrench, Settings } from "lucide-react"
+import { Library, Info, Search, Upload, Wrench, Settings, AlertCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -14,6 +15,7 @@ import {
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu"
 import { SearchSuggestions } from "./search-suggestions"
+import { ReconcileStatus } from "./reconcile-status"
 import type { Album, Item } from "@/lib/music/database/index"
 
 import { cn } from "@/lib/ui/utils"
@@ -34,8 +36,29 @@ export function Navbar() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [suggestions, setSuggestions] = useState<{ albums: Album[], tracks: Item[] }>({ albums: [], tracks: [] })
   const [isLoading, setIsLoading] = useState(false)
+  const [conflictCount, setConflictCount] = useState(0)
   const searchRef = useRef<HTMLDivElement>(null)
   const debounceTimerRef = useRef<NodeJS.Timeout>()
+
+  // Fetch conflict count
+  useEffect(() => {
+    const fetchConflictCount = async () => {
+      try {
+        const response = await fetch('/api/conflicts')
+        const data = await response.json()
+        if (data.success) {
+          setConflictCount(data.conflicts.length)
+        }
+      } catch (error) {
+        console.error('Error fetching conflicts:', error)
+      }
+    }
+
+    fetchConflictCount()
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchConflictCount, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Initialize search query from URL params
   useEffect(() => {
@@ -135,14 +158,27 @@ export function Navbar() {
           )
         })}
 
-        {/* Upload Button */}
-        <Link
-          href="/upload"
-          className="p-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-all"
-          aria-label="Upload"
-        >
-          <Upload className="w-5 h-5" />
-        </Link>
+        {/* Reconcile Status */}
+        <div className="flex items-center">
+          <ReconcileStatus />
+        </div>
+
+        {/* Conflicts Badge */}
+        {conflictCount > 0 && (
+          <Link
+            href="/conflicts"
+            className="relative p-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-all"
+            aria-label="Conflicts"
+          >
+            <AlertCircle className="w-5 h-5" />
+            <Badge
+              variant="destructive"
+              className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
+            >
+              {conflictCount}
+            </Badge>
+          </Link>
+        )}
 
         <div ref={searchRef} className="flex-1 relative">
           <form onSubmit={handleSearch} className="relative">

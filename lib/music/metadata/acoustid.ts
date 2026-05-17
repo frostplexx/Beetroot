@@ -55,8 +55,21 @@ export interface AcoustIDError {
 export function getAcoustidFingerprint(filePath: string): Promise<ChromaPrintResult> {
     return new Promise((resolve, reject) => {
         const { spawn } = require('child_process');
-        const binDir = path.join(__dirname, '..', 'binaries');
-        const fpcalc = spawn(`${binDir}/chromaprint/fpcalc`, ['-length', '120', filePath]);
+
+        // Try to find fpcalc in multiple locations
+        let fpcalcPath = 'fpcalc'; // Try global first
+
+        // If __dirname is available and looks valid, use relative path
+        if (typeof __dirname !== 'undefined' && __dirname && !__dirname.includes('/ROOT')) {
+            const binDir = path.join(__dirname, '..', 'binaries');
+            fpcalcPath = `${binDir}/chromaprint/fpcalc`;
+        } else {
+            // Fallback to absolute path from project root
+            const projectRoot = process.cwd();
+            fpcalcPath = path.join(projectRoot, 'lib', 'music', 'binaries', 'chromaprint', 'fpcalc');
+        }
+
+        const fpcalc = spawn(fpcalcPath, ['-length', '120', filePath]);
 
         let output = '';
         fpcalc.stdout.on('data', (data: Buffer) => {

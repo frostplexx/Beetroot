@@ -14,8 +14,9 @@ import {
     SyncConflict,
     DataSource
 } from './types';
-import { writeTagsToFile } from './writeback';
+import { writeTagsToFile, moveTrackToLocation } from './writeback';
 import { albumArtManager } from './albumart';
+import { expandPath } from './utils';
 
 export class TrackRepository {
     constructor(private db: Database.Database) { }
@@ -87,6 +88,12 @@ export class TrackRepository {
         // Upsert to database
         const trackId = this.upsertTrack(merged, sources);
 
+        // Create/update album and link track to it
+        if (merged.album && merged.albumArtist) {
+            const albumId = this.upsertAlbum(merged);
+            this.linkTrackToAlbum(trackId, albumId);
+        }
+
         // Store conflicts
         const conflicts = mergeConflicts.map(c => ({
             ...c,
@@ -130,6 +137,37 @@ export class TrackRepository {
                 console.error('Write-back failed:', error);
                 throw error; // Abort import on write-back failure
             }
+        }
+
+        // Organize files if requested
+        console.log('DEBUG organizeFiles:', organizeFiles, 'paths:', globalConfig.paths);
+        if (organizeFiles && globalConfig.paths) {
+            try {
+                const musicDir = expandPath(globalConfig.music_directory);
+
+                // Choose template based on track type
+                let template = globalConfig.paths.default;
+                if (merged.compilation && globalConfig.paths.comp) {
+                    template = globalConfig.paths.comp;
+                } else if (!merged.album && globalConfig.paths.singleton) {
+                    template = globalConfig.paths.singleton;
+                }
+
+                console.log('DEBUG template:', template, 'musicDir:', musicDir);
+
+                const newPath = await moveTrackToLocation(merged, template, musicDir);
+
+                // Update track path in database
+                this.db.prepare('UPDATE items SET path = ? WHERE id = ?').run(newPath, trackId);
+
+                console.log(`✓ Moved file to: ${newPath}`);
+            } catch (error) {
+                console.error('File organization failed:', error);
+                console.error('Stack:', error instanceof Error ? error.stack : 'no stack');
+                // Don't abort import if file move fails
+            }
+        } else {
+            console.log('DEBUG: Skipping file organization - organizeFiles:', organizeFiles, 'has paths:', !!globalConfig.paths);
         }
 
         return { trackId, conflicts };
@@ -384,6 +422,84 @@ export class TrackRepository {
             );
             return Number(result.lastInsertRowid);
         }
+    }
+
+    /**
+     * Creates or updates an album from track data
+     */
+    private upsertAlbum(track: TrackData): number {
+        // Find existing album by album name + albumartist
+        const existing = this.db.prepare(`
+            SELECT id FROM albums
+            WHERE album = ? AND albumartist = ?
+        `).get(track.album, track.albumArtist) as { id: number } | undefined;
+
+        if (existing) {
+            // Update existing album with any new data
+            // Note: artpath can be overwritten if track has newer/better cover
+            this.db.prepare(`
+                UPDATE albums SET
+                    albumartists = ?,
+                    year = COALESCE(year, ?),
+                    month = COALESCE(month, ?),
+                    day = COALESCE(day, ?),
+                    genres = COALESCE(genres, ?),
+                    label = COALESCE(label, ?),
+                    mb_albumid = COALESCE(mb_albumid, ?),
+                    mb_releasegroupid = COALESCE(mb_releasegroupid, ?),
+                    country = COALESCE(country, ?),
+                    albumtype = COALESCE(albumtype, ?),
+                    artpath = COALESCE(?, artpath)
+                WHERE id = ?
+            `).run(
+                JSON.stringify(track.artists),
+                track.year, track.month, track.day,
+                JSON.stringify(track.genres),
+                track.label,
+                track.releaseId,
+                track.releaseGroupId,
+                track.country,
+                track.albumType,
+                track.coverPath,
+                existing.id
+            );
+            return existing.id;
+        } else {
+            // Create new album
+            const result = this.db.prepare(`
+                INSERT INTO albums (
+                    album, albumartist, albumartists,
+                    year, month, day,
+                    genres, label,
+                    mb_albumid, mb_releasegroupid,
+                    country, albumtype, artpath,
+                    added
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                track.album,
+                track.albumArtist,
+                JSON.stringify(track.artists),
+                track.year, track.month, track.day,
+                JSON.stringify(track.genres),
+                track.label,
+                track.releaseId,
+                track.releaseGroupId,
+                track.country,
+                track.albumType,
+                track.coverPath,
+                Date.now()
+            );
+            return Number(result.lastInsertRowid);
+        }
+    }
+
+    /**
+     * Links a track to an album
+     */
+    private linkTrackToAlbum(trackId: number, albumId: number): void {
+        this.db.prepare(`
+            UPDATE items SET album_id = ? WHERE id = ?
+        `).run(albumId, trackId);
     }
 
     /**

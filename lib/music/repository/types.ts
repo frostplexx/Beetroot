@@ -124,4 +124,5 @@ export interface ImportOptions {
     skipLastFm?: boolean;
     writeBack?: WriteBackMode;
     conflictResolution?: ConflictResolution;
+    organizeFiles?: boolean; // Move files to organized folder structure
 }

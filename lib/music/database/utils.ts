@@ -38,9 +38,20 @@ export function decodeRows<T extends Record<string, any>>(rows: T[]): T[] {
  * Resolves a relative path from the beets music directory to an absolute path
  */
 export function resolveArtPath(artpath: string | null): string | null {
-    if (!artpath || !globalConfig.music_directory) {
+    if (!artpath) {
+        return null
+    }
+
+    // If already an absolute path, return as-is
+    if (path.isAbsolute(artpath)) {
         return artpath
     }
+
+    // Otherwise, join with music directory
+    if (!globalConfig.music_directory) {
+        return artpath
+    }
+
     return path.join(globalConfig.music_directory, artpath)
 }
 
@@ -48,8 +59,19 @@ export function resolveArtPath(artpath: string | null): string | null {
  * Resolves a relative path from the beets music directory to an absolute path
  */
 export function resolveMusicPath(musicPath: string | null): string | null {
-    if (!musicPath || !globalConfig.music_directory) {
+    if (!musicPath) {
+        return null
+    }
+
+    // If already an absolute path, return as-is
+    if (path.isAbsolute(musicPath)) {
         return musicPath
     }
+
+    // Otherwise, join with music directory
+    if (!globalConfig.music_directory) {
+        return musicPath
+    }
+
     return path.join(globalConfig.music_directory, musicPath)
 }

@@ -6,6 +6,7 @@ import { TabsContent, TabsList, TabsTrigger, Tabs } from "@/components/ui/tabs"
 import { Album, Music, ChevronLeft, ChevronRight } from "lucide-react"
 import { TracksTable } from "./tracks-table"
 import { tracksColumns } from "./tracks-columns"
+import { EmptyLibraryState } from "@/components/empty-library-state"
 import type { Album as AlbumType, Item } from "@/lib/music/database/index"
 
 interface LibraryClientProps {
@@ -151,17 +152,19 @@ export function LibraryClient({
                             {renderPagination(albumsPage, totalAlbumPages, handleAlbumsPageChange)}
                         </>
                     ) : (
-                        <div className="text-center py-16">
-                            <div className="inline-flex p-4 rounded-full bg-white/5 mb-4">
-                                <Album className="w-8 h-8 text-white/40" />
+                        isSearching ? (
+                            <div className="text-center py-16">
+                                <div className="inline-flex p-4 rounded-full bg-white/5 mb-4">
+                                    <Album className="w-8 h-8 text-white/40" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-white mb-2">No albums found</h3>
+                                <p className="text-white/60 text-sm">
+                                    No albums match "{searchQuery}". Try different keywords.
+                                </p>
                             </div>
-                            <h3 className="text-lg font-semibold text-white mb-2">No albums found</h3>
-                            <p className="text-white/60 text-sm">
-                                {isSearching
-                                    ? `No albums match "${searchQuery}". Try different keywords.`
-                                    : 'Your library is empty.'}
-                            </p>
-                        </div>
+                        ) : (
+                            <EmptyLibraryState />
+                        )
                     )}
                 </TabsContent>
 

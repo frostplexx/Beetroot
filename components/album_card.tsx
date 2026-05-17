@@ -3,30 +3,32 @@
 import { Album } from "@/lib/music/database/index"
 import { Music } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
+import { useState } from "react"
 
-function getAlbumArtUrl(artpath: string | null): string {
-    if (!artpath) {
-        return "/placeholder-album.png"
-    }
-    return `/api/art?path=${encodeURIComponent(artpath)}`
+function getAlbumArtUrl(albumId: number): string {
+    return `/api/album-art/${albumId}?type=album`
 }
 
 export default function AlbumCard({ album }: { album: Album }) {
-    const artUrl = album.artpath ? getAlbumArtUrl(album.artpath) : null
+    const [imageError, setImageError] = useState(false)
+    const artUrl = getAlbumArtUrl(album.id)
 
     return (
         <Link
             href={`/albums/${album.id}`}
             className="relative w-full aspect-square overflow-hidden rounded-lg bg-muted group border-2 border-transparent hover:border-accent transition-all cursor-pointer block"
         >
-            {artUrl ? (
+            {!imageError ? (
                 <img
                     src={artUrl}
                     alt={album.album}
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                    onError={() => setImageError(true)}
+                    crossOrigin="anonymous"
                 />
             ) : (
-                <div className="w-full h-full flex items-center justify-center">
+                <div className="w-full h-full flex items-center justify-center bg-muted">
                     <Music className="w-12 h-12 text-muted-foreground" />
                 </div>
             )}
