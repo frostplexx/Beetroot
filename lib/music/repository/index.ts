@@ -37,7 +37,7 @@ export class TrackRepository {
         const {
             skipMusicBrainz = false,
             skipLastFm = false,
-            writeBack = 'never',
+            writeBack = 'missing-only',
             conflictResolution = 'keep-db',
             organizeFiles = false
         } = options;

@@ -160,8 +160,8 @@ export async function POST(request: NextRequest) {
                 try {
                     await repository.importTrack(file, {
                         skipMusicBrainz: false,
-                        skipLastFm: true,
-                        writeBack: 'never',
+                        skipLastFm: false,
+                        writeBack: 'missing-only',
                         conflictResolution: 'keep-db',
                         organizeFiles: true
                     });

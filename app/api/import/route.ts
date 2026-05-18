@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
             const result = await repository.importTrack(body.filePath, {
                 skipMusicBrainz: body.skipMusicBrainz || false,
                 skipLastFm: body.skipLastFm || false,
-                writeBack: body.writeBack || 'never',
+                writeBack: body.writeBack || 'missing-only',
                 conflictResolution: body.conflictResolution || 'keep-db',
                 organizeFiles: body.organizeFiles || false
             });
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
                     const result = await repository.importTrack(filePath, {
                         skipMusicBrainz: body.skipMusicBrainz || false,
                         skipLastFm: body.skipLastFm || true, // Skip last.fm for batch by default
-                        writeBack: 'never',
+                        writeBack: 'missing-only',
                         conflictResolution: 'keep-db',
                         organizeFiles: body.organizeFiles || false
                     });

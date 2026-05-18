@@ -44,7 +44,7 @@ export function ImportDialog() {
     const [scanResult, setScanResult] = useState<ScanResult | null>(null)
     const [importResult, setImportResult] = useState<ImportResult | null>(null)
     const [skipMusicBrainz, setSkipMusicBrainz] = useState(false)
-    const [skipLastFm, setSkipLastFm] = useState(true)
+    const [skipLastFm, setSkipLastFm] = useState(false)
     const [organizeFiles, setOrganizeFiles] = useState(true)
     const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
     const [importLogs, setImportLogs] = useState<ImportLog[]>([])

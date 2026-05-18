@@ -15,7 +15,7 @@ import {
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu"
 import { SearchSuggestions } from "./search-suggestions"
-import { ReconcileStatus } from "./reconcile-status"
+import { NotificationCenter } from "./notification-center"
 import type { Album, Item } from "@/lib/music/database/index"
 
 import { cn } from "@/lib/ui/utils"
@@ -158,9 +158,9 @@ export function Navbar() {
           )
         })}
 
-        {/* Reconcile Status */}
+        {/* Notification Center */}
         <div className="flex items-center">
-          <ReconcileStatus />
+          <NotificationCenter />
         </div>
 
         {/* Conflicts Badge */}

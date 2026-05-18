@@ -89,7 +89,7 @@ export function EmptyLibraryState() {
                         body: JSON.stringify({
                             filePath,
                             skipMusicBrainz: false,
-                            skipLastFm: true,
+                            skipLastFm: false,
                             organizeFiles: true
                         })
                     })
