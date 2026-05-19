@@ -16,7 +16,8 @@ interface GlobalConfig {
     lastfm_api_key: string;
     music_directory: string;
 
-    // Optional Spotify credentials for album art
+    // Optional API keys
+    discogs_token?: string;
     spotify_client_id?: string;
     spotify_client_secret?: string;
 

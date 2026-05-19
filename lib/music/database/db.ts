@@ -1,7 +1,7 @@
 import Database from "better-sqlite3"
-import { globalConfig } from "@/lib/config"
-import fs from "fs"
-import path from "path"
+import { globalConfig } from "../../config"
+import * as fs from "fs"
+import * as path from "path"
 
 // Initialize database with schema
 function initializeDatabase(dbPath: string): Database.Database {

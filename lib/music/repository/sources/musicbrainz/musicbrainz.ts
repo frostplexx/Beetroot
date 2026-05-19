@@ -215,7 +215,8 @@ import { DataSource } from '../../types';
 import { Item } from '../../../database';
 
 export class MusicBrainzSource extends DataSource {
-    readonly confidence = 0.85;
+    private readonly baseConfidence = 0.85;
+    confidence = 0.85;
 
     async getData(item: Item): Promise<Item> {
         try {
@@ -231,6 +232,9 @@ export class MusicBrainzSource extends DataSource {
 
             // Get MusicBrainz data
             const recording = await getMusicBrainzData(acoustidResponse.results, item.path);
+
+            // Adjust confidence based on AcoustID score (0.0 - 1.0)
+            this.confidence = this.baseConfidence * recording.acoustIdScore;
 
             // Map Recording to Item fields
             return {

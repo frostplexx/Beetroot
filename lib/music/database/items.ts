@@ -1,4 +1,4 @@
-import db from "@/lib/music/database/db"
+import db from "./db"
 import { decodeRows, decodeRow } from "./utils"
 
 export interface Item {

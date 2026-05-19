@@ -1,5 +1,5 @@
-import { globalConfig } from "@/lib/config"
-import path from "path"
+import { globalConfig } from "../../config"
+import * as path from "path"
 
 /**
  * Converts Uint8Array to string (for SQLite BLOB fields)

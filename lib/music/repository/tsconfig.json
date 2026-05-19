@@ -1,0 +1,16 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "baseUrl": "../../..",
+    "paths": {}
+  },
+  "include": [
+    "index.ts",
+    "../database/**/*",
+    "../../config.ts"
+  ]
+}
+

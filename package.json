@@ -8,9 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node ./scripts/postinstall.js",
-    "scan": "npx tsx scripts/scan.ts",
-    "scan-music": "npx tsx scripts/scan-music.ts",
-    "test:song-builder": "npx tsx lib/importer/song-builder.test.ts"
+    "test:repository": "npx tsx lib/music/repository/index.ts"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

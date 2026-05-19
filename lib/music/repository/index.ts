@@ -1,8 +1,11 @@
-import { LastfmGenreSource } from "./sources/lastfm_genre";
+import { LastfmGenreSource } from "./sources/lastfm_genre/lastfm_genre";
 import { LocalTagsSource } from "./sources/tags";
 import { MusicBrainzSource } from "./sources/musicbrainz/musicbrainz";
+import { DiscogsSource } from "./sources/discogs/discogs";
+import { WikipediaSource } from "./sources/wikipedia/wikipedia";
 import { DataSource, SourceResult } from "./types";
 import { Item } from "../database";
+import { mergeData } from "./merger";
 
 
 class Repository {
@@ -10,8 +13,10 @@ class Repository {
 
     private readonly dataSources: DataSource[] = [
         new LocalTagsSource(),      // confidence: 1.0
-        new MusicBrainzSource(),    // confidence: 0.85
+        new MusicBrainzSource(),    // confidence: 0.85 (adjusted by AcoustID score)
+        new DiscogsSource(),        // confidence: 0.75
         new LastfmGenreSource(),    // confidence: 0.7
+        new WikipediaSource(),      // confidence: 0.65
     ];
 
     private constructor() {
@@ -26,19 +31,29 @@ class Repository {
     }
 
     /**
-     * Fetch data from each source separately, keeping results isolated.
-     * This allows inspection of what each source contributes and makes it
-     * easy to add new data sources without modifying this function.
+     * Fetch data from all sources in parallel when possible.
+     * Sources run sequentially until we have base metadata (artist + album),
+     * then remaining sources run in parallel.
      */
     async fetchFromAllSources(item: Item): Promise<SourceResult[]> {
         const results: SourceResult[] = [];
+        let enrichedItem = { ...item };
 
-        for (const source of this.dataSources) {
+        // Check if we have minimal metadata needed for other sources
+        const hasMinimalMetadata = (item: Item): boolean => {
+            return !!(item.artist && item.album);
+        };
+
+        let remainingSources = [...this.dataSources];
+
+        // Run sources sequentially until we have base metadata
+        while (!hasMinimalMetadata(enrichedItem) && remainingSources.length > 0) {
+            const source = remainingSources.shift()!;
             const startTime = Date.now();
             const sourceName = source.constructor.name;
 
             try {
-                const data = await source.getData(item);
+                const data = await source.getData({ ...enrichedItem });
                 const duration = Date.now() - startTime;
 
                 results.push({
@@ -47,6 +62,8 @@ class Repository {
                     data,
                     duration,
                 });
+
+                enrichedItem = data;
             } catch (error) {
                 const duration = Date.now() - startTime;
 
@@ -58,6 +75,39 @@ class Repository {
                     duration,
                 });
             }
+        }
+
+        // Run remaining sources in parallel with the enriched metadata
+        if (remainingSources.length > 0) {
+            const sourcePromises = remainingSources.map(async (source) => {
+                const startTime = Date.now();
+                const sourceName = source.constructor.name;
+
+                try {
+                    const data = await source.getData({ ...enrichedItem });
+                    const duration = Date.now() - startTime;
+
+                    return {
+                        sourceName,
+                        confidence: source.confidence,
+                        data,
+                        duration,
+                    } as SourceResult;
+                } catch (error) {
+                    const duration = Date.now() - startTime;
+
+                    return {
+                        sourceName,
+                        confidence: source.confidence,
+                        data: null,
+                        error: error instanceof Error ? error : new Error(String(error)),
+                        duration,
+                    } as SourceResult;
+                }
+            });
+
+            const parallelResults = await Promise.all(sourcePromises);
+            results.push(...parallelResults);
         }
 
         return results;
@@ -91,7 +141,7 @@ export default Repository.getInstance();
 
 // test
 async function testDataSources() {
-    const testFilePath = '/Users/daniel/Music/Download/April Ethereal - Opeth.flac'; // Update with actual file path
+    const testFilePath = '/Users/daniel/Music/Download/stripped_brod.flac'; // Update with actual file path
 
     const testItem: Item = {
         id: 0,
@@ -112,30 +162,11 @@ async function testDataSources() {
     const repository = Repository.getInstance();
     const results = await repository.fetchFromAllSources(testItem);
 
-    for (const result of results) {
-        console.log(`\n--- ${result.sourceName} (confidence: ${result.confidence}) ---`);
-        console.log(`Duration: ${result.duration}ms`);
-
-        if (result.error) {
-            console.log(`Error: ${result.error.message}`);
-        } else if (result.data) {
-            console.log('Retrieved data:');
-            console.log(`  Title: ${result.data.title || '(none)'}`);
-            console.log(`  Artist: ${result.data.artist || '(none)'}`);
-            console.log(`  Album: ${result.data.album || '(none)'}`);
-            console.log(`  Track: ${result.data.track || '(none)'}`);
-            console.log(`  Year: ${result.data.year || '(none)'}`);
-            console.log(`  Genres: ${result.data.genres?.join(', ') || '(none)'}`);
-            console.log(`  MusicBrainz ID: ${result.data.mb_trackid || '(none)'}`);
-            console.log(`  AcoustID: ${result.data.acoustid_id || '(none)'}`);
-        }
-    }
-
-    console.log('\n=== Test Complete ===\n');
+    mergeData(results)
 }
 
-// Uncomment to run test:
-// testDataSources().catch(console.error);
+// Run test with: npm run test:repository
+testDataSources().catch(console.error);
 
 
 
