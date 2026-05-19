@@ -94,7 +94,7 @@ Sync strategy:
 - file deleted  -> mark as missing, don't delete (user may re-add)
 - db edited     -> write tags back to file (optional, user-controlled)
 
-— use chokidar as file watcher
+- use chokidar as file watcher
 - Debounce a second or two on rapid file changes
 - On startup, scan files in parallel but if they need musicbrainz data they should get added to a queue for rate
 limiting reasons use `p-queue`

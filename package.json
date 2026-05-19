@@ -19,6 +19,7 @@
     "cmdk": "^1.1.1",
     "color.js": "^1.2.0",
     "flac-metadata": "^0.1.1",
+    "flac-tagger": "^2.0.0",
     "glob": "^13.0.6",
     "js-yaml": "^4.1.1",
     "lucide-react": "^1.16.0",

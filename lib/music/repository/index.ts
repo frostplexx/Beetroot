@@ -7,6 +7,8 @@ import { LrclibSource } from "./sources/lrclib/lrclib";
 import { DataSource, SourceResult } from "./types";
 import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem } from "../database";
 import { mergeData } from "./merger";
+import { writeBackItem } from "./writeback";
+import { globalConfig } from "../../config";
 
 
 class Repository {
@@ -176,7 +178,7 @@ class Repository {
         return merged.data;
     }
     
-    writeItemToDB(item: Item): void {
+    private writeItemToDB(item: Item): void {
         // Extract album data from item and write/update album first
         const album = this.itemToAlbum(item)
         const albumId = writeOrUpdateAlbum(album)
@@ -184,6 +186,21 @@ class Repository {
         // Set the album_id on the item and write it
         item.album_id = albumId
         writeOrUpdateItem(item)
+    }
+
+    writeItem(item: Item): void {
+        // Lock file 
+        // 1. Use write-back layer to move and write file
+        const newPath = writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only'); 
+        if (newPath) {
+            item.path = newPath;
+            console.log(`File moved to ${newPath}`);
+        } else {
+            // TODO: Proper error handling and logging here - this means the item didn't meet criteria for write-back, so we should log it and skip write-back instead of throwing an error
+            throw new Error('Failed to write back item - no new path generated');
+        }
+        // 2. Write item to DB
+        this.writeItemToDB(item);
     }
 
     private itemToAlbum(item: Item): Album {
@@ -242,9 +259,10 @@ export default Repository.getInstance();
 // test
 async function testDataSources() {
     // const testFilePath = '/Users/daniel/Music/Download/stripped_brod.flac'; // Update with actual file path
-    const testFilePath = '/Users/daniel/Music/BeetsTest/E-L/Ikkimel/POPPSTAR/01 WAS JETZT.flac'; // Update with actual file path
+    // const testFilePath = '/Users/daniel/Music/BeetsTest/E-L/Ikkimel/POPPSTAR/01 WAS JETZT.flac'; // Update with actual file path
     // const testFilePath = '/Users/daniel/Music/BeetsTest/A-D/Bergënot/Moselfrankian Tänzelcore Madness/13 Schnake.flac'; // Update with actual file path
     // const testFilePath = '/Users/daniel/Music/BeetsTest/A-D/Bad Bunny/DeBÍ TiRAR MáS FOToS/04 PERFuMITO NUEVO.m4a'; // Update with actual file path
+    const testFilePath = '/Users/daniel/Music/Download/Menschenmühle - Kanonenfieber.flac';
 
 
     const repository = Repository.getInstance();
@@ -253,7 +271,7 @@ async function testDataSources() {
 
     console.log(item);
 
-    repository.writeItemToDB(item);
+    repository.writeItem(item);
 
 }
 

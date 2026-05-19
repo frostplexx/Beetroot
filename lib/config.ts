@@ -4,10 +4,9 @@ import * as yaml from 'js-yaml'
 export type ConflictResolution = 'keep-db' | 'keep-file' | 'keep-mb' | 'manual';
 export type WriteBackMode = 'always' | 'never' | 'missing-only';
 
-interface PathsConfig {
-    comp?: string;           // Path template for compilations
-    default: string;         // Default path template
-    singleton?: string;      // Path template for non-album tracks
+export interface BucketConfig {
+    alpha: string[]; // e.g. "A-F"
+    year: string[];  // e.g. "1960s"
 }
 
 interface GlobalConfig {
@@ -18,24 +17,24 @@ interface GlobalConfig {
 
     // Optional API keys
     discogs_token?: string;
-    spotify_client_id?: string;
-    spotify_client_secret?: string;
 
     // Repository settings
     conflict_resolution?: ConflictResolution;
     writeback_mode?: WriteBackMode;
-    paths?: PathsConfig;
+    path: string
+
+    bucket: BucketConfig;
 }
 
 // Default configuration
 const DEFAULT_CONFIG: Partial<GlobalConfig> = {
     conflict_resolution: 'keep-db',
-    writeback_mode: 'never',
-    paths: {
-        comp: 'Compilations/$album/$track $title',
-        default: '%bucket{$albumartist,alpha}/$albumartist/$album/$track $title',
-        singleton: '%bucket{$artist,alpha}/$artist/$album/$title',
-    },
+    writeback_mode: 'missing-only',
+    path: '%bucket{$albumartist,alpha}/$albumartist/$album/$track $title',
+    bucket: {
+        alpha: ['A-F', 'G-M', 'N-Z'],
+        year: ['1960s', '1970s', '1980s', '1990s', '2000s', '2010s', '2020s']
+    }
 };
 
 // globalConfig gets loaded from yaml file
@@ -54,10 +53,6 @@ function loadConfig(): GlobalConfig {
     return {
         ...DEFAULT_CONFIG,
         ...config,
-        paths: {
-            ...DEFAULT_CONFIG.paths,
-            ...config.paths,
-        },
     } as GlobalConfig;
 }
 
