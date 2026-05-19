@@ -51,10 +51,26 @@ export interface MusicBrainzRelease {
     date?: string;
     country?: string;
     status?: string;
+    barcode?: string;
     'release-group'?: MusicBrainzReleaseGroup;
     'artist-credit'?: Array<{
         artist: { id: string; name: string };
         joinphrase?: string;
+    }>;
+    media?: Array<{
+        position: number;
+        'track-count': number;
+        tracks?: Array<{
+            id: string;
+            number: string;
+            position: number;
+            title: string;
+            recording?: { id: string };
+        }>;
+    }>;
+    'label-info'?: Array<{
+        'catalog-number'?: string;
+        label?: { id: string; name: string };
     }>;
 }
 
@@ -63,6 +79,7 @@ export interface MusicBrainzRecording {
     title: string;
     length?: number;
     disambiguation?: string;
+    isrcs?: string[];
     'artist-credit': Array<{
         artist: MusicBrainzArtist;
         joinphrase?: string;
@@ -79,11 +96,24 @@ export interface Recording {
     disambiguation?: string;
     artists: string[];
     artistIds: string[];
+    albumArtist?: string;
+    albumArtistIds?: string[];
     releaseId?: string;
     releaseTitle?: string;
     releaseDate?: string;
     releaseCountry?: string;
     releaseStatus?: string;
+    releaseGroupId?: string;
+    releaseTrackId?: string;
+    trackNumber?: number;
+    trackTotal?: number;
+    discNumber?: number;
+    discTotal?: number;
+    isrc?: string;
+    barcode?: string;
+    asin?: string;
+    catalogNumber?: string;
+    label?: string;
     filePath: string;
 }
 
@@ -92,7 +122,7 @@ async function fetchMusicBrainz(recordingId: string, retryCount = 0): Promise<Mu
 
     try {
         const response = await rateLimitedFetch(
-            `${BASE_URL}/recording/${recordingId}?inc=artists+releases+release-groups&fmt=json`,
+            `${BASE_URL}/recording/${recordingId}?inc=artists+releases+release-groups+isrcs&fmt=json`,
             { headers: { 'User-Agent': USER_AGENT } }
         );
 
@@ -136,6 +166,47 @@ async function fetchArtistCountry(artistId: string): Promise<string | undefined>
     }
 }
 
+async function fetchReleaseDetails(releaseId: string): Promise<MusicBrainzRelease | undefined> {
+    try {
+        const response = await rateLimitedFetch(
+            `${BASE_URL}/release/${releaseId}?inc=artist-credits+recordings+release-groups+labels&fmt=json`,
+            { headers: { 'User-Agent': USER_AGENT } }
+        );
+        if (!response.ok) return undefined;
+        return await response.json();
+    } catch (error) {
+        console.warn(`Failed to fetch release details for ${releaseId}:`, error);
+        return undefined;
+    }
+}
+
+async function fetchReleaseAsin(releaseId: string): Promise<string | undefined> {
+    try {
+        const response = await rateLimitedFetch(
+            `${BASE_URL}/release/${releaseId}?inc=url-rels&fmt=json`,
+            { headers: { 'User-Agent': USER_AGENT } }
+        );
+        if (!response.ok) return undefined;
+        const data = await response.json();
+
+        // Look for Amazon ASIN in relations
+        const amazonUrl = data.relations?.find((rel: any) =>
+            rel.type === 'amazon asin' && rel.url?.resource
+        );
+
+        if (amazonUrl) {
+            // Extract ASIN from URL (e.g., https://www.amazon.com/dp/B000001234)
+            const match = amazonUrl.url.resource.match(/\/([A-Z0-9]{10})\/?/);
+            return match?.[1];
+        }
+
+        return undefined;
+    } catch (error) {
+        console.warn(`Failed to fetch ASIN for ${releaseId}:`, error);
+        return undefined;
+    }
+}
+
 async function pickBestRelease(releases: MusicBrainzRelease[], artistId: string): Promise<MusicBrainzRelease | undefined> {
     if (!releases?.length) return undefined;
 
@@ -170,6 +241,53 @@ async function toRecording(
     const artistId = mb['artist-credit'][0]?.artist.id;
     const primaryRelease = await pickBestRelease(mb.releases, artistId);
 
+    // Fetch full release details to get track/disc info
+    let releaseDetails: MusicBrainzRelease | undefined;
+    let trackInfo: { trackId?: string; trackNumber?: number; trackTotal?: number; discNumber?: number; discTotal?: number } = {};
+
+    if (primaryRelease?.id) {
+        releaseDetails = await fetchReleaseDetails(primaryRelease.id);
+
+        // Find the track that matches this recording
+        if (releaseDetails?.media) {
+            for (const medium of releaseDetails.media) {
+                const track = medium.tracks?.find(t => t.recording?.id === mb.id);
+                if (track) {
+                    trackInfo = {
+                        trackId: track.id,
+                        trackNumber: track.position,
+                        trackTotal: medium['track-count'],
+                        discNumber: medium.position,
+                        discTotal: releaseDetails.media.length,
+                    };
+                    break;
+                }
+            }
+        }
+    }
+
+    // Get album artist (from release or fallback to track artist)
+    const albumArtistCredit = releaseDetails?.['artist-credit'] || primaryRelease?.['artist-credit'];
+    const albumArtist = albumArtistCredit?.[0]?.artist.name;
+    const albumArtistIds = albumArtistCredit?.map(a => a.artist.id);
+
+    // Get ISRC (first one if multiple)
+    const isrc = mb.isrcs?.[0];
+
+    // Get barcode from release details or primary release
+    const barcode = releaseDetails?.barcode || primaryRelease?.barcode;
+
+    // Get label and catalog number
+    const labelInfo = releaseDetails?.['label-info']?.[0];
+    const label = labelInfo?.label?.name;
+    const catalogNumber = labelInfo?.['catalog-number'];
+
+    // Fetch ASIN if we have a release ID
+    let asin: string | undefined;
+    if (primaryRelease?.id) {
+        asin = await fetchReleaseAsin(primaryRelease.id);
+    }
+
     return {
         musicbrainzId: mb.id,
         acoustIdId: acoustIdResult.id,
@@ -179,11 +297,24 @@ async function toRecording(
         disambiguation: mb.disambiguation,
         artists: mb['artist-credit'].map(a => a.artist.name),
         artistIds: mb['artist-credit'].map(a => a.artist.id),
+        albumArtist,
+        albumArtistIds,
         releaseId: primaryRelease?.id,
         releaseTitle: primaryRelease?.title,
         releaseDate: primaryRelease?.date,
         releaseCountry: primaryRelease?.country,
         releaseStatus: primaryRelease?.status,
+        releaseGroupId: primaryRelease?.['release-group']?.id,
+        releaseTrackId: trackInfo.trackId,
+        trackNumber: trackInfo.trackNumber,
+        trackTotal: trackInfo.trackTotal,
+        discNumber: trackInfo.discNumber,
+        discTotal: trackInfo.discTotal,
+        isrc,
+        barcode,
+        asin,
+        catalogNumber,
+        label,
         filePath,
     };
 }
@@ -242,11 +373,20 @@ export class MusicBrainzSource extends DataSource {
                 title: recording.title || item.title,
                 artist: recording.artists[0] || item.artist,
                 artists: recording.artists.join(', ') || item.artists,
+                albumartist: recording.albumArtist || item.albumartist,
                 mb_trackid: recording.musicbrainzId || item.mb_trackid,
                 mb_artistid: recording.artistIds[0] || item.mb_artistid,
                 mb_artistids: recording.artistIds.join(', ') || item.mb_artistids,
+                mb_albumartistid: recording.albumArtistIds?.[0] || item.mb_albumartistid,
+                mb_albumartistids: recording.albumArtistIds?.join(', ') || item.mb_albumartistids,
                 mb_albumid: recording.releaseId || item.mb_albumid,
+                mb_releasegroupid: recording.releaseGroupId || item.mb_releasegroupid,
+                mb_releasetrackid: recording.releaseTrackId || item.mb_releasetrackid,
                 acoustid_id: recording.acoustIdId || item.acoustid_id,
+                track: recording.trackNumber ?? item.track,
+                tracktotal: recording.trackTotal ?? item.tracktotal,
+                disc: recording.discNumber ?? item.disc,
+                disctotal: recording.discTotal ?? item.disctotal,
                 length: recording.duration || item.length,
                 album: recording.releaseTitle || item.album,
                 year: recording.releaseDate ? new Date(recording.releaseDate).getFullYear() : item.year,
@@ -254,6 +394,11 @@ export class MusicBrainzSource extends DataSource {
                 day: recording.releaseDate ? new Date(recording.releaseDate).getDate() : item.day,
                 country: recording.releaseCountry || item.country,
                 albumstatus: recording.releaseStatus || item.albumstatus,
+                isrc: recording.isrc || item.isrc,
+                barcode: recording.barcode || item.barcode,
+                asin: recording.asin || item.asin,
+                catalognum: recording.catalogNumber || item.catalognum,
+                label: recording.label || item.label,
             };
         } catch (error) {
             // Silently fail and return original item
