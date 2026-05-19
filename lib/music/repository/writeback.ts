@@ -6,6 +6,10 @@ import { handleCoverArt } from "./coverart";
 export type WriteBackMode = 'always' | 'never' | 'missing-only';
 
 
+
+// == Write back logic
+
+
 function shouldWriteBack(mode: WriteBackMode, item: Item): boolean {
     switch (mode) {
         case 'always':
@@ -20,16 +24,35 @@ function shouldWriteBack(mode: WriteBackMode, item: Item): boolean {
     }
 }
 
+
+
 // Returns new path
+// TODO: rethink return type
+// Writeback function should ONLY handle writing tags back to disk and coverart
+// Move functioaniltyy is in the same file but a **separate** step
 export function writeBackItem(item: Item, mode: WriteBackMode): string | null {
     if (shouldWriteBack(mode, item)) {
+
+        // handle coverart
+        if (!handleCoverArt(item)) {
+            console.warn(`Failed to handle cover art for ${item.path}`);
+        }
+
+
+    }
+    return ""
+}
+
+
+// == File moving logic
+
+export function moveItem(item: Item): boolean {
 
         // Extract file extension (e.g. "mp3") for later reattachment
         const ext = item.path.split('.').pop()!;
 
         // Parse the path template from config, evaluate it with item metadata, and reattach file extension at the end
         const nodes = parse((lex(globalConfig.path)))
-
 
         const clean_music_path = (globalConfig.music_directory.endsWith('/') ? globalConfig.music_directory : globalConfig.music_directory + '/')
             .replace("~", process.env.HOME || '')  // ensure music_directory ends with '/' and expand ~ to home dir;
@@ -43,21 +66,13 @@ export function writeBackItem(item: Item, mode: WriteBackMode): string | null {
             title: item.title || '',
         }, globalConfig.bucket).concat('.' + ext)  // add file extension back on;
 
-        if (moveFile(item.path, result)) {
+        // Only move file if the evaluated path is different from current path
+        const shouldMove = item.path !== result;
 
-            // handle coverart
-            if(!handleCoverArt(item)) {
-                console.warn(`Failed to handle cover art for ${item.path}`);
-            }
-
-            return result;
-        } else {
-            console.error(`Failed to move file from ${item.path} to ${result}`);
-            return null;
-        }
-
-    }
-    return ""
+        //FIXME: always returns some string; not what I wanted.
+        if (shouldMove && moveFile(item.path, result)) {
+            return true
+        } else return false;
 }
 
 
@@ -70,7 +85,7 @@ function moveFile(oldPath: string, newPath: string): boolean {
             recursive: true
         });
     }
-    
+
     try {
         fs.renameSync(oldPath, newPath);
     }
@@ -84,7 +99,7 @@ function moveFile(oldPath: string, newPath: string): boolean {
 
 
 
-// ===== DSL Grammar definitions =====
+// == DSL Grammar definitions
 
 type TT = 'PERCENT' | 'DOLLAR' | 'IDENT' | 'LBRACE' | 'RBRACE' | 'COMMA' | 'LITERAL' | 'EOF';
 type Token = { type: TT; value?: string };
