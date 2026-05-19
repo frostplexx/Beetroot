@@ -177,7 +177,7 @@ export async function getLocalTags(filePath: string): Promise<LocalTags> {
 }
 
 export class LocalTagsSource extends DataSource {
-    readonly confidence = 1.0;
+    readonly confidence = 0.6;  // High but not perfect - tags can be user-edited or wrong
 
     async getData(item: Item): Promise<Item> {
         const tags = await getLocalTags(item.path);

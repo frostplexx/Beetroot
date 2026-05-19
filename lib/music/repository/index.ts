@@ -141,7 +141,8 @@ export default Repository.getInstance();
 
 // test
 async function testDataSources() {
-    const testFilePath = '/Users/daniel/Music/Download/stripped_brod.flac'; // Update with actual file path
+    // const testFilePath = '/Users/daniel/Music/Download/stripped_brod.flac'; // Update with actual file path
+    const testFilePath = '/Users/daniel/Music/BeetsTest/E-L/Ikkimel/POPPSTAR/01 WAS JETZT.flac'; // Update with actual file path
 
     const testItem: Item = {
         id: 0,

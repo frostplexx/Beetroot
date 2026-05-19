@@ -3,9 +3,10 @@ import { acoustIDLookup, AcoustIDResult, getAcoustidFingerprint } from "./acoust
 const BASE_URL = 'https://musicbrainz.org/ws/2';
 const USER_AGENT = 'Beetroot/0.1.0 (https://github.com/yourusername/beetroot)';
 
-// Rate limiting: MusicBrainz allows 1 request per second
+// Rate limiting: MusicBrainz allows 1 request per second per IP on average
+// Per their docs: https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 1000; // 1 second
+const MIN_REQUEST_INTERVAL = 1000; // 1 second - required by MusicBrainz API
 
 async function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -121,6 +122,7 @@ async function fetchMusicBrainz(recordingId: string, retryCount = 0): Promise<Mu
     const maxRetries = 3;
 
     try {
+        // Fetch recording data with minimal release info for picking best release
         const response = await rateLimitedFetch(
             `${BASE_URL}/recording/${recordingId}?inc=artists+releases+release-groups+isrcs&fmt=json`,
             { headers: { 'User-Agent': USER_AGENT } }
@@ -151,25 +153,11 @@ async function fetchMusicBrainz(recordingId: string, retryCount = 0): Promise<Mu
     }
 }
 
-async function fetchArtistCountry(artistId: string): Promise<string | undefined> {
-    try {
-        const response = await rateLimitedFetch(
-            `${BASE_URL}/artist/${artistId}?fmt=json`,
-            { headers: { 'User-Agent': USER_AGENT } }
-        );
-        if (!response.ok) return undefined;
-        const data = await response.json();
-        return data.area?.['iso-3166-1-codes']?.[0];
-    } catch (error) {
-        console.warn(`Failed to fetch artist country for ${artistId}:`, error);
-        return undefined;
-    }
-}
-
 async function fetchReleaseDetails(releaseId: string): Promise<MusicBrainzRelease | undefined> {
     try {
+        // Fetch complete release data including media, tracks, labels, etc.
         const response = await rateLimitedFetch(
-            `${BASE_URL}/release/${releaseId}?inc=artist-credits+recordings+release-groups+labels&fmt=json`,
+            `${BASE_URL}/release/${releaseId}?inc=artist-credits+recordings+release-groups+labels+media&fmt=json`,
             { headers: { 'User-Agent': USER_AGENT } }
         );
         if (!response.ok) return undefined;
@@ -180,47 +168,15 @@ async function fetchReleaseDetails(releaseId: string): Promise<MusicBrainzReleas
     }
 }
 
-async function fetchReleaseAsin(releaseId: string): Promise<string | undefined> {
-    try {
-        const response = await rateLimitedFetch(
-            `${BASE_URL}/release/${releaseId}?inc=url-rels&fmt=json`,
-            { headers: { 'User-Agent': USER_AGENT } }
-        );
-        if (!response.ok) return undefined;
-        const data = await response.json();
-
-        // Look for Amazon ASIN in relations
-        const amazonUrl = data.relations?.find((rel: any) =>
-            rel.type === 'amazon asin' && rel.url?.resource
-        );
-
-        if (amazonUrl) {
-            // Extract ASIN from URL (e.g., https://www.amazon.com/dp/B000001234)
-            const match = amazonUrl.url.resource.match(/\/([A-Z0-9]{10})\/?/);
-            return match?.[1];
-        }
-
-        return undefined;
-    } catch (error) {
-        console.warn(`Failed to fetch ASIN for ${releaseId}:`, error);
-        return undefined;
-    }
-}
-
 async function pickBestRelease(releases: MusicBrainzRelease[], artistId: string): Promise<MusicBrainzRelease | undefined> {
     if (!releases?.length) return undefined;
 
     const pool = releases.filter(r => r.status === 'Official');
     const candidates = pool.length ? pool : releases;
 
-    const artistCountry = await fetchArtistCountry(artistId);
-
-    const base = ['XW', 'US', 'GB', 'CA', 'AU', 'JP'];
-    const preference = artistCountry && !base.includes(artistCountry)
-        ? [artistCountry, 'XW', ...base.filter(c => c !== artistCountry)]
-        : artistCountry
-            ? [artistCountry, ...base.filter(c => c !== artistCountry)]
-            : base;
+    // Prefer country-specific releases over worldwide
+    // US first (most common in MusicBrainz), then other major markets, then worldwide
+    const preference = ['US', 'GB', 'CA', 'AU', 'JP', 'DE', 'XW'];
 
     return candidates.sort((a, b) => {
         const rgDateA = a['release-group']?.['first-release-date'] ?? '9999';
@@ -241,14 +197,14 @@ async function toRecording(
     const artistId = mb['artist-credit'][0]?.artist.id;
     const primaryRelease = await pickBestRelease(mb.releases, artistId);
 
-    // Fetch full release details to get track/disc info
+    // Fetch complete release details in one call
     let releaseDetails: MusicBrainzRelease | undefined;
     let trackInfo: { trackId?: string; trackNumber?: number; trackTotal?: number; discNumber?: number; discTotal?: number } = {};
 
     if (primaryRelease?.id) {
         releaseDetails = await fetchReleaseDetails(primaryRelease.id);
 
-        // Find the track that matches this recording
+        // Extract track/disc info from complete release data
         if (releaseDetails?.media) {
             for (const medium of releaseDetails.media) {
                 const track = medium.tracks?.find(t => t.recording?.id === mb.id);
@@ -266,27 +222,25 @@ async function toRecording(
         }
     }
 
-    // Get album artist (from release or fallback to track artist)
-    const albumArtistCredit = releaseDetails?.['artist-credit'] || primaryRelease?.['artist-credit'];
+    // Get album artist from release details (has complete artist-credits)
+    const albumArtistCredit = releaseDetails?.['artist-credit'];
     const albumArtist = albumArtistCredit?.[0]?.artist.name;
     const albumArtistIds = albumArtistCredit?.map(a => a.artist.id);
 
     // Get ISRC (first one if multiple)
     const isrc = mb.isrcs?.[0];
 
-    // Get barcode from release details or primary release
-    const barcode = releaseDetails?.barcode || primaryRelease?.barcode;
+    // Get barcode from release details
+    const barcode = releaseDetails?.barcode;
 
-    // Get label and catalog number
+    // Get label and catalog number from release details
     const labelInfo = releaseDetails?.['label-info']?.[0];
     const label = labelInfo?.label?.name;
     const catalogNumber = labelInfo?.['catalog-number'];
 
-    // Fetch ASIN if we have a release ID
-    let asin: string | undefined;
-    if (primaryRelease?.id) {
-        asin = await fetchReleaseAsin(primaryRelease.id);
-    }
+    // Skip ASIN fetch - it requires an extra API call and is rarely used
+    // Users can add it from file tags if needed
+    const asin = undefined;
 
     return {
         musicbrainzId: mb.id,
