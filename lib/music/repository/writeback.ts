@@ -2,6 +2,8 @@ import { BucketConfig, globalConfig } from "../../config";
 import * as fs from 'fs';
 import { Item } from "../database";
 import { handleCoverArt } from "./coverart";
+import { execFileSync } from 'child_process';
+import ffmpegPath from 'ffmpeg-static';
 
 export type WriteBackMode = 'always' | 'never' | 'missing-only';
 
@@ -9,6 +11,139 @@ export type WriteBackMode = 'always' | 'never' | 'missing-only';
 
 // == Write back logic
 
+// Mapping configuration: Item field -> ffmpeg metadata key or transform function
+type MetadataMapping = {
+    [K in keyof Partial<Item>]: string | ((item: Item) => string | null);
+};
+
+const METADATA_MAPPING: MetadataMapping = {
+    // Basic metadata
+    title: 'title',
+    artist: 'artist',
+    album: 'album',
+    albumartist: 'album_artist',
+    year: 'date',
+
+    // Track/disc info (handled specially)
+    track: (item) => {
+        if (item.track === null || item.track === undefined) return null;
+        if (item.tracktotal !== null && item.tracktotal !== undefined) {
+            return `${item.track}/${item.tracktotal}`;
+        }
+        return String(item.track);
+    },
+    disc: (item) => {
+        if (item.disc === null || item.disc === undefined) return null;
+        if (item.disctotal !== null && item.disctotal !== undefined) {
+            return `${item.disc}/${item.disctotal}`;
+        }
+        return String(item.disc);
+    },
+
+    // Additional metadata
+    genres: (item) => item.genres?.join('; ') || null,
+    composers: 'composer',
+    comments: 'comment',
+    grouping: 'grouping',
+    subtitle: 'subtitle',
+
+    // MusicBrainz IDs
+    mb_trackid: 'musicbrainz_trackid',
+    mb_albumid: 'musicbrainz_albumid',
+    mb_artistid: 'musicbrainz_artistid',
+    mb_albumartistid: 'musicbrainz_albumartistid',
+    mb_releasegroupid: 'musicbrainz_releasegroupid',
+    mb_workid: 'musicbrainz_workid',
+
+    // Other identifiers
+    isrc: 'isrc',
+    barcode: 'barcode',
+    asin: 'asin',
+    acoustid_id: 'acoustid_id',
+    catalognum: 'catalog_number',
+
+    // Additional fields
+    bpm: 'bpm',
+    initial_key: 'initial_key',
+    language: 'language',
+    label: 'label',
+    media: 'media',
+    lyrics: 'lyrics',
+    work: 'work',
+};
+
+function buildMetadataArgs(item: Item): string[] {
+    const args: string[] = [];
+
+    // Helper to add metadata if value exists
+    const addMeta = (key: string, value: any) => {
+        if (value !== null && value !== undefined && value !== '') {
+            // Convert value to string and ensure it doesn't contain 'undefined'
+            const strValue = String(value);
+            if (!strValue.includes('undefined')) {
+                args.push('-metadata', `${key}=${strValue}`);
+            }
+        }
+    };
+
+    // Process each mapping entry
+    for (const [itemKey, ffmpegKeyOrFn] of Object.entries(METADATA_MAPPING)) {
+        const itemValue = item[itemKey as keyof Item];
+
+        if (typeof ffmpegKeyOrFn === 'function') {
+            // Transform function
+            const result = ffmpegKeyOrFn(item);
+            if (result !== null && result !== undefined) {
+                // Extract the metadata key from the function (use itemKey as fallback)
+                addMeta(itemKey, result);
+            }
+        } else {
+            // Direct mapping - only add if value exists
+            if (itemValue !== null && itemValue !== undefined) {
+                addMeta(ffmpegKeyOrFn, itemValue);
+            }
+        }
+    }
+
+    return args;
+}
+
+function writeTags(filePath: string, item: Item): boolean {
+    if (!ffmpegPath) {
+        console.error('ffmpeg-static not found');
+        return false;
+    }
+
+    // Use same extension as original file so ffmpeg can detect format
+    const ext = filePath.substring(filePath.lastIndexOf('.'));
+    const tempPath = filePath + '.writing' + ext;
+    const metadataArgs = buildMetadataArgs(item);
+
+    try {
+        // Build ffmpeg command: input file -> copy streams -> add metadata -> output
+        const args = [
+            '-i', filePath,           // Input file
+            '-c', 'copy',             // Copy all streams without re-encoding
+            '-map_metadata', '0',     // Copy existing metadata first
+            ...metadataArgs,          // Add/override with new metadata
+            '-y',                     // Overwrite output file
+            tempPath                  // Output to temp file
+        ];
+
+        execFileSync(ffmpegPath, args, { stdio: 'pipe' });
+
+        // Replace original file with temp file
+        fs.renameSync(tempPath, filePath);
+        return true;
+    } catch (error) {
+        console.error(`Error writing tags to ${filePath}:`, error);
+        // Clean up temp file if it exists
+        if (fs.existsSync(tempPath)) {
+            fs.unlinkSync(tempPath);
+        }
+        return false;
+    }
+}
 
 function shouldWriteBack(mode: WriteBackMode, item: Item): boolean {
     switch (mode) {
@@ -26,53 +161,65 @@ function shouldWriteBack(mode: WriteBackMode, item: Item): boolean {
 
 
 
-// Returns new path
+// Returns true if writeback was successful
 // TODO: rethink return type
 // Writeback function should ONLY handle writing tags back to disk and coverart
-// Move functioaniltyy is in the same file but a **separate** step
-export function writeBackItem(item: Item, mode: WriteBackMode): string | null {
-    if (shouldWriteBack(mode, item)) {
-
-        // handle coverart
-        if (!handleCoverArt(item)) {
-            console.warn(`Failed to handle cover art for ${item.path}`);
-        }
-
-
+// Move functionality is in the same file but a **separate** step
+export function writeBackItem(item: Item, mode: WriteBackMode): boolean {
+    if (!shouldWriteBack(mode, item)) {
+        return false;
     }
-    return ""
+
+    let success = true;
+
+    // Write tags to file
+    if (!writeTags(item.path, item)) {
+        console.warn(`Failed to write tags for ${item.path}`);
+        success = false;
+    }
+
+    // Handle cover art
+    if (!handleCoverArt(item)) {
+        console.warn(`Failed to handle cover art for ${item.path}`);
+        success = false;
+    }
+
+    return success;
 }
 
 
 // == File moving logic
 
 export function moveItem(item: Item): boolean {
+    // Extract file extension (e.g. "mp3") for later reattachment
+    const ext = item.path.split('.').pop()!;
 
-        // Extract file extension (e.g. "mp3") for later reattachment
-        const ext = item.path.split('.').pop()!;
+    // Parse the path template from config, evaluate it with item metadata, and reattach file extension at the end
+    const nodes = parse((lex(globalConfig.path)))
 
-        // Parse the path template from config, evaluate it with item metadata, and reattach file extension at the end
-        const nodes = parse((lex(globalConfig.path)))
+    const clean_music_path = (globalConfig.music_directory.endsWith('/') ? globalConfig.music_directory : globalConfig.music_directory + '/')
+        .replace("~", process.env.HOME || '')  // ensure music_directory ends with '/' and expand ~ to home dir;
 
-        const clean_music_path = (globalConfig.music_directory.endsWith('/') ? globalConfig.music_directory : globalConfig.music_directory + '/')
-            .replace("~", process.env.HOME || '')  // ensure music_directory ends with '/' and expand ~ to home dir;
+    // vars available to path template: $albumartist, $album, $track, $title (extend as needed)
+    // TODO: make this dynamic?
+    const result = clean_music_path + evaluate(nodes, {
+        albumartist: item.albumartist || 'Unknown Artist',
+        album: item.album || 'Unknown Album',
+        track: item.track ? String(item.track).padStart(2, '0') : '',
+        title: item.title || 'Unknown Title',
+    }, globalConfig.bucket)
+        .replace(/\/\s+/g, '/') // Remove leading spaces after slashes
+        .replace(/\s+\./g, '.') // Remove spaces before extensions
+        .concat('.' + ext);  // add file extension back on;
 
-        // vars available to path template: $albumartist, $album, $track, $title (extend as needed)
-        // TODO: make this dynamic?
-        const result = clean_music_path + evaluate(nodes, {
-            albumartist: item.albumartist || '',
-            album: item.album || '',
-            track: item.track ? String(item.track).padStart(2, '0') : '',
-            title: item.title || '',
-        }, globalConfig.bucket).concat('.' + ext)  // add file extension back on;
+    // Only move file if the evaluated path is different from current path
+    const shouldMove = item.path !== result;
 
-        // Only move file if the evaluated path is different from current path
-        const shouldMove = item.path !== result;
-
-        //FIXME: always returns some string; not what I wanted.
-        if (shouldMove && moveFile(item.path, result)) {
-            return true
-        } else return false;
+    if (shouldMove && moveFile(item.path, result)) {
+        item.path = result;  // Update item path after successful move
+        return true;
+    }
+    return false;
 }
 
 
@@ -220,7 +367,11 @@ function callFunc(
             const [varName, bucketName] = args;
             if (!(bucketName in buckets)) throw new Error(`Invalid bucket: ${bucketName}`);
             const value = vars[varName];
-            if (!value) throw new Error(`Undefined var: $${varName}`);
+            if (!value) {
+                // Return fallback bucket (last one) if value is empty
+                const bucketArray = buckets[bucketName as keyof BucketConfig];
+                return bucketArray[bucketArray.length - 1];
+            }
             return resolveBucket(value, buckets[bucketName as keyof BucketConfig]);
         }
         default:

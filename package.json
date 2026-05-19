@@ -18,6 +18,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "color.js": "^1.2.0",
+    "ffmpeg-static": "^5.3.0",
     "flac-metadata": "^0.1.1",
     "flac-tagger": "^2.0.0",
     "glob": "^13.0.6",

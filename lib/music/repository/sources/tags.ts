@@ -2,6 +2,7 @@ import { parseFile, IAudioMetadata } from 'music-metadata';
 import { DataSource } from '../types';
 import { Item } from '../../database';
 
+// FIXME: remove LocalTags because Technical debt :(
 export interface LocalTags {
     metadata: IAudioMetadata;
     filePath: string;

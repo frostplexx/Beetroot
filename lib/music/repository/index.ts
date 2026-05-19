@@ -7,7 +7,7 @@ import { LrclibSource } from "./sources/lrclib/lrclib";
 import { DataSource, SourceResult } from "./types";
 import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem } from "../database";
 import { mergeData } from "./merger";
-import { writeBackItem } from "./writeback";
+import { writeBackItem, moveItem } from "./writeback";
 import { globalConfig } from "../../config";
 
 
@@ -189,17 +189,20 @@ class Repository {
     }
 
     writeItem(item: Item): void {
-        // Lock file 
-        // 1. Use write-back layer to move and write file
-        const newPath = writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only'); 
-        if (newPath) {
-            item.path = newPath;
-            console.log(`File moved to ${newPath}`);
-        } else {
-            // TODO: Proper error handling and logging here - this means the item didn't meet criteria for write-back, so we should log it and skip write-back instead of throwing an error
-            throw new Error('Failed to write back item - no new path generated');
+        // Lock file
+        // 1. Write tags and cover art to file
+        const writeSuccess = writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only');
+        if (!writeSuccess) {
+            console.warn('Failed to write back tags for item');
         }
-        // 2. Write item to DB
+
+        // 2. Move file if needed (separate step)
+        const moved = moveItem(item);
+        if (moved) {
+            console.log(`File moved to ${item.path}`);
+        }
+
+        // 3. Write item to DB
         this.writeItemToDB(item);
     }
 
@@ -258,11 +261,11 @@ export default Repository.getInstance();
 
 // test
 async function testDataSources() {
-    // const testFilePath = '/Users/daniel/Music/Download/stripped_brod.flac'; // Update with actual file path
+    const testFilePath = '/Users/daniel/Music/Download/stripped_brod.flac'; // Update with actual file path
     // const testFilePath = '/Users/daniel/Music/BeetsTest/E-L/Ikkimel/POPPSTAR/01 WAS JETZT.flac'; // Update with actual file path
     // const testFilePath = '/Users/daniel/Music/BeetsTest/A-D/Bergënot/Moselfrankian Tänzelcore Madness/13 Schnake.flac'; // Update with actual file path
     // const testFilePath = '/Users/daniel/Music/BeetsTest/A-D/Bad Bunny/DeBÍ TiRAR MáS FOToS/04 PERFuMITO NUEVO.m4a'; // Update with actual file path
-    const testFilePath = '/Users/daniel/Music/Download/Menschenmühle - Kanonenfieber.flac';
+    // const testFilePath = '/Users/daniel/Music/Download/Menschenmühle - Kanonenfieber.flac';
 
 
     const repository = Repository.getInstance();
