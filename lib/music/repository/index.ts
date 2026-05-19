@@ -35,7 +35,7 @@ class Repository {
      * Sources run sequentially until we have base metadata (artist + album),
      * then remaining sources run in parallel.
      */
-    async fetchFromAllSources(item: Item): Promise<SourceResult[]> {
+    private async fetchFromAllSources(item: Item): Promise<SourceResult[]> {
         const results: SourceResult[] = [];
         let enrichedItem = { ...item };
 
@@ -117,7 +117,7 @@ class Repository {
      * Enrich an item by merging data from all sources sequentially.
      * Sources with higher confidence run first.
      */
-    async enrichItem(item: Item): Promise<Item> {
+    private async enrichItem(item: Item): Promise<Item> {
         let enrichedItem = { ...item };
 
         for (const source of this.dataSources) {
@@ -134,6 +134,47 @@ class Repository {
     getDataSources(): DataSource[] {
         return [...this.dataSources];
     }
+
+    // Overload signatures
+    async resolveItem(path: string): Promise<Item>;
+    async resolveItem(item: Item): Promise<Item>;
+
+    // Implementation
+    async resolveItem(pathOrItem: string | Item): Promise<Item> {
+        if (typeof pathOrItem === 'string') {
+            const tmpItem: Item = {
+                id: 0,
+                path: pathOrItem,
+                title: '',
+                artist: '',
+                album: '',
+                source: 'test',
+                missing_since: null,
+                added: Date.now(),
+                track: null,
+                year: null,
+            } as Item;
+            return await this._resolveItem(tmpItem);
+        } else {
+            return await this._resolveItem(pathOrItem);
+        }
+    }
+
+    private async _resolveItem(item: Item): Promise<Item> {
+        const results = await this.fetchFromAllSources(item)
+        const merged = mergeData(results)
+
+        if (merged.error) {
+            throw new Error(`Failed to fetch data from sources: ${merged.error.message}`);
+        }
+        if (merged.data == null) {
+            throw new Error('Failed to merge data from sources');
+        }
+
+        return merged.data;
+    }
+
+
 }
 
 export default Repository.getInstance();
@@ -146,26 +187,8 @@ async function testDataSources() {
     // const testFilePath = '/Users/daniel/Music/BeetsTest/A-D/Bergënot/Moselfrankian Tänzelcore Madness/13 Schnake.flac'; // Update with actual file path
     // const testFilePath = '/Users/daniel/Music/BeetsTest/A-D/Bad Bunny/DeBÍ TiRAR MáS FOToS/04 PERFuMITO NUEVO.m4a'; // Update with actual file path
 
-    const testItem: Item = {
-        id: 0,
-        path: testFilePath,
-        title: '',
-        artist: '',
-        album: '',
-        source: 'test',
-        missing_since: null,
-        added: Date.now(),
-        track: null,
-        year: null,
-    } as Item;
-
-    console.log('\n=== Testing Data Sources ===');
-    console.log(`File: ${testFilePath}\n`);
 
     const repository = Repository.getInstance();
-    const results = await repository.fetchFromAllSources(testItem);
-
-    mergeData(results)
 }
 
 // Run test with: npm run test:repository
