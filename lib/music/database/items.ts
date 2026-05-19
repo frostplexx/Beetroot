@@ -230,3 +230,64 @@ export function getItemsSearchCount(query: string): number {
         return 0
     }
 }
+
+export function writeOrUpdateItem(item: Item): void {
+    try {
+        // Get valid columns from schema
+        const columns = db.prepare('PRAGMA table_info(items)').all() as Array<{ name: string }>
+        const validColumns = new Set(columns.map(c => c.name))
+
+        // Check if item exists by path
+        const existing = db.prepare('SELECT id FROM items WHERE path = ?').get(Buffer.from(item.path, 'utf8')) as { id: number } | undefined
+
+        // Prepare item data for database - only include valid columns
+        const dbItem: Record<string, any> = {}
+        for (const key of Object.keys(item)) {
+            if (validColumns.has(key)) {
+                dbItem[key] = (item as any)[key]
+            }
+        }
+
+        // Convert genres array to comma-separated string
+        if (Array.isArray(dbItem.genres)) {
+            dbItem.genres = dbItem.genres.join(', ')
+        }
+
+        // Convert path to Buffer for BLOB storage
+        if (typeof dbItem.path === 'string') {
+            dbItem.path = Buffer.from(dbItem.path, 'utf8')
+        }
+
+        // Convert artpath to Buffer if present
+        if (typeof dbItem.artpath === 'string') {
+            dbItem.artpath = Buffer.from(dbItem.artpath, 'utf8')
+        }
+
+        if (existing) {
+            // Update existing item
+            const fields = Object.keys(dbItem)
+                .filter(key => key !== 'id') // Don't update id
+                .map(key => `${key} = ?`)
+                .join(', ')
+
+            const values = Object.keys(dbItem)
+                .filter(key => key !== 'id')
+                .map(key => dbItem[key])
+
+            const stmt = db.prepare(`UPDATE items SET ${fields} WHERE id = ?`)
+            stmt.run(...values, existing.id)
+        } else {
+            // Insert new item (exclude id, let it auto-increment)
+            const insertFields = Object.keys(dbItem).filter(key => key !== 'id')
+            const fields = insertFields.join(', ')
+            const placeholders = insertFields.map(() => '?').join(', ')
+            const values = insertFields.map(key => dbItem[key])
+
+            const stmt = db.prepare(`INSERT INTO items (${fields}) VALUES (${placeholders})`)
+            stmt.run(...values)
+        }
+    } catch (error) {
+        console.error('Error writing/updating item:', error)
+        throw error
+    }
+}

@@ -161,3 +161,62 @@ export function getAlbumsSearchCount(query: string): number {
         return 0
     }
 }
+
+export function writeOrUpdateAlbum(album: Album): number {
+    try {
+        // Get valid columns from schema
+        const columns = db.prepare('PRAGMA table_info(albums)').all() as Array<{ name: string }>
+        const validColumns = new Set(columns.map(c => c.name))
+
+        // Check if album exists - prefer mb_albumid, fallback to album+albumartist
+        let existing: { id: number } | undefined
+        if (album.mb_albumid) {
+            existing = db.prepare('SELECT id FROM albums WHERE mb_albumid = ?').get(album.mb_albumid) as { id: number } | undefined
+        }
+        if (!existing) {
+            existing = db.prepare('SELECT id FROM albums WHERE album = ? AND albumartist = ?').get(album.album, album.albumartist) as { id: number } | undefined
+        }
+
+        // Prepare album data for database - only include valid columns
+        const dbAlbum: Record<string, any> = {}
+        for (const key of Object.keys(album)) {
+            if (validColumns.has(key)) {
+                dbAlbum[key] = (album as any)[key]
+            }
+        }
+
+        // Convert artpath to Buffer if present
+        if (typeof dbAlbum.artpath === 'string') {
+            dbAlbum.artpath = Buffer.from(dbAlbum.artpath, 'utf8')
+        }
+
+        if (existing) {
+            // Update existing album
+            const fields = Object.keys(dbAlbum)
+                .filter(key => key !== 'id') // Don't update id
+                .map(key => `${key} = ?`)
+                .join(', ')
+
+            const values = Object.keys(dbAlbum)
+                .filter(key => key !== 'id')
+                .map(key => dbAlbum[key])
+
+            const stmt = db.prepare(`UPDATE albums SET ${fields} WHERE id = ?`)
+            stmt.run(...values, existing.id)
+            return existing.id
+        } else {
+            // Insert new album (exclude id, let it auto-increment)
+            const insertFields = Object.keys(dbAlbum).filter(key => key !== 'id')
+            const fields = insertFields.join(', ')
+            const placeholders = insertFields.map(() => '?').join(', ')
+            const values = insertFields.map(key => dbAlbum[key])
+
+            const stmt = db.prepare(`INSERT INTO albums (${fields}) VALUES (${placeholders})`)
+            const result = stmt.run(...values)
+            return result.lastInsertRowid as number
+        }
+    } catch (error) {
+        console.error('Error writing/updating album:', error)
+        throw error
+    }
+}

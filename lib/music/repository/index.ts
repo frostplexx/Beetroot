@@ -3,8 +3,9 @@ import { LocalTagsSource } from "./sources/tags";
 import { MusicBrainzSource } from "./sources/musicbrainz/musicbrainz";
 import { DiscogsSource } from "./sources/discogs/discogs";
 import { WikipediaSource } from "./sources/wikipedia/wikipedia";
+import { LrclibSource } from "./sources/lrclib/lrclib";
 import { DataSource, SourceResult } from "./types";
-import { Item } from "../database";
+import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem } from "../database";
 import { mergeData } from "./merger";
 
 
@@ -12,8 +13,9 @@ class Repository {
     private static instance: Repository;
 
     private readonly dataSources: DataSource[] = [
-        new LocalTagsSource(),      // confidence: 1.0
+        new LocalTagsSource(),      // confidence: 0.6
         new MusicBrainzSource(),    // confidence: 0.85 (adjusted by AcoustID score)
+        new LrclibSource(),         // confidence: 0.8
         new DiscogsSource(),        // confidence: 0.75
         new LastfmGenreSource(),    // confidence: 0.7
         new WikipediaSource(),      // confidence: 0.65
@@ -173,7 +175,64 @@ class Repository {
 
         return merged.data;
     }
+    
+    writeItemToDB(item: Item): void {
+        // Extract album data from item and write/update album first
+        const album = this.itemToAlbum(item)
+        const albumId = writeOrUpdateAlbum(album)
 
+        // Set the album_id on the item and write it
+        item.album_id = albumId
+        writeOrUpdateItem(item)
+    }
+
+    private itemToAlbum(item: Item): Album {
+        return {
+            id: 0, // Will be auto-generated or found by lookup
+            album: item.album,
+            albumartist: item.albumartist || '',
+            albumartist_credit: item.albumartist_credit || null,
+            albumartists: item.albumartists || null,
+            albumartists_credit: item.albumartists_credit || null,
+            albumartist_sort: item.albumartist_sort || null,
+            albumartists_sort: item.albumartists_sort || null,
+            albumdisambig: item.albumdisambig || null,
+            albumstatus: item.albumstatus || null,
+            albumtype: item.albumtype || null,
+            albumtypes: item.albumtypes || null,
+            artpath: item.artpath || null,
+            asin: item.asin || null,
+            barcode: item.barcode || null,
+            catalognum: item.catalognum || null,
+            comp: item.comp || null,
+            country: item.country || null,
+            day: item.day || null,
+            discogs_albumid: item.discogs_albumid || null,
+            discogs_artistid: item.discogs_artistid || null,
+            discogs_labelid: item.discogs_labelid || null,
+            disctotal: item.disctotal || null,
+            genres: Array.isArray(item.genres) ? item.genres.join(', ') : (item.genres || null),
+            label: item.label || null,
+            language: item.language || null,
+            mb_albumartistid: item.mb_albumartistid || null,
+            mb_albumartistids: item.mb_albumartistids || null,
+            mb_albumid: item.mb_albumid || null,
+            mb_releasegroupid: item.mb_releasegroupid || null,
+            month: item.month || null,
+            original_day: item.original_day || null,
+            original_month: item.original_month || null,
+            original_year: item.original_year || null,
+            r128_album_gain: item.r128_album_gain || null,
+            releasegroupdisambig: item.releasegroupdisambig || null,
+            release_group_title: item.release_group_title || null,
+            rg_album_gain: item.rg_album_gain || null,
+            rg_album_peak: item.rg_album_peak || null,
+            script: item.script || null,
+            style: item.style || null,
+            year: item.year || null,
+            added: item.added,
+        }
+    }
 
 }
 
@@ -189,6 +248,13 @@ async function testDataSources() {
 
 
     const repository = Repository.getInstance();
+
+    const item = await repository.resolveItem(testFilePath)
+
+    console.log(item);
+
+    repository.writeItemToDB(item);
+
 }
 
 // Run test with: npm run test:repository
