@@ -1,5 +1,6 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+
 # dependencies
 /node_modules
 lib/bin
@@ -26,6 +27,7 @@ lib/bin
 # misc
 .DS_Store
 *.pem
+*.sqlite3
 
 # debug
 npm-debug.log*
@@ -42,3 +44,4 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
