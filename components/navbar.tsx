@@ -38,7 +38,7 @@ export function Navbar() {
   const [isLoading, setIsLoading] = useState(false)
   const [conflictCount, setConflictCount] = useState(0)
   const searchRef = useRef<HTMLDivElement>(null)
-  const debounceTimerRef = useRef<NodeJS.Timeout>()
+  const debounceTimerRef = useRef<NodeJS.Timeout | undefined>(undefined)
 
   // Fetch conflict count
   useEffect(() => {

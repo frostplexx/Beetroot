@@ -3,6 +3,8 @@ import { decodeRows, decodeRow } from "./utils"
 
 export interface Item {
     id: number
+    source: string
+    missing_since: number | null
     title: string
     artist: string
     artist_credit: string | null
@@ -52,7 +54,7 @@ export interface Item {
     encoder_info: string | null
     encoder_settings: string | null
     format: string | null
-    genres: string | null
+    genres: string[] | null
     grouping: string | null
     subtitle: string | null
     initial_key: string | null

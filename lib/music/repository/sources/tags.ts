@@ -1,4 +1,6 @@
 import { parseFile } from 'music-metadata';
+import { DataSource } from '../types';
+import { Item } from '../../database';
 
 export interface LocalTags {
     // Basic metadata
@@ -172,6 +174,79 @@ export async function getLocalTags(filePath: string): Promise<LocalTags> {
     tags.filePath = filePath;
 
     return tags as LocalTags;
+}
+
+export class LocalTagsSource extends DataSource {
+    readonly confidence = 1.0;
+
+    async getData(item: Item): Promise<Item> {
+        const tags = await getLocalTags(item.path);
+
+        return {
+            ...item,
+            // Basic metadata
+            title: tags.title || item.title,
+            artist: tags.artist || item.artist,
+            artists: tags.artists?.join(', ') || item.artists,
+            album: tags.album || item.album,
+            albumartist: tags.albumArtist || item.albumartist,
+
+            // Track info
+            track: tags.track ?? item.track,
+            tracktotal: tags.trackTotal ?? item.tracktotal,
+            disc: tags.disc ?? item.disc,
+            disctotal: tags.discTotal ?? item.discTotal,
+
+            // Dates
+            year: tags.year ?? item.year,
+            month: tags.date ? new Date(tags.date).getMonth() + 1 : item.month,
+            day: tags.date ? new Date(tags.date).getDate() : item.day,
+            original_year: tags.originalDate ? new Date(tags.originalDate).getFullYear() : item.original_year,
+            original_month: tags.originalDate ? new Date(tags.originalDate).getMonth() + 1 : item.original_month,
+            original_day: tags.originalDate ? new Date(tags.originalDate).getDate() : item.original_day,
+
+            // Additional metadata
+            genres: tags.genre || item.genres,
+            composers: tags.composer?.join(', ') || item.composers,
+            remixers: tags.remixer?.join(', ') || item.remixers,
+            arrangers: tags.arranger?.join(', ') || item.arrangers,
+            lyricists: tags.lyricist?.join(', ') || item.lyricists,
+            label: tags.label?.join(', ') || item.label,
+
+            // Audio properties
+            length: tags.duration ?? item.length,
+            bitrate: tags.bitrate ?? item.bitrate,
+            samplerate: tags.sampleRate ?? item.samplerate,
+            bitdepth: tags.bitsPerSample ?? item.bitdepth,
+            format: tags.codec || item.format,
+            channels: tags.numberOfChannels ?? item.channels,
+
+            // Album info
+            comp: tags.compilation ? 1 : (tags.compilation === false ? 0 : item.comp),
+            comments: tags.comment?.join('; ') || item.comments,
+
+            // Identifiers
+            isrc: tags.isrc?.join(', ') || item.isrc,
+            barcode: tags.barcode || item.barcode,
+            asin: tags.asin || item.asin,
+            mb_trackid: tags.musicbrainzRecordingId || item.mb_trackid,
+            mb_releasetrackid: tags.musicbrainzTrackId || item.mb_releasetrackid,
+            mb_albumid: tags.musicbrainzReleaseId || item.mb_albumid,
+            mb_artistid: tags.musicbrainzArtistId?.[0] || item.mb_artistid,
+            mb_artistids: tags.musicbrainzArtistId?.join(', ') || item.mb_artistids,
+            mb_releasegroupid: tags.musicbrainzReleaseGroupId || item.mb_releasegroupid,
+            mb_workid: tags.musicbrainzWorkId || item.mb_workid,
+            acoustid_id: tags.acoustidId || item.acoustid_id,
+
+            // Ratings and popularity
+            bpm: tags.bpm ?? item.bpm,
+            initial_key: tags.key || item.initial_key,
+
+            // Media
+            media: tags.media || item.media,
+            catalognum: tags.catalogNumber?.join(', ') || item.catalognum,
+        };
+    }
 }
 
 

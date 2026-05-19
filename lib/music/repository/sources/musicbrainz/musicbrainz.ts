@@ -211,3 +211,51 @@ export async function getMusicBrainzData(
     throw new Error('All AcoustID results failed MusicBrainz lookup');
 }
 
+import { DataSource } from '../../types';
+import { Item } from '../../../database';
+
+export class MusicBrainzSource extends DataSource {
+    readonly confidence = 0.85;
+
+    async getData(item: Item): Promise<Item> {
+        try {
+            // Get fingerprint from file
+            const chromaprint = await getAcoustidFingerprint(item.path);
+
+            // Lookup on AcoustID
+            const acoustidResponse = await acoustIDLookup(chromaprint.fingerprint, chromaprint.duration);
+
+            if (acoustidResponse.status !== 'ok' || !acoustidResponse.results?.length) {
+                return item;
+            }
+
+            // Get MusicBrainz data
+            const recording = await getMusicBrainzData(acoustidResponse.results, item.path);
+
+            // Map Recording to Item fields
+            return {
+                ...item,
+                title: recording.title || item.title,
+                artist: recording.artists[0] || item.artist,
+                artists: recording.artists.join(', ') || item.artists,
+                mb_trackid: recording.musicbrainzId || item.mb_trackid,
+                mb_artistid: recording.artistIds[0] || item.mb_artistid,
+                mb_artistids: recording.artistIds.join(', ') || item.mb_artistids,
+                mb_albumid: recording.releaseId || item.mb_albumid,
+                acoustid_id: recording.acoustIdId || item.acoustid_id,
+                length: recording.duration || item.length,
+                album: recording.releaseTitle || item.album,
+                year: recording.releaseDate ? new Date(recording.releaseDate).getFullYear() : item.year,
+                month: recording.releaseDate ? new Date(recording.releaseDate).getMonth() + 1 : item.month,
+                day: recording.releaseDate ? new Date(recording.releaseDate).getDate() : item.day,
+                country: recording.releaseCountry || item.country,
+                albumstatus: recording.releaseStatus || item.albumstatus,
+            };
+        } catch (error) {
+            // Silently fail and return original item
+            console.debug(`MusicBrainz lookup failed for ${item.path}:`, error);
+            return item;
+        }
+    }
+}
+

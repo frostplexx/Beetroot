@@ -1,5 +1,5 @@
-import path from "path"
 import { globalConfig } from "@/lib/config"
+import path from "path"
 
 /**
  * Converts Uint8Array to string (for SQLite BLOB fields)
@@ -20,8 +20,9 @@ export function decodeBuffer(value: any): string | null {
 export function decodeRow<T extends Record<string, any>>(row: T): T {
     const decoded = { ...row }
     for (const key in decoded) {
-        if (decoded[key] instanceof Uint8Array) {
-            decoded[key] = decodeBuffer(decoded[key]) as any
+        const value = decoded[key]
+        if (value && typeof value === 'object' && ArrayBuffer.isView(value)) {
+            decoded[key] = decodeBuffer(value) as any
         }
     }
     return decoded

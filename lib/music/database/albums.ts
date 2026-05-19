@@ -14,7 +14,7 @@ export interface Album {
     albumstatus: string | null
     albumtype: string | null
     albumtypes: string | null
-    artpath: Buffer | null
+    artpath: string | null
     asin: string | null
     barcode: string | null
     catalognum: string | null

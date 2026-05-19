@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { TrackRepository } from '@/lib/music/repository';
+// import { TrackRepository } from '@/lib/music/repository';
 import db from '@/lib/music/database/db';
 import * as fs from 'fs';
 import * as path from 'path';
 import { globalConfig } from '@/lib/config';
-import { expandPath } from '@/lib/music/repository/utils';
+// import { expandPath } from '@/lib/music/repository/utils';
 
-const repository = new TrackRepository(db);
+// TODO: Re-implement TrackRepository or refactor these routes
+// const repository = new TrackRepository(db);
+
+function expandPath(p: string): string {
+    return p.replace(/^~/, process.env.HOME || '~');
+}
 
 /**
  * POST /api/import
@@ -19,57 +24,28 @@ export async function POST(request: NextRequest) {
 
         // Single file import
         if (body.filePath) {
-            const result = await repository.importTrack(body.filePath, {
-                skipMusicBrainz: body.skipMusicBrainz || false,
-                skipLastFm: body.skipLastFm || false,
-                writeBack: body.writeBack || 'missing-only',
-                conflictResolution: body.conflictResolution || 'keep-db',
-                organizeFiles: body.organizeFiles || false
-            });
+            // TODO: Implement importTrack
+            // const result = await repository.importTrack(body.filePath, {
+            //     skipMusicBrainz: body.skipMusicBrainz || false,
+            //     skipLastFm: body.skipLastFm || false,
+            //     writeBack: body.writeBack || 'missing-only',
+            //     conflictResolution: body.conflictResolution || 'keep-db',
+            //     organizeFiles: body.organizeFiles || false
+            // });
 
             return NextResponse.json({
-                success: true,
-                trackId: result.trackId,
-                conflicts: result.conflicts.length,
-                conflictDetails: result.conflicts
-            });
+                success: false,
+                error: 'Import functionality not yet implemented',
+            }, { status: 501 });
         }
 
         // Batch import
         if (body.filePaths && Array.isArray(body.filePaths)) {
-            const results = [];
-            const errors = [];
-
-            for (const filePath of body.filePaths) {
-                try {
-                    const result = await repository.importTrack(filePath, {
-                        skipMusicBrainz: body.skipMusicBrainz || false,
-                        skipLastFm: body.skipLastFm || true, // Skip last.fm for batch by default
-                        writeBack: 'missing-only',
-                        conflictResolution: 'keep-db',
-                        organizeFiles: body.organizeFiles || false
-                    });
-
-                    results.push({
-                        filePath,
-                        trackId: result.trackId,
-                        conflicts: result.conflicts.length
-                    });
-                } catch (error) {
-                    errors.push({
-                        filePath,
-                        error: error instanceof Error ? error.message : 'Unknown error'
-                    });
-                }
-            }
-
+            // TODO: Implement batch import
             return NextResponse.json({
-                success: true,
-                imported: results.length,
-                failed: errors.length,
-                results,
-                errors
-            });
+                success: false,
+                error: 'Batch import functionality not yet implemented',
+            }, { status: 501 });
         }
 
         return NextResponse.json(

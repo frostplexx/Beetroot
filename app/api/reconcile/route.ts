@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { TrackRepository } from '@/lib/music/repository';
+// import { TrackRepository } from '@/lib/music/repository';
 import db from '@/lib/music/database/db';
 import * as fs from 'fs';
 import * as path from 'path';
 import { globalConfig } from '@/lib/config';
-import { expandPath } from '@/lib/music/repository/utils';
+// import { expandPath } from '@/lib/music/repository/utils';
 
-const repository = new TrackRepository(db);
+// TODO: Re-implement TrackRepository or refactor these routes
+// const repository = new TrackRepository(db);
+
+function expandPath(p: string): string {
+    return p.replace(/^~/, process.env.HOME || '~');
+}
 
 /**
  * GET /api/reconcile?status=true
@@ -157,21 +162,22 @@ export async function POST(request: NextRequest) {
             if (!existing) {
                 newFileCount++;
                 console.log(`\n  [${newFileCount}] New file: ${file}`);
-                try {
-                    await repository.importTrack(file, {
-                        skipMusicBrainz: false,
-                        skipLastFm: false,
-                        writeBack: 'missing-only',
-                        conflictResolution: 'keep-db',
-                        organizeFiles: true
-                    });
-                    results.imported++;
-                    console.log(`  ✓ Successfully imported`);
-                } catch (error) {
-                    const errorMsg = `Failed to import ${file}: ${error instanceof Error ? error.message : 'Unknown error'}`;
-                    console.error(`  ✗ ${errorMsg}`);
-                    results.errors.push(errorMsg);
-                }
+                // TODO: Implement importTrack
+                // try {
+                //     await repository.importTrack(file, {
+                //         skipMusicBrainz: false,
+                //         skipLastFm: false,
+                //         writeBack: 'missing-only',
+                //         conflictResolution: 'keep-db',
+                //         organizeFiles: true
+                //     });
+                //     results.imported++;
+                //     console.log(`  ✓ Successfully imported`);
+                // } catch (error) {
+                //     const errorMsg = `Failed to import ${file}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                //     console.error(`  ✗ ${errorMsg}`);
+                //     results.errors.push(errorMsg);
+                // }
             }
         }
         console.log(`\n  Summary: ${results.imported} imported, ${results.errors.length} errors`);
@@ -183,7 +189,9 @@ export async function POST(request: NextRequest) {
         for (const dbFile of dbFiles) {
             if (!fs.existsSync(dbFile.path)) {
                 console.log(`  ⚠ Missing: ${dbFile.path} (id=${dbFile.id})`);
-                repository.markMissing(dbFile.id);
+                // TODO: Implement markMissing
+                // repository.markMissing(dbFile.id);
+                db.prepare('UPDATE items SET missing_since = ? WHERE id = ?').run(Date.now(), dbFile.id);
                 results.missing++;
             }
         }

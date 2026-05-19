@@ -61,7 +61,8 @@ export function getAcoustidFingerprint(filePath: string): Promise<ChromaPrintRes
 
         // If __dirname is available and looks valid, use relative path
         if (typeof __dirname !== 'undefined' && __dirname && !__dirname.includes('/ROOT')) {
-            const binDir = path.join(__dirname, '..', 'binaries');
+            // Go up from sources/musicbrainz to lib/music/binaries
+            const binDir = path.join(__dirname, '..', '..', '..', 'binaries');
             fpcalcPath = `${binDir}/chromaprint/fpcalc`;
         } else {
             // Fallback to absolute path from project root

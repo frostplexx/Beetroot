@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { TrackRepository } from '@/lib/music/repository';
+// import { TrackRepository } from '@/lib/music/repository';
 import db from '@/lib/music/database/db';
 
-const repository = new TrackRepository(db);
+// TODO: Re-implement TrackRepository or refactor these routes
+// const repository = new TrackRepository(db);
 
 /**
  * GET /api/conflicts?trackId=123
@@ -13,8 +14,9 @@ export async function GET(request: NextRequest) {
         const trackId = request.nextUrl.searchParams.get('trackId');
 
         if (trackId) {
-            const conflicts = repository.getConflicts(parseInt(trackId));
-            return NextResponse.json({ success: true, conflicts });
+            // TODO: Implement getConflicts
+            // const conflicts = repository.getConflicts(parseInt(trackId));
+            return NextResponse.json({ success: true, conflicts: [] });
         }
 
         // Get all conflicts
@@ -55,11 +57,12 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        repository.resolveConflict(
-            body.conflictId,
-            body.resolution,
-            body.customValue
-        );
+        // TODO: Implement resolveConflict
+        // repository.resolveConflict(
+        //     body.conflictId,
+        //     body.resolution,
+        //     body.customValue
+        // );
 
         return NextResponse.json({ success: true });
     } catch (error) {
