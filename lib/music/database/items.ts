@@ -109,7 +109,7 @@ export function getAllItems(): Item[] {
             FROM items
             ORDER BY album_id, track
         `)
-        const rows = stmt.all()
+        const rows = stmt.all() as Record<string, any>[]
         return decodeRows(rows) as Item[]
     } catch (error) {
         console.error("Error fetching items:", error)
@@ -126,7 +126,7 @@ export function getItemsPaginated(page: number = 0, pageSize: number = 50): Item
             ORDER BY album_id, track
             LIMIT ? OFFSET ?
         `)
-        const rows = stmt.all(pageSize, offset)
+        const rows = stmt.all(pageSize, offset) as Record<string, any>[]
         return decodeRows(rows) as Item[]
     } catch (error) {
         console.error("Error fetching paginated items:", error)
@@ -142,7 +142,7 @@ export function getItemsByAlbum(albumId: number): Item[] {
             WHERE album_id = ?
             ORDER BY track
         `)
-        const rows = stmt.all(albumId)
+        const rows = stmt.all(albumId) as Record<string, any>[]
         return decodeRows(rows) as Item[]
     } catch (error) {
         console.error("Error fetching items for album:", error)
@@ -197,9 +197,9 @@ export function searchItems(query: string, page: number = 0, pageSize: number = 
 
         // Flatten search terms for each condition
         const params = searchTerms.flatMap(term => [term, term, term])
-        params.push(pageSize, offset)
+        params.push(`${pageSize}`, `${offset}`)
 
-        const rows = stmt.all(...params)
+        const rows = stmt.all(...params) as Record<string, any>[]
         return decodeRows(rows) as Item[]
     } catch (error) {
         console.error("Error searching items:", error)

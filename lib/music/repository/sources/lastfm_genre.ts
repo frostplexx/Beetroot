@@ -1,5 +1,5 @@
-import { globalConfig } from "../../config";
-import { MusicBrainzRelease } from "./musicbrainz";
+import { globalConfig } from "@/lib/config";
+import { MusicBrainzRelease } from "./musicbrainz/musicbrainz";
 
 const LASTFM_BASE_URL = 'https://ws.audioscrobbler.com/2.0';
 

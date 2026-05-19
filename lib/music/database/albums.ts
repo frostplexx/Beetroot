@@ -58,7 +58,7 @@ export function getAllAlbums(): Album[] {
             FROM albums
             ORDER BY added DESC
         `)
-        const rows = stmt.all()
+        const rows = stmt.all() as Record<string, any>[]
         return decodeRows(rows) as Album[]
     } catch (error) {
         console.error("Error fetching albums:", error)
@@ -75,7 +75,7 @@ export function getAlbumsPaginated(page: number = 0, pageSize: number = 24): Alb
             ORDER BY added DESC
             LIMIT ? OFFSET ?
         `)
-        const rows = stmt.all(pageSize, offset)
+        const rows = stmt.all(pageSize, offset) as Record<string, any>[]
         return decodeRows(rows) as Album[]
     } catch (error) {
         console.error("Error fetching paginated albums:", error)
@@ -130,9 +130,9 @@ export function searchAlbums(query: string, page: number = 0, pageSize: number =
 
         // Flatten search terms for each condition
         const params = searchTerms.flatMap(term => [term, term, term, term])
-        params.push(pageSize, offset)
+        params.push(`${pageSize}`, `${offset}`)
 
-        const rows = stmt.all(...params)
+        const rows = stmt.all(...params) as Record<string, any>[]
         return decodeRows(rows) as Album[]
     } catch (error) {
         console.error("Error searching albums:", error)
