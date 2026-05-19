@@ -143,6 +143,8 @@ export default Repository.getInstance();
 async function testDataSources() {
     // const testFilePath = '/Users/daniel/Music/Download/stripped_brod.flac'; // Update with actual file path
     const testFilePath = '/Users/daniel/Music/BeetsTest/E-L/Ikkimel/POPPSTAR/01 WAS JETZT.flac'; // Update with actual file path
+    // const testFilePath = '/Users/daniel/Music/BeetsTest/A-D/Bergënot/Moselfrankian Tänzelcore Madness/13 Schnake.flac'; // Update with actual file path
+    // const testFilePath = '/Users/daniel/Music/BeetsTest/A-D/Bad Bunny/DeBÍ TiRAR MáS FOToS/04 PERFuMITO NUEVO.m4a'; // Update with actual file path
 
     const testItem: Item = {
         id: 0,

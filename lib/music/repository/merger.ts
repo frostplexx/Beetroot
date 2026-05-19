@@ -1,5 +1,8 @@
 import { Item } from "../database";
 import { SourceResult } from "./types";
+import * as fs from 'fs';
+import * as path from 'path';
+import * as yaml from 'js-yaml';
 
 
 export function mergeData<T extends SourceResult>(items: T[]): T {
@@ -10,9 +13,17 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
     // Start with the highest confidence source
     let merged: T = validItems[0];
 
+    if (merged.data == null) {
+        console.warn(`Warning: Highest confidence source "${merged.sourceName}" returned null data. Falling back to next source.`);
+        merged = validItems[1] || merged; // Fallback to next source if available
+    }
+
+
     // Collect all unique keys across all sources
     const allKeys = new Set<string>();
     for (const item of validItems) {
+        if (item.data == null) continue;
+
         Object.keys(item.data).forEach(key => allKeys.add(key));
     }
 
@@ -23,6 +34,11 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
     for (const key of allKeys) {
         if (key === 'path') continue; // Skip path, it's always the same
 
+        if (merged.data == null) {
+            console.warn(`Warning: Merged data is null when processing key "${key}". Skipping.`);
+            continue;
+        }
+
         // Special handling for genres
         if (key === 'genres') {
             merged.data[key] = resolveGenres(validItems);
@@ -31,7 +47,7 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
 
         // Collect all non-null string values for this key
         const values = validItems
-            .map(item => item.data[key])
+            .map(item => item.data == null ? "" : item.data[key])
             .filter(v => v != null && typeof v === 'string' && v.trim() !== '');
 
         if (values.length === 0) continue;
@@ -200,4 +216,150 @@ function resolveConflict(key: string, sources: SourceResult[]): any {
 
 
 function resolveGenres(sources: SourceResult[]): string[] {
+    const genresWithSource: Array<{ genre: string, confidence: number }> = [];
+
+    // Prefer Last.fm for genres, but fall back to all sources if Last.fm has none
+    let useAllSources = true;
+
+    // First try Last.fm only
+    for (const source of sources) {
+        if (source.sourceName !== 'LastfmGenreSource') continue;
+
+        const value = source.data?.genres;
+        if (Array.isArray(value) && value.length > 0) {
+            console.log(`  [${source.sourceName}] genres: ${value.join(', ')}`);
+            genresWithSource.push(...value.map(g => ({ genre: g, confidence: source.confidence })));
+            useAllSources = false;
+        } else if (typeof value === 'string' && value.trim().length > 0) {
+            console.log(`  [${source.sourceName}] genres: ${value}`);
+            genresWithSource.push(...(value as string).split(',').map(g => ({ genre: g.trim(), confidence: source.confidence })));
+            useAllSources = false;
+        }
+    }
+
+    // If Last.fm provided no genres, use all sources
+    if (useAllSources) {
+        console.log(`  Last.fm provided no genres, falling back to all sources`);
+        for (const source of sources) {
+            const value = source.data?.genres;
+            if (Array.isArray(value)) {
+                console.log(`  [${source.sourceName}] genres: ${value.join(', ')}`);
+                genresWithSource.push(...value.map(g => ({ genre: g, confidence: source.confidence })));
+            } else if (typeof value === 'string') {
+                console.log(`  [${source.sourceName}] genres: ${value}`);
+                genresWithSource.push(...(value as string).split(',').map(g => ({ genre: g.trim(), confidence: source.confidence })));
+            }
+        }
+    }
+
+    // Build map of normalized -> original capitalization (prefer highest confidence)
+    const originalCasing = new Map<string, { original: string, confidence: number }>();
+    for (const { genre, confidence } of genresWithSource) {
+        // Normalize: lowercase, trim, remove non-alphanumeric (same as resolveConflict)
+        const normalized = genre.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+        if (normalized.length === 0) continue;
+
+        if (!originalCasing.has(normalized)) {
+            originalCasing.set(normalized, { original: genre, confidence });
+        } else {
+            // Keep the version from the highest confidence source
+            const existing = originalCasing.get(normalized)!;
+            if (confidence > existing.confidence) {
+                originalCasing.set(normalized, { original: genre, confidence });
+            }
+        }
+    }
+
+    const normalizedGenres = Array.from(originalCasing.keys());
+    console.log(`  Collected ${normalizedGenres.length} unique genres: [${normalizedGenres.join(', ')}]`);
+
+    // Load genres-tree.yaml which contains a mapping of genre -> parent genres
+    const genresTreePath = path.join(__dirname, 'genres-tree.yaml');
+    const genresTree = yaml.load(fs.readFileSync(genresTreePath, 'utf8'));
+
+    // Build parent-child relationships: child -> set of all parents
+    const parentMap = new Map<string, Set<string>>();
+
+    function buildParentMap(node: any, parents: string[] = []) {
+        if (node == null) {
+            // Handle null/undefined nodes
+            return;
+        } else if (Array.isArray(node)) {
+            for (const item of node) {
+                buildParentMap(item, parents);
+            }
+        } else if (typeof node === 'object') {
+            for (const [key, value] of Object.entries(node)) {
+                // Normalize: lowercase, trim, remove non-alphanumeric
+                const genre = key.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+
+                // Record all parents for this genre
+                if (!parentMap.has(genre)) {
+                    parentMap.set(genre, new Set());
+                }
+                for (const parent of parents) {
+                    parentMap.get(genre)!.add(parent);
+                }
+
+                // Recurse with this genre added to parents
+                buildParentMap(value, [...parents, genre]);
+            }
+        } else if (typeof node === 'string') {
+            // Normalize: lowercase, trim, remove non-alphanumeric
+            const genre = node.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+
+            // Record all parents for this leaf genre
+            if (!parentMap.has(genre)) {
+                parentMap.set(genre, new Set());
+            }
+            for (const parent of parents) {
+                parentMap.get(genre)!.add(parent);
+            }
+        }
+    }
+
+    buildParentMap(genresTree);
+
+    // Filter to only genres that exist in the tree, then expand with their parents
+    const allGenres = new Set<string>();
+    const unknownGenres: string[] = [];
+
+    for (const genre of normalizedGenres) {
+        // Only keep genres that are in the tree
+        if (parentMap.has(genre)) {
+            allGenres.add(genre);
+            const parents = parentMap.get(genre);
+            if (parents) {
+                for (const parent of parents) {
+                    allGenres.add(parent);
+                }
+            }
+        } else {
+            unknownGenres.push(originalCasing.get(genre)?.original || genre);
+        }
+    }
+
+    if (unknownGenres.length > 0) {
+        console.log(`  Filtered out ${unknownGenres.length} unknown genres: [${unknownGenres.join(', ')}]`);
+    }
+    console.log(`  After expanding with parents: [${Array.from(allGenres).join(', ')}]`);
+
+    // Delete all parent genres and only keep leafs
+    const leafGenres = new Set(allGenres);
+    for (const genre of allGenres) {
+        const parents = parentMap.get(genre);
+        if (parents) {
+            for (const parent of parents) {
+                leafGenres.delete(parent);
+            }
+        }
+    }
+
+    // Map back to original capitalization
+    const result = Array.from(leafGenres).map(normalized =>
+        originalCasing.get(normalized)?.original || normalized
+    );
+    console.log(`  Final leaf genres: [${result.join(', ')}]`);
+
+    return result;
 }
