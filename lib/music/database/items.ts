@@ -102,6 +102,8 @@ export interface Item {
     year: number | null
     added: number
     [key: string]: any
+    // Mark item for deletion. set it to the date it was marked for deletion, or true if the date is unknown. 
+    marked_for_deletion?: number
 }
 
 export function getAllItems(): Item[] {
@@ -231,6 +233,20 @@ export function getItemsSearchCount(query: string): number {
     }
 }
 
+export function deleteItemFromDB(id: number): void {
+    try {
+        const stmt = db.prepare(`
+            DELETE FROM items
+            WHERE id = ?
+        `)
+        stmt.run(id)
+    }
+    catch (error) {
+        console.error("Error deleting item:", error)
+        throw error
+    }
+}
+
 export function writeOrUpdateItem(item: Item): void {
     try {
         // Get valid columns from schema
@@ -288,6 +304,83 @@ export function writeOrUpdateItem(item: Item): void {
         }
     } catch (error) {
         console.error('Error writing/updating item:', error)
+        throw error
+    }
+}
+
+// Get all item paths from DB (for reconciliation)
+export function getAllItemPaths(): Map<string, number> {
+    try {
+        const stmt = db.prepare('SELECT id, path FROM items')
+        const rows = stmt.all() as Array<{ id: number; path: Buffer }>
+
+        const pathMap = new Map<string, number>()
+        for (const row of rows) {
+            const path = row.path.toString('utf8')
+            pathMap.set(path, row.id)
+        }
+        return pathMap
+    } catch (error) {
+        console.error('Error fetching item paths:', error)
+        return new Map()
+    }
+}
+
+// Batch update items in a transaction
+export function batchUpdateItems(updates: Array<{ id: number; fields: Partial<Item> }>): void {
+    const transaction = db.transaction((updates: Array<{ id: number; fields: Partial<Item> }>) => {
+        for (const { id, fields } of updates) {
+            const fieldNames = Object.keys(fields).filter(key => key !== 'id')
+            if (fieldNames.length === 0) continue
+
+            const setClause = fieldNames.map(key => `${key} = ?`).join(', ')
+            const values = fieldNames.map(key => (fields as any)[key])
+
+            const stmt = db.prepare(`UPDATE items SET ${setClause} WHERE id = ?`)
+            stmt.run(...values, id)
+        }
+    })
+
+    try {
+        transaction(updates)
+    } catch (error) {
+        console.error('Error batch updating items:', error)
+        throw error
+    }
+}
+
+// Get items marked for deletion that are old enough to delete
+export function getItemsReadyForDeletion(deleteAfterDays: number): Item[] {
+    try {
+        const cutoffTime = Date.now() - (deleteAfterDays * 24 * 60 * 60 * 1000)
+        const stmt = db.prepare(`
+            SELECT *
+            FROM items
+            WHERE marked_for_deletion IS NOT NULL
+              AND marked_for_deletion < ?
+        `)
+        const rows = stmt.all(cutoffTime) as Record<string, any>[]
+        return decodeRows(rows) as Item[]
+    } catch (error) {
+        console.error('Error fetching items ready for deletion:', error)
+        return []
+    }
+}
+
+// Batch delete items by IDs
+export function batchDeleteItems(ids: number[]): void {
+    if (ids.length === 0) return
+
+    const transaction = db.transaction((ids: number[]) => {
+        const placeholders = ids.map(() => '?').join(',')
+        const stmt = db.prepare(`DELETE FROM items WHERE id IN (${placeholders})`)
+        stmt.run(...ids)
+    })
+
+    try {
+        transaction(ids)
+    } catch (error) {
+        console.error('Error batch deleting items:', error)
         throw error
     }
 }

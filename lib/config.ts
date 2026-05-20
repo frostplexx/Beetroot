@@ -22,8 +22,10 @@ interface GlobalConfig {
     conflict_resolution?: ConflictResolution;
     writeback_mode?: WriteBackMode;
     path: string
-
     bucket: BucketConfig;
+
+    trash_directory: string;
+    delete_after: number; // days
 }
 
 // Default configuration
@@ -34,7 +36,9 @@ const DEFAULT_CONFIG: Partial<GlobalConfig> = {
     bucket: {
         alpha: ['A-F', 'G-M', 'N-Z'],
         year: ['1960s', '1970s', '1980s', '1990s', '2000s', '2010s', '2020s']
-    }
+    },
+    trash_directory: '.trash/',
+    delete_after: 30,
 };
 
 // globalConfig gets loaded from yaml file

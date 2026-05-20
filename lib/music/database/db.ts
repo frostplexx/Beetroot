@@ -125,6 +125,37 @@ function runMigrations(db: Database.Database): void {
         db.prepare("INSERT INTO migrations (name, table_name) VALUES (?, 'items')").run(migration2Name)
         console.log("Migration complete: add_artpath_to_items")
     }
+
+    // Migration 3: Add marked_for_deletion and source columns to items table
+    const migration3Name = "add_marked_for_deletion_and_source_to_items"
+    const hasMigration3 = db.prepare(
+        "SELECT 1 FROM migrations WHERE name = ? AND table_name = 'items'"
+    ).get(migration3Name)
+
+    if (!hasMigration3) {
+        console.log("Running migration: add_marked_for_deletion_and_source_to_items")
+
+        const columns = db.prepare("PRAGMA table_info(items)").all() as Array<{ name: string }>
+        const columnNames = columns.map(c => c.name)
+
+        if (!columnNames.includes('marked_for_deletion')) {
+            console.log("  Adding column: marked_for_deletion")
+            db.exec("ALTER TABLE items ADD COLUMN marked_for_deletion REAL")
+        } else {
+            console.log("  Column marked_for_deletion already exists")
+        }
+
+        if (!columnNames.includes('source')) {
+            console.log("  Adding column: source")
+            db.exec("ALTER TABLE items ADD COLUMN source TEXT")
+        } else {
+            console.log("  Column source already exists")
+        }
+
+        // Mark migration as complete
+        db.prepare("INSERT INTO migrations (name, table_name) VALUES (?, 'items')").run(migration3Name)
+        console.log("Migration complete: add_marked_for_deletion_and_source_to_items")
+    }
 }
 
 function createSchema(db: Database.Database): void {
@@ -181,6 +212,7 @@ function createSchema(db: Database.Database): void {
         -- Items (tracks) table
         CREATE TABLE IF NOT EXISTS items (
             id INTEGER PRIMARY KEY,
+            source TEXT,
             title TEXT,
             artist TEXT,
             artist_credit TEXT,
@@ -280,6 +312,7 @@ function createSchema(db: Database.Database): void {
             artpath BLOB,
             file_hash TEXT,
             missing_since REAL,
+            marked_for_deletion REAL,
             title_source TEXT,
             artist_source TEXT,
             artists_source TEXT,

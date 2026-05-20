@@ -223,7 +223,7 @@ export function moveItem(item: Item): boolean {
 }
 
 
-function moveFile(oldPath: string, newPath: string): boolean {
+export function moveFile(oldPath: string, newPath: string): boolean {
 
     // Recursively  create folders if they don't exist
     const dir = newPath.substring(0, newPath.lastIndexOf('/'));

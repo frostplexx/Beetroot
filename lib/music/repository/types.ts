@@ -12,3 +12,17 @@ export interface SourceResult {
     error?: Error;
     duration?: number;
 }
+
+
+export interface ReconcileResult {
+    scannedFiles: number;
+    newFilesFound: number;
+    newFilesImported: number;
+    missingFilesDetected: number;
+    deletedItems: number;
+    errors: string[];
+}
+
+export interface ReconcileProgress extends ReconcileResult {
+    phase: 'scanning' | 'importing' | 'cleanup';
+}
