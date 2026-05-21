@@ -7,6 +7,7 @@ import { Album, Music, ChevronLeft, ChevronRight } from "lucide-react"
 import { TracksTable } from "./tracks-table"
 import { tracksColumns } from "./tracks-columns"
 import { EmptyLibraryState } from "@/components/empty-library-state"
+import { useReconcileEvents } from "@/lib/ui/use-reconcile-events"
 import type { Album as AlbumType, Item } from "@/lib/music/database/index"
 
 interface LibraryClientProps {
@@ -34,6 +35,15 @@ export function LibraryClient({
 }: LibraryClientProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
+
+    // Re-fetch the server component on every reconcile completion. Refresh
+    // is cheap (re-runs the page server component) and gating on hasChanges
+    // is unreliable when the watcher fires a second no-op reconcile after
+    // the import moves the file.
+    useReconcileEvents({
+        fireOnNoChanges: true,
+        onCompleted: () => router.refresh(),
+    })
 
     const handleAlbumsPageChange = (newPage: number) => {
         const params = new URLSearchParams(searchParams.toString())

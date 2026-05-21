@@ -1,5 +1,6 @@
 import { globalConfig } from "../../config";
 import Repository from "./index";
+import db from "../database/db";
 import chokidar from 'chokidar';
 import { EventEmitter } from 'events';
 import * as path from 'path';
@@ -20,6 +21,9 @@ class ReconcileService extends EventEmitter {
     private lastRunTime: number | null = null;
     private lastResult: any = null; // Store last reconciliation result
     private isReconciling: boolean = false;
+    private currentProgress: any = null; // Live progress while reconciling
+    private currentRunStart: number | null = null;
+    private runCounter: number = 0; // Increments after every completed/errored run
     private watcher: chokidar.FSWatcher | null = null;
     private debounceTimeout: NodeJS.Timeout | null = null;
 
@@ -82,6 +86,10 @@ class ReconcileService extends EventEmitter {
             }
         });
 
+        // Prepared once; reused on every watcher event to suppress paths
+        // that we ourselves just moved into the library during an import.
+        const pathExistsStmt = db.prepare('SELECT 1 FROM items WHERE path = ? LIMIT 1');
+
         // Only watch for 'add' events (new files)
         // Ignore: addDir, unlink, unlinkDir, change (these are internal operations)
         this.watcher.on('add', (filePath) => {
@@ -91,6 +99,18 @@ class ReconcileService extends EventEmitter {
 
             if (!musicExtensions.includes(ext)) {
                 return; // Ignore non-music files
+            }
+
+            // adoptItem moves freshly imported files into their canonical
+            // location, which trips chokidar a second time. If the path is
+            // already in items, the file is a known internal move — skip it.
+            try {
+                const existing = pathExistsStmt.get(Buffer.from(filePath, 'utf8'));
+                if (existing) {
+                    return;
+                }
+            } catch (err) {
+                console.error('[ReconcileService] path lookup failed:', err);
             }
 
             console.log(`[ReconcileService] New file detected: ${filePath}`);
@@ -147,7 +167,9 @@ class ReconcileService extends EventEmitter {
         }
 
         this.isReconciling = true;
-        const startTime = Date.now();
+        this.currentProgress = null;
+        this.currentRunStart = Date.now();
+        const startTime = this.currentRunStart;
 
         try {
             console.log('[ReconcileService] Starting reconciliation...');
@@ -165,7 +187,9 @@ class ReconcileService extends EventEmitter {
                         console.log(`[ReconcileService] Progress - ${progress.phase}: scanned ${progress.scannedFiles} files, found ${progress.newFilesFound} new`);
                     }
 
-                    // Emit progress event
+                    // Snapshot for pollers, then emit for SSE listeners.
+                    this.currentProgress = progress;
+
                     this.emit('reconcile', {
                         type: 'progress',
                         data: progress
@@ -188,7 +212,7 @@ class ReconcileService extends EventEmitter {
 
             const hasChanges = result.newFilesImported > 0 || result.artworkFixed > 0 || result.deletedItems > 0;
 
-            // Store last result for new SSE connections
+            // Store last result for new SSE / poll responses
             this.lastResult = { ...summary, hasChanges, timestamp: Date.now() };
 
             console.log('[ReconcileService] Reconciliation complete:', summary);
@@ -213,6 +237,9 @@ class ReconcileService extends EventEmitter {
             } as ReconcileEvent);
         } finally {
             this.isReconciling = false;
+            this.currentProgress = null;
+            this.currentRunStart = null;
+            this.runCounter++;
         }
     }
 
@@ -224,6 +251,9 @@ class ReconcileService extends EventEmitter {
         isReconciling: boolean;
         lastRunTime: number | null;
         lastResult: any;
+        progress: any;
+        runStartedAt: number | null;
+        runCounter: number;
         intervalMinutes: number;
     } {
         return {
@@ -231,6 +261,9 @@ class ReconcileService extends EventEmitter {
             isReconciling: this.isReconciling,
             lastRunTime: this.lastRunTime,
             lastResult: this.lastResult,
+            progress: this.currentProgress,
+            runStartedAt: this.currentRunStart,
+            runCounter: this.runCounter,
             intervalMinutes: globalConfig.reconcile_interval || 0
         };
     }

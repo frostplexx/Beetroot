@@ -6,6 +6,7 @@ import { ChevronLeft } from "lucide-react"
 import { AlbumHeader } from "./album-header"
 import { DataTable } from "./data-table"
 import { columns } from "./columns"
+import { useReconcileEvents } from "@/lib/ui/use-reconcile-events"
 import type { Album, Item } from "@/lib/music/database/index"
 
 interface AlbumPageClientProps {
@@ -23,6 +24,11 @@ function getRgbaColor(rgb: string, alpha: number): string {
 export function AlbumPageClient({ album, artUrl, tracks }: AlbumPageClientProps) {
     const router = useRouter()
     const [bgColor, setBgColor] = useState<string | null>(null)
+
+    useReconcileEvents({
+        fireOnNoChanges: true,
+        onCompleted: () => router.refresh(),
+    })
 
     const handleColorExtracted = useCallback((color: string) => {
         setBgColor(color)
