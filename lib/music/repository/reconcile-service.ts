@@ -15,7 +15,6 @@ export interface ReconcileEvent {
  * Manages automatic reconciliation on startup and at regular intervals
  */
 class ReconcileService extends EventEmitter {
-    private static instance: ReconcileService;
     private isRunning: boolean = false;
     private intervalId: NodeJS.Timeout | null = null;
     private lastRunTime: number | null = null;
@@ -32,10 +31,12 @@ class ReconcileService extends EventEmitter {
     }
 
     static getInstance(): ReconcileService {
-        if (!ReconcileService.instance) {
-            ReconcileService.instance = new ReconcileService();
+        // Use global object to ensure singleton persists across Next.js HMR
+        const globalAny = global as any;
+        if (!globalAny.__reconcileServiceInstance) {
+            globalAny.__reconcileServiceInstance = new ReconcileService();
         }
-        return ReconcileService.instance;
+        return globalAny.__reconcileServiceInstance;
     }
 
     /**
