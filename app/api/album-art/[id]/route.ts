@@ -1,78 +1,71 @@
-import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/music/database/db';
-import * as fs from 'fs';
-import * as path from 'path';
-import { decodeBuffer } from '@/lib/music/database/utils';
+import { NextRequest, NextResponse } from 'next/server'
+import { promises as fsp } from 'fs'
+import * as path from 'path'
+import db from '@/lib/music/database/db'
+import { decodeBuffer } from '@/lib/music/database/utils'
+import { serveArtFromPath, notFoundArt } from '@/lib/api/serve-art'
+
+// Prepared statements are hoisted so we don't re-parse the SQL on every request.
+const selectAlbumArt = db.prepare('SELECT artpath FROM albums WHERE id = ?')
+const selectItemArtAndPath = db.prepare('SELECT artpath, path FROM items WHERE id = ?')
+
+const COVER_FILENAMES = ['cover.jpg', 'cover.png', 'folder.jpg', 'folder.png']
+
+async function findCoverInFolder(folder: string): Promise<string | null> {
+    // Probe candidates in parallel — most albums hit on the first or none at all.
+    const checks = await Promise.all(
+        COVER_FILENAMES.map(async (name) => {
+            const p = path.join(folder, name)
+            try {
+                await fsp.access(p)
+                return p
+            } catch {
+                return null
+            }
+        }),
+    )
+    return checks.find((p): p is string => p !== null) ?? null
+}
 
 /**
- * GET /api/album-art/[id]
- * Serve album art for an album or track
+ * GET /api/album-art/[id]?type=album|track&size=NNN
  */
 export async function GET(
     request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
+    { params }: { params: Promise<{ id: string }> },
 ) {
     try {
-        const { id } = await params;
-        const type = request.nextUrl.searchParams.get('type') || 'album';
+        const { id: rawId } = await params
+        const id = parseInt(rawId, 10)
+        if (!Number.isFinite(id)) return notFoundArt()
 
-        let artpath: string | null = null;
+        const type = request.nextUrl.searchParams.get('type') || 'album'
+        const sizeParam = request.nextUrl.searchParams.get('size')
+
+        let artpath: string | null = null
 
         if (type === 'album') {
-            // Get album art path
-            const album = db.prepare(`
-                SELECT artpath FROM albums WHERE id = ?
-            `).get(id) as any;
-
-            artpath = album?.artpath ? decodeBuffer(album.artpath) : null;
+            const row = selectAlbumArt.get(id) as { artpath: unknown } | undefined
+            artpath = row?.artpath ? decodeBuffer(row.artpath) : null
         } else if (type === 'track') {
-            // Get track art path
-            const item = db.prepare(`
-                SELECT artpath FROM items WHERE id = ?
-            `).get(id) as any;
+            const row = selectItemArtAndPath.get(id) as
+                | { artpath: unknown; path: unknown }
+                | undefined
+            artpath = row?.artpath ? decodeBuffer(row.artpath) : null
 
-            artpath = item?.artpath ? decodeBuffer(item.artpath) : null;
-        }
-
-        // If no artpath, try to find cover.jpg in track's album folder
-        if (!artpath && type === 'track') {
-            const item = db.prepare('SELECT path FROM items WHERE id = ?').get(id) as any;
-            const itemPath = item?.path ? decodeBuffer(item.path) : null;
-
-            if (itemPath) {
-                const albumFolder = path.dirname(itemPath);
-                const possibleCovers = ['cover.jpg', 'cover.png', 'folder.jpg', 'folder.png'];
-
-                for (const cover of possibleCovers) {
-                    const coverPath = path.join(albumFolder, cover);
-                    if (fs.existsSync(coverPath)) {
-                        artpath = coverPath;
-                        break;
-                    }
+            if (!artpath && row?.path) {
+                const itemPath = decodeBuffer(row.path)
+                if (itemPath) {
+                    artpath = await findCoverInFolder(path.dirname(itemPath))
                 }
             }
         }
 
-        if (!artpath || !fs.existsSync(artpath)) {
-            // Return placeholder or 404
-            return new NextResponse(null, { status: 404 });
-        }
+        if (!artpath) return notFoundArt()
 
-        // Read and serve the image
-        const image = await fs.promises.readFile(artpath);
-        const ext = path.extname(artpath).toLowerCase();
-        const contentType = ext === '.png' ? 'image/png' : 'image/jpeg';
-
-        return new NextResponse(image, {
-            headers: {
-                'Content-Type': contentType,
-                'Cache-Control': 'public, max-age=31536000, immutable',
-                'Access-Control-Allow-Origin': '*',
-                'Cross-Origin-Resource-Policy': 'cross-origin'
-            }
-        });
+        return await serveArtFromPath(request, artpath, sizeParam)
     } catch (error) {
-        console.error('Album art error:', error);
-        return new NextResponse(null, { status: 500 });
+        console.error('Album art error:', error)
+        return new NextResponse(null, { status: 500 })
     }
 }

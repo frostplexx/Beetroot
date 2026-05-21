@@ -36,29 +36,9 @@ export function Navbar() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [suggestions, setSuggestions] = useState<{ albums: Album[], tracks: Item[] }>({ albums: [], tracks: [] })
   const [isLoading, setIsLoading] = useState(false)
-  const [conflictCount, setConflictCount] = useState(0)
+  const conflictCount = 0
   const searchRef = useRef<HTMLDivElement>(null)
   const debounceTimerRef = useRef<NodeJS.Timeout | undefined>(undefined)
-
-  // Fetch conflict count
-  useEffect(() => {
-    const fetchConflictCount = async () => {
-      try {
-        const response = await fetch('/api/conflicts')
-        const data = await response.json()
-        if (data.success) {
-          setConflictCount(data.conflicts.length)
-        }
-      } catch (error) {
-        console.error('Error fetching conflicts:', error)
-      }
-    }
-
-    fetchConflictCount()
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchConflictCount, 30000)
-    return () => clearInterval(interval)
-  }, [])
 
   // Initialize search query from URL params
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { RefreshCw, Music, AlertCircle, CheckCircle2, FileQuestion, Trash2, Bell } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,62 +50,10 @@ export function NotificationCenter() {
     const [missingFiles, setMissingFiles] = useState<MissingFile[]>([])
     const [loadingMissing, setLoadingMissing] = useState(false)
 
-    useEffect(() => {
-        // Check status on mount
-        checkStatus()
-
-        // Only auto-reconcile once per session
-        const hasAutoReconciled = sessionStorage.getItem('has-auto-reconciled')
-        if (!hasAutoReconciled) {
-            setTimeout(() => {
-                checkStatus().then(s => {
-                    if (s && s.needsSync > 0) {
-                        sessionStorage.setItem('has-auto-reconciled', 'true')
-                        handleReconcile()
-                    }
-                })
-            }, 2000)
-        }
-
-        // Poll for status every 30 seconds
-        const interval = setInterval(checkStatus, 30000)
-        return () => clearInterval(interval)
-    }, [])
-
-    const checkStatus = async () => {
-        try {
-            const response = await fetch('/api/reconcile?status=true')
-            const data = await response.json()
-            setStatus(data)
-
-            // Fetch missing files if there are any
-            if (data.totalMissing && data.totalMissing > 0) {
-                fetchMissingFiles()
-            } else {
-                setMissingFiles([])
-            }
-
-            return data
-        } catch (error) {
-            console.error('Failed to check reconcile status:', error)
-            return null
-        }
-    }
-
-    const fetchMissingFiles = async () => {
-        setLoadingMissing(true)
-        try {
-            const response = await fetch('/api/missing-files')
-            const data = await response.json()
-            if (data.success) {
-                setMissingFiles(data.files)
-            }
-        } catch (error) {
-            console.error('Failed to fetch missing files:', error)
-        } finally {
-            setLoadingMissing(false)
-        }
-    }
+    // The /api/reconcile and /api/missing-files endpoints have been removed,
+    // so there is nothing to poll. The component renders its empty state.
+    const checkStatus = async () => null
+    const fetchMissingFiles = async () => {}
 
     const handleReconcile = async () => {
         setReconciling(true)
