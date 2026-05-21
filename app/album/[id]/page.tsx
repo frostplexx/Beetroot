@@ -17,7 +17,7 @@ export default async function AlbumPage({
 
     return (
         <div className="flex flex-col items-center m-20">
-            <div className="flex flex-row gap-8">
+            <div className="flex flex-row gap-8 ">
                 <img src={artUrl} alt={`${album.album} by ${album.albumartist}`} className="mb-4 h-75 w-75 object-cover rounded-xl" />
                 <div className="flex flex-col gap-2 mt-4">
                     <h1 className="font-heading text-4xl font-semibold">{album.album}</h1>

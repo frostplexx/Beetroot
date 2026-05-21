@@ -13,6 +13,7 @@ lib/bin
 !.yarn/versions
 
 .direnv
+.db.*
 
 # testing
 /coverage
