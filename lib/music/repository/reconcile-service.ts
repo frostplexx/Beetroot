@@ -46,10 +46,13 @@ class ReconcileService extends EventEmitter {
         this.isRunning = true;
         console.log('[ReconcileService] Starting service');
 
-        // Run on startup if configured
-        if (globalConfig.reconcile_on_startup) {
+        // Run on startup if configured. Skip in dev so HMR restarts don't
+        // kick off a full library scan every time and starve page requests.
+        if (globalConfig.reconcile_on_startup && process.env.NODE_ENV === 'production') {
             console.log('[ReconcileService] Running initial reconciliation on startup');
             this.runReconciliation();
+        } else if (globalConfig.reconcile_on_startup) {
+            console.log('[ReconcileService] Skipping startup reconciliation (NODE_ENV !== production)');
         }
 
         // Set up interval if configured

@@ -13,13 +13,15 @@ function initializeDatabase(dbPath: string): Database.Database {
     // Enable foreign keys
     db.pragma("foreign_keys = ON")
 
+    // WAL mode lets readers proceed while the reconcile service is writing.
+    db.pragma("journal_mode = WAL")
+    db.pragma("synchronous = NORMAL")
+    db.pragma("busy_timeout = 5000")
+
     // If database doesn't exist or tables are missing, create schema
     if (!dbExists || !hasRequiredTables(db)) {
         createSchema(db)
     }
-
-    // Run any pending migrations
-    runMigrations(db)
 
     return db
 }
@@ -33,129 +35,6 @@ function hasRequiredTables(db: Database.Database): boolean {
     return requiredTables.every(table =>
         tables.some(t => t.name === table)
     )
-}
-
-function runMigrations(db: Database.Database): void {
-    console.log("Checking for pending migrations...")
-
-    // Ensure migrations table exists
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS migrations (
-            name TEXT NOT NULL,
-            table_name TEXT NOT NULL,
-            PRIMARY KEY(name, table_name)
-        )
-    `)
-
-    // Migration 1: Add source tracking columns to items table
-    const migration1Name = "add_source_columns"
-    const hasMigration1 = db.prepare(
-        "SELECT 1 FROM migrations WHERE name = ? AND table_name = 'items'"
-    ).get(migration1Name)
-
-    if (!hasMigration1) {
-        console.log("Running migration: add_source_columns")
-
-        // Check which columns are missing
-        const columns = db.prepare("PRAGMA table_info(items)").all() as Array<{ name: string }>
-        const columnNames = columns.map(c => c.name)
-
-        const sourceColumns = [
-            'title_source',
-            'artist_source',
-            'artists_source',
-            'album_source',
-            'albumartist_source',
-            'year_source',
-            'month_source',
-            'day_source',
-            'genres_source',
-            'length_source',
-            'mb_trackid_source',
-            'acoustid_id_source'
-        ]
-
-        // Add missing columns
-        for (const col of sourceColumns) {
-            if (!columnNames.includes(col)) {
-                console.log(`  Adding column: ${col}`)
-                db.exec(`ALTER TABLE items ADD COLUMN ${col} TEXT`)
-            }
-        }
-
-        // Check for file_hash, missing_since, and artpath columns
-        if (!columnNames.includes('file_hash')) {
-            console.log("  Adding column: file_hash")
-            db.exec("ALTER TABLE items ADD COLUMN file_hash TEXT")
-        }
-        if (!columnNames.includes('missing_since')) {
-            console.log("  Adding column: missing_since")
-            db.exec("ALTER TABLE items ADD COLUMN missing_since REAL")
-        }
-        if (!columnNames.includes('artpath')) {
-            console.log("  Adding column: artpath")
-            db.exec("ALTER TABLE items ADD COLUMN artpath BLOB")
-        }
-
-        // Mark migration as complete
-        db.prepare("INSERT INTO migrations (name, table_name) VALUES (?, 'items')").run(migration1Name)
-        console.log("Migration complete: add_source_columns")
-    }
-
-    // Migration 2: Add artpath column to items table
-    const migration2Name = "add_artpath_to_items"
-    const hasMigration2 = db.prepare(
-        "SELECT 1 FROM migrations WHERE name = ? AND table_name = 'items'"
-    ).get(migration2Name)
-
-    if (!hasMigration2) {
-        console.log("Running migration: add_artpath_to_items")
-
-        const columns = db.prepare("PRAGMA table_info(items)").all() as Array<{ name: string }>
-        const columnNames = columns.map(c => c.name)
-
-        if (!columnNames.includes('artpath')) {
-            console.log("  Adding column: artpath")
-            db.exec("ALTER TABLE items ADD COLUMN artpath BLOB")
-        } else {
-            console.log("  Column artpath already exists")
-        }
-
-        // Mark migration as complete
-        db.prepare("INSERT INTO migrations (name, table_name) VALUES (?, 'items')").run(migration2Name)
-        console.log("Migration complete: add_artpath_to_items")
-    }
-
-    // Migration 3: Add marked_for_deletion and source columns to items table
-    const migration3Name = "add_marked_for_deletion_and_source_to_items"
-    const hasMigration3 = db.prepare(
-        "SELECT 1 FROM migrations WHERE name = ? AND table_name = 'items'"
-    ).get(migration3Name)
-
-    if (!hasMigration3) {
-        console.log("Running migration: add_marked_for_deletion_and_source_to_items")
-
-        const columns = db.prepare("PRAGMA table_info(items)").all() as Array<{ name: string }>
-        const columnNames = columns.map(c => c.name)
-
-        if (!columnNames.includes('marked_for_deletion')) {
-            console.log("  Adding column: marked_for_deletion")
-            db.exec("ALTER TABLE items ADD COLUMN marked_for_deletion REAL")
-        } else {
-            console.log("  Column marked_for_deletion already exists")
-        }
-
-        if (!columnNames.includes('source')) {
-            console.log("  Adding column: source")
-            db.exec("ALTER TABLE items ADD COLUMN source TEXT")
-        } else {
-            console.log("  Column source already exists")
-        }
-
-        // Mark migration as complete
-        db.prepare("INSERT INTO migrations (name, table_name) VALUES (?, 'items')").run(migration3Name)
-        console.log("Migration complete: add_marked_for_deletion_and_source_to_items")
-    }
 }
 
 function createSchema(db: Database.Database): void {

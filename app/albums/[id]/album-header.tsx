@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef } from "react"
 import { prominent } from "color.js"
 import { Music, Pencil } from "lucide-react"
 import type { Album } from "@/lib/music/database/index"
@@ -12,52 +12,37 @@ interface AlbumHeaderProps {
 }
 
 export function AlbumHeader({ album, artUrl, onColorExtracted }: AlbumHeaderProps) {
-    const [bgColor, setBgColor] = useState<string | null>(null)
-    const [tilt, setTilt] = useState({ x: 0, y: 0 })
-    const [isHovering, setIsHovering] = useState(false)
+    // Keep the latest onColorExtracted in a ref so the extraction effect
+    // doesn't re-fire when the parent passes a new inline callback.
+    const onColorExtractedRef = useRef(onColorExtracted)
+    onColorExtractedRef.current = onColorExtracted
 
     useEffect(() => {
-        if (!artUrl) {
-            console.log("No artUrl provided")
-            return
-        }
+        if (!artUrl) return
 
-        // Check cache first
         const cacheKey = `album-color-${album.id}`
         const cached = localStorage.getItem(cacheKey)
         if (cached) {
-            console.log("Using cached color:", cached)
-            setBgColor(cached)
-            onColorExtracted?.(cached)
+            onColorExtractedRef.current?.(cached)
             return
         }
 
-        console.log("Attempting to extract color from:", artUrl)
+        let cancelled = false
 
         prominent(artUrl, { amount: 5, format: "array" })
             .then((colors) => {
-                console.log("Raw colors extracted:", colors)
+                if (cancelled) return
 
                 // Find the most saturated/colorful from the top colors
                 const colorArrays = colors as number[][]
                 const mostColorful = colorArrays.reduce((best, current) => {
                     const [r, g, b] = current
-
-                    // Calculate saturation (how "colorful" vs gray)
-                    const max = Math.max(r, g, b)
-                    const min = Math.min(r, g, b)
-                    const saturation = max - min
-
-                    // Calculate brightness
+                    const saturation = Math.max(r, g, b) - Math.min(r, g, b)
                     const brightness = r + g + b
-
-                    // Prefer saturated colors, but not too dark
                     const score = saturation * (brightness > 100 ? 1 : 0.5)
 
                     const [br, bg, bb] = best
-                    const bestMax = Math.max(br, bg, bb)
-                    const bestMin = Math.min(br, bg, bb)
-                    const bestSaturation = bestMax - bestMin
+                    const bestSaturation = Math.max(br, bg, bb) - Math.min(br, bg, bb)
                     const bestBrightness = br + bg + bb
                     const bestScore = bestSaturation * (bestBrightness > 100 ? 1 : 0.5)
 
@@ -66,7 +51,6 @@ export function AlbumHeader({ album, artUrl, onColorExtracted }: AlbumHeaderProp
 
                 let [r, g, b] = mostColorful
 
-                // Slightly boost brightness if needed
                 const brightness = r + g + b
                 if (brightness < 120) {
                     const factor = 150 / Math.max(brightness, 1)
@@ -76,61 +60,25 @@ export function AlbumHeader({ album, artUrl, onColorExtracted }: AlbumHeaderProp
                 }
 
                 const rgbColor = `rgb(${r}, ${g}, ${b})`
-                console.log("Selected color:", rgbColor, "from", colors)
-
-                // Cache the color
-                const cacheKey = `album-color-${album.id}`
                 localStorage.setItem(cacheKey, rgbColor)
-
-                setBgColor(rgbColor)
-                onColorExtracted?.(rgbColor)
+                onColorExtractedRef.current?.(rgbColor)
             })
             .catch((err) => {
-                console.error("Error extracting color:", err)
-                console.error("Error details:", err.message, err.stack)
+                console.error("Error extracting album color:", err)
             })
-    }, [artUrl, onColorExtracted])
 
-    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-        const element = e.currentTarget
-        const rect = element.getBoundingClientRect()
-        const x = e.clientX - rect.left
-        const y = e.clientY - rect.top
-        const centerX = rect.width / 2
-        const centerY = rect.height / 2
-        const rotateX = ((y - centerY) / centerY) * -15
-        const rotateY = ((x - centerX) / centerX) * 15
+        return () => {
+            cancelled = true
+        }
+    }, [artUrl, album.id])
 
-        setTilt({ x: rotateX, y: rotateY })
-    }
-
-    const handleMouseLeave = () => {
-        setIsHovering(false)
-        setTilt({ x: 0, y: 0 })
-    }
-
-    const handleMouseEnter = () => {
-        setIsHovering(true)
-    }
+    // Tilt hover effect temporarily disabled to bisect the lag source.
 
     return (
         <div className="flex flex-col md:flex-row gap-8">
             {/* Album Artwork */}
-            <div
-                className="w-full md:w-72 flex-shrink-0 mx-auto md:mx-0"
-                style={{ perspective: '1000px' }}
-            >
-                <div
-                    onMouseMove={handleMouseMove}
-                    onMouseEnter={handleMouseEnter}
-                    onMouseLeave={handleMouseLeave}
-                    style={{
-                        transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) ${isHovering ? 'scale(1.05)' : 'scale(1)'}`,
-                        transition: isHovering ? 'transform 0.1s ease-out' : 'transform 0.3s ease-out',
-                        transformStyle: 'preserve-3d',
-                    }}
-                    className="cursor-pointer"
-                >
+            <div className="w-full md:w-72 flex-shrink-0 mx-auto md:mx-0">
+                <div>
                     {artUrl ? (
                         <img
                             src={artUrl}
@@ -157,7 +105,7 @@ export function AlbumHeader({ album, artUrl, onColorExtracted }: AlbumHeaderProp
                         </h1>
                         <button
                             type="button"
-                            className="group mt-0.5 p-2 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20 text-white transition-all hover:bg-white/20 hover:scale-110 hover:border-white/30 active:scale-95"
+                            className="group mt-0.5 p-2 rounded-lg bg-white/10 border border-white/20 text-white transition-colors hover:bg-white/20 hover:border-white/30"
                             aria-label="Edit album"
                         >
                             <Pencil className="w-4 h-4 transition-transform group-hover:rotate-12" />
@@ -202,7 +150,7 @@ export function AlbumHeader({ album, artUrl, onColorExtracted }: AlbumHeaderProp
                             {album.genres.replaceAll("\\␀", ",").split(",").map((genre) => (
                                 <span
                                     key={genre}
-                                    className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-sm text-xs font-medium text-white border border-white/20 transition-all hover:bg-white/25 hover:scale-105"
+                                    className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/15 text-xs font-medium text-white border border-white/20 transition-colors hover:bg-white/25"
                                 >
                                     {genre.trim()}
                                 </span>

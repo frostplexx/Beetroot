@@ -1,12 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft } from "lucide-react"
 import { AlbumHeader } from "./album-header"
 import { DataTable } from "./data-table"
 import { columns } from "./columns"
-import { Button } from "@/components/ui/button"
 import type { Album, Item } from "@/lib/music/database/index"
 
 interface AlbumPageClientProps {
@@ -15,42 +14,38 @@ interface AlbumPageClientProps {
     tracks: Item[]
 }
 
+function getRgbaColor(rgb: string, alpha: number): string {
+    const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/)
+    if (!match) return rgb
+    return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`
+}
+
 export function AlbumPageClient({ album, artUrl, tracks }: AlbumPageClientProps) {
     const router = useRouter()
     const [bgColor, setBgColor] = useState<string | null>(null)
-    const [isVisible, setIsVisible] = useState(false)
 
-    useEffect(() => {
-        console.log("Page client mounted, artUrl:", artUrl)
-        console.log("Background color:", bgColor)
+    const handleColorExtracted = useCallback((color: string) => {
+        setBgColor(color)
+    }, [])
 
-        // Trigger fade-in animation when color is set
-        if (bgColor) {
-            setIsVisible(true)
-        }
-    }, [artUrl, bgColor])
-
-    // Convert rgb(r, g, b) to rgba(r, g, b, alpha)
-    const getRgbaColor = (rgb: string, alpha: number) => {
-        const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/)
-        if (!match) return rgb
-        return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${alpha})`
-    }
+    const background = useMemo(() => {
+        if (!bgColor) return "#000000"
+        return `linear-gradient(180deg, ${getRgbaColor(bgColor, 0.6)} 0%, ${getRgbaColor(bgColor, 0.4)} 20%, ${getRgbaColor(bgColor, 0.2)} 40%, transparent 60%), #000000`
+    }, [bgColor])
 
     return (
-        <div
-            className="min-h-screen transition-all duration-1000 ease-out"
-            style={{
-                background: bgColor
-                    ? `linear-gradient(180deg, ${getRgbaColor(bgColor, 0.6)} 0%, ${getRgbaColor(bgColor, 0.4)} 20%, ${getRgbaColor(bgColor, 0.2)} 40%, transparent 60%), #000000`
-                    : "#000000",
-                opacity: isVisible || !bgColor ? 1 : 0,
-            }}
-        >
+        <div className="min-h-screen relative">
+            {/* Fixed-position gradient so it doesn't scroll under the navbar's
+                backdrop-blur (which would force a re-blur every frame). */}
+            <div
+                aria-hidden
+                className="fixed inset-0 -z-10 pointer-events-none"
+                style={{ background }}
+            />
             <div className="container mx-auto py-6 px-4">
                 <button
                     onClick={() => router.back()}
-                    className="group mb-6 px-3 py-2 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20 text-white text-sm font-medium transition-all hover:bg-white/20 hover:scale-105 hover:border-white/30 active:scale-95 flex items-center gap-1.5"
+                    className="group mb-6 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm font-medium transition-colors hover:bg-white/20 hover:border-white/30 flex items-center gap-1.5"
                 >
                     <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
                     Back
@@ -59,10 +54,7 @@ export function AlbumPageClient({ album, artUrl, tracks }: AlbumPageClientProps)
                 <AlbumHeader
                     album={album}
                     artUrl={artUrl}
-                    onColorExtracted={(color) => {
-                        console.log("Color extracted:", color)
-                        setBgColor(color)
-                    }}
+                    onColorExtracted={handleColorExtracted}
                 />
 
                 {/* Track List */}

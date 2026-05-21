@@ -58,7 +58,7 @@ export function SearchSuggestions({ albums, tracks, query, onClose }: SearchSugg
                                     <Album className="w-5 h-5 text-white/60" />
                                 ) : (
                                     <Image
-                                        src={`/api/art?path=${encodeURIComponent(album.artpath)}`}
+                                        src={`/api/art?path=${encodeURIComponent(album.artpath)}&size=80`}
                                         alt={album.album}
                                         fill
                                         className="object-cover"
