@@ -5,7 +5,7 @@ import { DiscogsSource } from "./sources/discogs/discogs";
 import { WikipediaSource } from "./sources/wikipedia/wikipedia";
 import { LrclibSource } from "./sources/lrclib/lrclib";
 import { DataSource, ReconcileProgress, ReconcileResult, SourceResult } from "./types";
-import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, deleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems } from "../database";
+import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, deleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById } from "../database";
 import { mergeData } from "./merger";
 import { writeBackItem, moveItem, moveFile } from "./writeback";
 import { globalConfig } from "../../config";
@@ -68,9 +68,8 @@ class Repository {
     }
 
 
-    adoptItem(item: Item): void {
-        // Lock file
-        // 1. Write tags and cover art to file
+    async adoptItem(item: Item): Promise<void> {
+        // 1. Write tags to file
         const writeSuccess = writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only');
         if (!writeSuccess) {
             console.warn('Failed to write back tags for item');
@@ -82,8 +81,15 @@ class Repository {
             console.log(`File moved to ${item.path}`);
         }
 
-        // 3. Write item to DB
-        this.writeItemToDB(item);
+        // 3. Write item to DB (creates/updates album)
+        const albumId = this.writeItemToDB(item);
+
+        // 4. Handle cover art at album level
+        const album = getAlbumById(albumId);
+        if (album && !album.artpath) {
+            const { handleCoverArt } = await import('./coverart');
+            await handleCoverArt(album);
+        }
     }
 
     markItemForDeletion(item: Item): void {
@@ -91,7 +97,9 @@ class Repository {
         item.marked_for_deletion = Date.now();
         
         // Move item to trash directory
-        const trashPath = item.path.replace(globalConfig.music_directory, globalConfig.trash_directory);
+
+        const trash = globalConfig.trash_directory ? globalConfig.trash_directory : `${globalConfig.music_directory}/.trash`;
+        const trashPath = item.path.replace(globalConfig.music_directory, trash);
         moveFile(item.path, trashPath);
 
         // Update item path to new location in trash
@@ -136,6 +144,8 @@ class Repository {
             newFilesFound: 0,
             newFilesImported: 0,
             missingFilesDetected: 0,
+            missingArtworkDetected: 0,
+            artworkFixed: 0,
             deletedItems: 0,
             errors: [],
         };
@@ -206,7 +216,7 @@ class Repository {
                     const promises = batch.map(async (filePath) => {
                         try {
                             const item = await this.resolveItem(filePath);
-                            this.adoptItem(item);
+                            await this.adoptItem(item);
                             result.newFilesImported++;
                         } catch (error) {
                             const errorMsg = `Failed to import ${filePath}: ${error}`;
@@ -223,7 +233,43 @@ class Repository {
                 }
             }
 
-            // Step 5: Clean up trash (delete items older than delete_after days)
+            // Step 5: Fix missing artwork (album-level)
+            console.log('Checking for albums with missing artwork...');
+            const albumsWithMissingArtwork = getAlbumsWithMissingArtwork();
+            result.missingArtworkDetected = albumsWithMissingArtwork.length;
+
+            if (albumsWithMissingArtwork.length > 0) {
+                console.log(`Found ${albumsWithMissingArtwork.length} albums with missing artwork, fixing...`);
+
+                // Process in batches with controlled concurrency
+                for (let i = 0; i < albumsWithMissingArtwork.length; i += concurrency) {
+                    const batch = albumsWithMissingArtwork.slice(i, i + concurrency);
+
+                    const promises = batch.map(async (album) => {
+                        try {
+                            const { handleCoverArt } = await import('./coverart');
+                            const success = await handleCoverArt(album);
+                            if (success) {
+                                result.artworkFixed++;
+                            }
+                        } catch (error) {
+                            const errorMsg = `Failed to fix artwork for album ${album.id} (${album.albumartist} - ${album.album}): ${error}`;
+                            console.error(errorMsg);
+                            result.errors.push(errorMsg);
+                        }
+                    });
+
+                    await Promise.all(promises);
+
+                    if (progressCallback) {
+                        progressCallback({ ...result, phase: 'fixing-artwork' });
+                    }
+                }
+
+                console.log(`Fixed artwork for ${result.artworkFixed}/${result.missingArtworkDetected} albums`);
+            }
+
+            // Step 6: Clean up trash (delete items older than delete_after days)
             console.log(`Cleaning up trash (delete after ${globalConfig.delete_after} days)...`);
             const itemsToDelete = getItemsReadyForDeletion(globalConfig.delete_after);
 
@@ -253,7 +299,9 @@ class Repository {
     private async deleteItem(item: Item): Promise<void> {
         // Permanently delete item from DB and filesystem
 
-        if (item.marked_for_deletion && item.path.startsWith(globalConfig.trash_directory) && (Date.now() - item.marked_for_deletion) > globalConfig.delete_after * 24 * 60 * 60 * 1000) {
+        const trash = globalConfig.trash_directory ? globalConfig.trash_directory : `${globalConfig.music_directory}/.trash`;
+
+        if (item.marked_for_deletion && item.path.startsWith(trash) && (Date.now() - item.marked_for_deletion) > globalConfig.delete_after * 24 * 60 * 60 * 1000) {
             // Delete file from filesystem
             try {
                 await fsPromises.unlink(item.path)
@@ -371,7 +419,7 @@ class Repository {
         return merged.data;
     }
     
-    private writeItemToDB(item: Item): void {
+    private writeItemToDB(item: Item): number {
         // Extract album data from item and write/update album first
         const album = this.itemToAlbum(item)
         const albumId = writeOrUpdateAlbum(album)
@@ -379,6 +427,8 @@ class Repository {
         // Set the album_id on the item and write it
         item.album_id = albumId
         writeOrUpdateItem(item)
+
+        return albumId
     }
 
 

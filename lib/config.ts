@@ -1,5 +1,6 @@
 import * as fs from 'fs'
 import * as yaml from 'js-yaml'
+import { config } from 'process';
 
 export type ConflictResolution = 'keep-db' | 'keep-file' | 'keep-mb' | 'manual';
 export type WriteBackMode = 'always' | 'never' | 'missing-only';
@@ -24,8 +25,10 @@ interface GlobalConfig {
     path: string
     bucket: BucketConfig;
 
-    trash_directory: string;
+    trash_directory?: string;
     delete_after: number; // days
+    reconcile_on_startup: boolean;
+    reconcile_interval: number; // minutes
 }
 
 // Default configuration
@@ -37,8 +40,9 @@ const DEFAULT_CONFIG: Partial<GlobalConfig> = {
         alpha: ['A-F', 'G-M', 'N-Z'],
         year: ['1960s', '1970s', '1980s', '1990s', '2000s', '2010s', '2020s']
     },
-    trash_directory: '.trash/',
     delete_after: 30,
+    reconcile_on_startup: true,
+    reconcile_interval: 60, // 60 minutes
 };
 
 // globalConfig gets loaded from yaml file

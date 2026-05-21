@@ -220,3 +220,20 @@ export function writeOrUpdateAlbum(album: Album): number {
         throw error
     }
 }
+
+// Get albums with missing artwork (artpath is null or empty)
+export function getAlbumsWithMissingArtwork(): Album[] {
+    try {
+        const stmt = db.prepare(`
+            SELECT *
+            FROM albums
+            WHERE artpath IS NULL OR artpath = ''
+            LIMIT 1000
+        `)
+        const rows = stmt.all() as Record<string, any>[]
+        return decodeRows(rows) as Album[]
+    } catch (error) {
+        console.error('Error fetching albums with missing artwork:', error)
+        return []
+    }
+}

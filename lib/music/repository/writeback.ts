@@ -1,7 +1,6 @@
 import { BucketConfig, globalConfig } from "../../config";
 import * as fs from 'fs';
 import { Item } from "../database";
-import { handleCoverArt } from "./coverart";
 import { execFileSync } from 'child_process';
 import ffmpegPath from 'ffmpeg-static';
 
@@ -162,29 +161,19 @@ function shouldWriteBack(mode: WriteBackMode, item: Item): boolean {
 
 
 // Returns true if writeback was successful
-// TODO: rethink return type
-// Writeback function should ONLY handle writing tags back to disk and coverart
-// Move functionality is in the same file but a **separate** step
+// Note: Cover art is handled at the album level, not per-item
 export function writeBackItem(item: Item, mode: WriteBackMode): boolean {
     if (!shouldWriteBack(mode, item)) {
         return false;
     }
 
-    let success = true;
-
     // Write tags to file
     if (!writeTags(item.path, item)) {
         console.warn(`Failed to write tags for ${item.path}`);
-        success = false;
+        return false;
     }
 
-    // Handle cover art
-    if (!handleCoverArt(item)) {
-        console.warn(`Failed to handle cover art for ${item.path}`);
-        success = false;
-    }
-
-    return success;
+    return true;
 }
 
 

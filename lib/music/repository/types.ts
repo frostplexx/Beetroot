@@ -19,10 +19,12 @@ export interface ReconcileResult {
     newFilesFound: number;
     newFilesImported: number;
     missingFilesDetected: number;
+    missingArtworkDetected: number;
+    artworkFixed: number;
     deletedItems: number;
     errors: string[];
 }
 
 export interface ReconcileProgress extends ReconcileResult {
-    phase: 'scanning' | 'importing' | 'cleanup';
+    phase: 'scanning' | 'importing' | 'fixing-artwork' | 'cleanup';
 }

@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node ./scripts/postinstall.js",
-    "test:repository": "npx tsx lib/music/repository/index.ts"
+    "test:repository": "npx tsx lib/music/repository/index.ts",
+    "test:coverart": "npx tsx lib/music/repository/test-coverart.ts",
+    "clean:db": "node ./scripts/clean-library.js",
+    "clean:all": "node ./scripts/clean-library.js --with-music"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

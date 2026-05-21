@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/music/database/db';
 import * as fs from 'fs';
 import * as path from 'path';
+import { decodeBuffer } from '@/lib/music/database/utils';
 
 /**
  * GET /api/album-art/[id]
@@ -23,21 +24,23 @@ export async function GET(
                 SELECT artpath FROM albums WHERE id = ?
             `).get(id) as any;
 
-            artpath = album?.artpath;
+            artpath = album?.artpath ? decodeBuffer(album.artpath) : null;
         } else if (type === 'track') {
             // Get track art path
             const item = db.prepare(`
                 SELECT artpath FROM items WHERE id = ?
             `).get(id) as any;
 
-            artpath = item?.artpath;
+            artpath = item?.artpath ? decodeBuffer(item.artpath) : null;
         }
 
         // If no artpath, try to find cover.jpg in track's album folder
         if (!artpath && type === 'track') {
             const item = db.prepare('SELECT path FROM items WHERE id = ?').get(id) as any;
-            if (item?.path) {
-                const albumFolder = path.dirname(item.path);
+            const itemPath = item?.path ? decodeBuffer(item.path) : null;
+
+            if (itemPath) {
+                const albumFolder = path.dirname(itemPath);
                 const possibleCovers = ['cover.jpg', 'cover.png', 'folder.jpg', 'folder.png'];
 
                 for (const cover of possibleCovers) {
