@@ -274,7 +274,8 @@ function resolveGenres(sources: SourceResult[]): string[] {
     console.log(`  Collected ${normalizedGenres.length} unique genres: [${normalizedGenres.join(', ')}]`);
 
     // Load genres-tree.yaml which contains a mapping of genre -> parent genres
-    const genresTreePath = path.join(__dirname, 'genres-tree.yaml');
+    // Use path relative to project root for Next.js compatibility
+    const genresTreePath = path.join(process.cwd(), 'lib/music/repository/genres-tree.yaml');
     const genresTree = yaml.load(fs.readFileSync(genresTreePath, 'utf8'));
 
     // Build parent-child relationships: child -> set of all parents

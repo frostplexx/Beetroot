@@ -512,4 +512,6 @@ async function testDataSources() {
 }
 
 // Run test with: npm run test:repository
-testDataSources().catch(console.error);
+// Commented out to prevent auto-execution on import
+// Uncomment this line when running tests manually
+// testDataSources().catch(console.error);

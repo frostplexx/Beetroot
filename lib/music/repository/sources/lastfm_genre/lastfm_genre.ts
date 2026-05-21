@@ -30,8 +30,8 @@ export class LastfmGenreSource extends DataSource {
         }
 
         try {
-            // Load genres from genres.txt
-            const genresPath = path.join(__dirname, 'genres.txt');
+            // Load genres from genres.txt (use path relative to project root)
+            const genresPath = path.join(process.cwd(), 'lib/music/repository/sources/lastfm_genre/genres.txt');
             const data = fs.readFileSync(genresPath, 'utf8');
             this.validGenres = data.split('\n').map(line => line.trim().toLowerCase()).filter(line => line.length > 0);
             console.log(`Loaded ${this.validGenres.length} valid genres from genres.txt`);

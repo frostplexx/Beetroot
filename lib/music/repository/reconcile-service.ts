@@ -1,5 +1,6 @@
 import { globalConfig } from "../../config";
 import Repository from "./index";
+import chokidar from 'chokidar';
 
 /**
  * Reconciliation Service
@@ -11,8 +12,10 @@ class ReconcileService {
     private intervalId: NodeJS.Timeout | null = null;
     private lastRunTime: number | null = null;
     private isReconciling: boolean = false;
+    private watcher: chokidar.FSWatcher | null = null;
+    private debounceTimeout: NodeJS.Timeout | null = null;
 
-    private constructor() {}
+    private constructor() { }
 
     static getInstance(): ReconcileService {
         if (!ReconcileService.instance) {
@@ -51,6 +54,34 @@ class ReconcileService {
         } else {
             console.log('[ReconcileService] Reconciliation interval disabled (set to 0 or not configured)');
         }
+
+        // Watch music directory for file system changes
+        const musicDir = globalConfig.music_directory.replace('~', process.env.HOME || '');
+        console.log(`[ReconcileService] Watching directory for changes: ${musicDir}`);
+
+        this.watcher = chokidar.watch(musicDir, {
+            ignoreInitial: true,
+            ignored: /(^|[\/\\])\../, // Ignore hidden files/directories
+            persistent: true,
+            awaitWriteFinish: {
+                stabilityThreshold: 2000,  // Wait 2s for file to finish writing
+                pollInterval: 100
+            }
+        });
+
+        this.watcher.on('all', (event, path) => {
+            console.log(`[ReconcileService] Detected file system change: ${event} - ${path}`);
+
+            // Debounce: wait 5 seconds after last change before reconciling
+            if (this.debounceTimeout) {
+                clearTimeout(this.debounceTimeout);
+            }
+
+            this.debounceTimeout = setTimeout(() => {
+                console.log('[ReconcileService] Triggering reconciliation due to file system changes');
+                this.runReconciliation();
+            }, 5000);
+        });
     }
 
     /**
@@ -68,6 +99,17 @@ class ReconcileService {
         if (this.intervalId) {
             clearInterval(this.intervalId);
             this.intervalId = null;
+        }
+
+        if (this.debounceTimeout) {
+            clearTimeout(this.debounceTimeout);
+            this.debounceTimeout = null;
+        }
+
+        if (this.watcher) {
+            console.log('[ReconcileService] Stopping file watcher');
+            this.watcher.close();
+            this.watcher = null;
         }
     }
 
