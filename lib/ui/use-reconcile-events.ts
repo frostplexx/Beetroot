@@ -34,17 +34,6 @@ export interface ReconcileLiveState {
     lastError: string | null
 }
 
-interface ReconcileStatusResponse {
-    isRunning: boolean
-    isReconciling: boolean
-    lastRunTime: number | null
-    lastResult: ReconcileSummary | null
-    progress: ReconcileProgress | null
-    runStartedAt: number | null
-    runCounter: number
-    intervalMinutes: number
-}
-
 interface Options {
     onCompleted?: (payload: ReconcileSummary) => void
     onError?: (message: string) => void
@@ -52,16 +41,12 @@ interface Options {
     fireOnNoChanges?: boolean
 }
 
-const POLL_FAST_MS = 800   // While reconciling
-const POLL_IDLE_MS = 4_000 // While idle
-
 /**
- * Polls /api/reconcile and surfaces live status. Polling beats SSE here
- * because Next.js dev streaming was flaky and dropping events.
+ * Subscribes to real-time reconcile events via Server-Sent Events (SSE).
+ * Provides live status updates and fires callbacks on completion/error.
  *
- * The hook detects state transitions (isReconciling true → false, or a new
- * runCounter while we were never observed in the running state) and fires
- * onCompleted exactly once per finished run.
+ * The hook detects completed events and fires onCompleted exactly once per
+ * finished run, avoiding duplicate callbacks.
  */
 export function useReconcileEvents({
     onCompleted,
@@ -70,8 +55,11 @@ export function useReconcileEvents({
 }: Options = {}): ReconcileLiveState {
     const onCompletedRef = useRef(onCompleted)
     const onErrorRef = useRef(onError)
+    const fireOnNoChangesRef = useRef(fireOnNoChanges)
+
     onCompletedRef.current = onCompleted
     onErrorRef.current = onError
+    fireOnNoChangesRef.current = fireOnNoChanges
 
     const [state, setState] = useState<ReconcileLiveState>({
         isReconciling: false,
@@ -80,73 +68,119 @@ export function useReconcileEvents({
         lastError: null,
     })
 
-    // Track what we've already fired callbacks for, across polls.
-    const seenRunCounterRef = useRef<number | null>(null)
-    const wasReconcilingRef = useRef<boolean>(false)
+    // Track what we've already fired callbacks for to prevent duplicates
+    const lastCompletedTimestampRef = useRef<number | null>(null)
 
     useEffect(() => {
-        let cancelled = false
-        let timeoutId: ReturnType<typeof setTimeout> | null = null
+        let eventSource: EventSource | null = null
+        let reconnectTimeout: NodeJS.Timeout | null = null
+        let isClosed = false
 
-        const poll = async () => {
-            if (cancelled) return
-            let status: ReconcileStatusResponse | null = null
-            try {
-                const res = await fetch("/api/reconcile", { cache: "no-store" })
-                if (res.ok) status = await res.json()
-            } catch {
-                /* network blip — just try again on the next tick */
+        const connect = () => {
+            if (isClosed) return
+
+            eventSource = new EventSource("/api/reconcile/events")
+
+            eventSource.onopen = () => {
+                console.log('[SSE] Connection established')
             }
 
-            if (cancelled) return
+            eventSource.onmessage = (event) => {
+                if (isClosed) return
 
-            if (status) {
-                // Detect a freshly finished run. Two cases:
-                //   (a) we previously observed isReconciling=true and it's now false
-                //   (b) we never observed it running, but the runCounter advanced
-                if (seenRunCounterRef.current === null) {
-                    seenRunCounterRef.current = status.runCounter
-                }
+                try {
+                    const message = JSON.parse(event.data)
+                    const { type, data } = message
 
-                const finishedSinceLast =
-                    (wasReconcilingRef.current && !status.isReconciling) ||
-                    status.runCounter > seenRunCounterRef.current
+                    switch (type) {
+                        case 'connected':
+                            console.log('[SSE] Connected:', data.message)
+                            break
 
-                setState({
-                    isReconciling: status.isReconciling,
-                    progress: status.isReconciling ? status.progress ?? null : null,
-                    lastResult: status.lastResult,
-                    // Errors flow through lastResult.errors counts; we only
-                    // surface a dedicated lastError if the service starts
-                    // exposing one (kept null for now to avoid stale toasts).
-                    lastError: null,
-                })
+                        case 'started':
+                            setState(prev => ({
+                                ...prev,
+                                isReconciling: true,
+                                progress: null,
+                            }))
+                            break
 
-                if (finishedSinceLast && status.lastResult) {
-                    if (fireOnNoChanges || status.lastResult.hasChanges) {
-                        onCompletedRef.current?.(status.lastResult)
+                        case 'progress':
+                            setState(prev => ({
+                                ...prev,
+                                isReconciling: true,
+                                progress: data,
+                            }))
+                            break
+
+                        case 'completed':
+                            setState(prev => ({
+                                ...prev,
+                                isReconciling: false,
+                                progress: null,
+                                lastResult: data,
+                                lastError: null,
+                            }))
+
+                            // Fire onCompleted callback once per unique completion
+                            const timestamp = data.timestamp || Date.now()
+                            if (timestamp !== lastCompletedTimestampRef.current) {
+                                lastCompletedTimestampRef.current = timestamp
+
+                                if (fireOnNoChangesRef.current || data.hasChanges) {
+                                    onCompletedRef.current?.(data)
+                                }
+
+                                if (data.errors && data.errors > 0) {
+                                    onErrorRef.current?.(`${data.errors} error(s) during reconcile`)
+                                }
+                            }
+                            break
+
+                        case 'error':
+                            setState(prev => ({
+                                ...prev,
+                                isReconciling: false,
+                                progress: null,
+                                lastError: data.error || 'Unknown error',
+                            }))
+                            onErrorRef.current?.(data.error || 'Reconciliation failed')
+                            break
                     }
-                    if (status.lastResult.errors && status.lastResult.errors > 0) {
-                        onErrorRef.current?.(`${status.lastResult.errors} error(s) during reconcile`)
-                    }
+                } catch (err) {
+                    console.error('[SSE] Error parsing message:', err)
                 }
-
-                seenRunCounterRef.current = status.runCounter
-                wasReconcilingRef.current = status.isReconciling
             }
 
-            if (cancelled) return
-            const next = status?.isReconciling ? POLL_FAST_MS : POLL_IDLE_MS
-            timeoutId = setTimeout(poll, next)
+            eventSource.onerror = (error) => {
+                console.error('[SSE] Connection error:', error)
+                eventSource?.close()
+
+                // Reconnect after 5 seconds
+                if (!isClosed) {
+                    console.log('[SSE] Reconnecting in 5 seconds...')
+                    reconnectTimeout = setTimeout(() => {
+                        if (!isClosed) {
+                            connect()
+                        }
+                    }, 5000)
+                }
+            }
         }
 
-        poll()
+        connect()
 
         return () => {
-            cancelled = true
-            if (timeoutId) clearTimeout(timeoutId)
+            isClosed = true
+            if (eventSource) {
+                eventSource.close()
+                eventSource = null
+            }
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout)
+            }
         }
-    }, [fireOnNoChanges])
+    }, []) // Empty deps - callbacks use refs
 
     return state
 }
