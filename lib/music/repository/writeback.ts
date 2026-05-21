@@ -2,9 +2,34 @@ import { BucketConfig, globalConfig } from "../../config";
 import * as fs from 'fs';
 import { Item } from "../database";
 import { execFileSync } from 'child_process';
-import ffmpegPath from 'ffmpeg-static';
+import * as path from 'path';
 
 export type WriteBackMode = 'always' | 'never' | 'missing-only';
+
+// Get ffmpeg path - resolve relative to project root for Next.js compatibility
+function getFfmpegPath(): string {
+    // Try to use ffmpeg-static if available
+    try {
+        const ffmpegStatic = require('ffmpeg-static');
+        // If it's a valid absolute path, use it
+        if (typeof ffmpegStatic === 'string' && path.isAbsolute(ffmpegStatic) && fs.existsSync(ffmpegStatic)) {
+            return ffmpegStatic;
+        }
+    } catch (e) {
+        // ffmpeg-static not available
+    }
+
+    // Fallback: resolve relative to project root
+    const projectRoot = process.cwd();
+    const ffmpegPath = path.join(projectRoot, 'node_modules/ffmpeg-static/ffmpeg');
+
+    if (fs.existsSync(ffmpegPath)) {
+        return ffmpegPath;
+    }
+
+    // Last resort: try system ffmpeg
+    return 'ffmpeg';
+}
 
 
 
@@ -108,8 +133,10 @@ function buildMetadataArgs(item: Item): string[] {
 }
 
 function writeTags(filePath: string, item: Item): boolean {
+    const ffmpegPath = getFfmpegPath();
+
     if (!ffmpegPath) {
-        console.error('ffmpeg-static not found');
+        console.error('ffmpeg not found');
         return false;
     }
 
@@ -140,7 +167,7 @@ function writeTags(filePath: string, item: Item): boolean {
         if (fs.existsSync(tempPath)) {
             fs.unlinkSync(tempPath);
         }
-        return false;
+        throw error; // Throw to abort import
     }
 }
 
@@ -162,18 +189,14 @@ function shouldWriteBack(mode: WriteBackMode, item: Item): boolean {
 
 // Returns true if writeback was successful
 // Note: Cover art is handled at the album level, not per-item
-export function writeBackItem(item: Item, mode: WriteBackMode): boolean {
+// Throws error on critical failures
+export function writeBackItem(item: Item, mode: WriteBackMode): void {
     if (!shouldWriteBack(mode, item)) {
-        return false;
+        return;
     }
 
-    // Write tags to file
-    if (!writeTags(item.path, item)) {
-        console.warn(`Failed to write tags for ${item.path}`);
-        return false;
-    }
-
-    return true;
+    // Write tags to file (will throw on error)
+    writeTags(item.path, item);
 }
 
 

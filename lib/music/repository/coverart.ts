@@ -1,10 +1,30 @@
 import { Album, writeOrUpdateAlbum, getItemsByAlbum } from "../database";
 import { parseFile } from 'music-metadata';
 import { execFileSync } from 'child_process';
-import ffmpegPath from 'ffmpeg-static';
 import * as fs from 'fs';
 import * as path from 'path';
 import { globalConfig } from "../../config";
+
+// Get ffmpeg path - resolve relative to project root for Next.js compatibility
+function getFfmpegPath(): string {
+    try {
+        const ffmpegStatic = require('ffmpeg-static');
+        if (typeof ffmpegStatic === 'string' && path.isAbsolute(ffmpegStatic) && fs.existsSync(ffmpegStatic)) {
+            return ffmpegStatic;
+        }
+    } catch (e) {
+        // ffmpeg-static not available
+    }
+
+    const projectRoot = process.cwd();
+    const ffmpegPath = path.join(projectRoot, 'node_modules/ffmpeg-static/ffmpeg');
+
+    if (fs.existsSync(ffmpegPath)) {
+        return ffmpegPath;
+    }
+
+    return 'ffmpeg';
+}
 
 interface CoverArtSource {
     name: string;
@@ -209,8 +229,10 @@ async function extractEmbeddedCoverArt(filePath: string): Promise<Buffer | null>
  * Strip embedded cover art from file using ffmpeg
  */
 function stripEmbeddedCoverArt(filePath: string): boolean {
+    const ffmpegPath = getFfmpegPath();
+
     if (!ffmpegPath) {
-        console.error('ffmpeg-static not found');
+        console.error('ffmpeg not found');
         return false;
     }
 

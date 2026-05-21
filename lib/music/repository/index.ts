@@ -69,26 +69,29 @@ class Repository {
 
 
     async adoptItem(item: Item): Promise<void> {
-        // 1. Write tags to file
-        const writeSuccess = writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only');
-        if (!writeSuccess) {
-            console.warn('Failed to write back tags for item');
-        }
+        try {
+            // 1. Write tags to file (will throw on error)
+            writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only');
 
-        // 2. Move file if needed (separate step)
-        const moved = moveItem(item);
-        if (moved) {
-            console.log(`File moved to ${item.path}`);
-        }
+            // 2. Move file if needed (separate step)
+            const moved = moveItem(item);
+            if (moved) {
+                console.log(`File moved to ${item.path}`);
+            }
 
-        // 3. Write item to DB (creates/updates album)
-        const albumId = this.writeItemToDB(item);
+            // 3. Write item to DB (creates/updates album)
+            const albumId = this.writeItemToDB(item);
 
-        // 4. Handle cover art at album level
-        const album = getAlbumById(albumId);
-        if (album && !album.artpath) {
-            const { handleCoverArt } = await import('./coverart');
-            await handleCoverArt(album);
+            // 4. Handle cover art at album level
+            const album = getAlbumById(albumId);
+            if (album && !album.artpath) {
+                const { handleCoverArt } = await import('./coverart');
+                await handleCoverArt(album);
+            }
+        } catch (error) {
+            // Log the error and re-throw to abort import
+            console.error(`Failed to adopt item ${item.path}:`, error);
+            throw error;
         }
     }
 

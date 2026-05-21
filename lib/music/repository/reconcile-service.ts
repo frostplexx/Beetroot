@@ -1,21 +1,31 @@
 import { globalConfig } from "../../config";
 import Repository from "./index";
 import chokidar from 'chokidar';
+import { EventEmitter } from 'events';
+import * as path from 'path';
+
+export interface ReconcileEvent {
+    type: 'started' | 'progress' | 'completed' | 'error';
+    data?: any;
+}
 
 /**
  * Reconciliation Service
  * Manages automatic reconciliation on startup and at regular intervals
  */
-class ReconcileService {
+class ReconcileService extends EventEmitter {
     private static instance: ReconcileService;
     private isRunning: boolean = false;
     private intervalId: NodeJS.Timeout | null = null;
     private lastRunTime: number | null = null;
+    private lastResult: any = null; // Store last reconciliation result
     private isReconciling: boolean = false;
     private watcher: chokidar.FSWatcher | null = null;
     private debounceTimeout: NodeJS.Timeout | null = null;
 
-    private constructor() { }
+    private constructor() {
+        super();
+    }
 
     static getInstance(): ReconcileService {
         if (!ReconcileService.instance) {
@@ -69,18 +79,29 @@ class ReconcileService {
             }
         });
 
-        this.watcher.on('all', (event, path) => {
-            console.log(`[ReconcileService] Detected file system change: ${event} - ${path}`);
+        // Only watch for 'add' events (new files)
+        // Ignore: addDir, unlink, unlinkDir, change (these are internal operations)
+        this.watcher.on('add', (filePath) => {
+            // Only trigger for music files
+            const musicExtensions = ['.flac', '.mp3', '.m4a', '.ogg', '.opus', '.wav', '.aiff', '.ape', '.wv'];
+            const ext = path.extname(filePath).toLowerCase();
 
-            // Debounce: wait 5 seconds after last change before reconciling
+            if (!musicExtensions.includes(ext)) {
+                return; // Ignore non-music files
+            }
+
+            console.log(`[ReconcileService] New file detected: ${filePath}`);
+
+            // Debounce: wait 10 seconds after last change before reconciling
+            // This allows time for multiple file copies to complete
             if (this.debounceTimeout) {
                 clearTimeout(this.debounceTimeout);
             }
 
             this.debounceTimeout = setTimeout(() => {
-                console.log('[ReconcileService] Triggering reconciliation due to file system changes');
+                console.log('[ReconcileService] Triggering reconciliation due to new files');
                 this.runReconciliation();
-            }, 5000);
+            }, 10000); // 10 second debounce
         });
     }
 
@@ -128,6 +149,9 @@ class ReconcileService {
         try {
             console.log('[ReconcileService] Starting reconciliation...');
 
+            // Emit started event
+            this.emit('reconcile', { type: 'started' } as ReconcileEvent);
+
             const repository = Repository;
             const result = await repository.reconcile({
                 concurrency: 10,
@@ -137,13 +161,19 @@ class ReconcileService {
                     if (progress.scannedFiles % 1000 === 0 && progress.scannedFiles > 0) {
                         console.log(`[ReconcileService] Progress - ${progress.phase}: scanned ${progress.scannedFiles} files, found ${progress.newFilesFound} new`);
                     }
+
+                    // Emit progress event
+                    this.emit('reconcile', {
+                        type: 'progress',
+                        data: progress
+                    } as ReconcileEvent);
                 }
             });
 
             const duration = Math.round((Date.now() - startTime) / 1000);
             this.lastRunTime = Date.now();
 
-            console.log('[ReconcileService] Reconciliation complete:', {
+            const summary = {
                 duration: `${duration}s`,
                 scannedFiles: result.scannedFiles,
                 newFilesImported: result.newFilesImported,
@@ -151,14 +181,33 @@ class ReconcileService {
                 artworkFixed: result.artworkFixed,
                 deletedItems: result.deletedItems,
                 errors: result.errors.length
-            });
+            };
+
+            const hasChanges = result.newFilesImported > 0 || result.artworkFixed > 0 || result.deletedItems > 0;
+
+            // Store last result for new SSE connections
+            this.lastResult = { ...summary, hasChanges, timestamp: Date.now() };
+
+            console.log('[ReconcileService] Reconciliation complete:', summary);
 
             if (result.errors.length > 0) {
                 console.error('[ReconcileService] Errors during reconciliation:', result.errors.slice(0, 5));
             }
 
+            // Emit completed event
+            this.emit('reconcile', {
+                type: 'completed',
+                data: { ...summary, hasChanges }
+            } as ReconcileEvent);
+
         } catch (error) {
             console.error('[ReconcileService] Reconciliation failed:', error);
+
+            // Emit error event
+            this.emit('reconcile', {
+                type: 'error',
+                data: { error: String(error) }
+            } as ReconcileEvent);
         } finally {
             this.isReconciling = false;
         }
@@ -171,12 +220,14 @@ class ReconcileService {
         isRunning: boolean;
         isReconciling: boolean;
         lastRunTime: number | null;
+        lastResult: any;
         intervalMinutes: number;
     } {
         return {
             isRunning: this.isRunning,
             isReconciling: this.isReconciling,
             lastRunTime: this.lastRunTime,
+            lastResult: this.lastResult,
             intervalMinutes: globalConfig.reconcile_interval || 0
         };
     }
