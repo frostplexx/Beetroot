@@ -2,6 +2,8 @@ import { Album } from "@/lib/music/database"
 import Link from "next/link"
 import { Music2 } from "lucide-react"
 import { cn } from "@/lib/ui/utils"
+import Image from "next/image";
+import { ViewTransition } from "react";
 
 export default function AlbumCard({ album, className }: { album: Album; className?: string }) {
     const artUrl = `/api/album/${album.id}/art?size=400`
@@ -13,11 +15,15 @@ export default function AlbumCard({ album, className }: { album: Album; classNam
         >
             <div className="relative aspect-square w-full overflow-hidden bg-gray-100">
                 {album.artpath ? (
-                    <img
-                        src={artUrl}
-                        alt={`${album.album} by ${album.albumartist}`}
-                        className="h-full w-full object-cover transition group-hover:scale-105"
-                    />
+                    <ViewTransition name={`album-${album.id}`} share="morph">
+                        <Image
+                            src={artUrl}
+                            alt={`${album.album} by ${album.albumartist}`}
+                            className="h-full w-full object-cover transition group-hover:scale-105"
+                            width={400}
+                            height={400}
+                        />
+                    </ViewTransition>
                 ) : (
                     <div className="flex h-full w-full items-center justify-center text-gray-400">
                         <Music2 />

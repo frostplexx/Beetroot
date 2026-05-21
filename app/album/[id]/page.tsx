@@ -1,4 +1,6 @@
 import { getAlbumById } from "@/lib/music/database"
+import Image from "next/image"
+import { ViewTransition } from "react"
 
 export default async function AlbumPage({
     params,
@@ -18,7 +20,15 @@ export default async function AlbumPage({
     return (
         <div className="flex flex-col items-center m-20">
             <div className="flex flex-row gap-8 ">
-                <img src={artUrl} alt={`${album.album} by ${album.albumartist}`} className="mb-4 h-75 w-75 object-cover rounded-xl" />
+                <ViewTransition name={`album-${album.id}`}>
+                    <Image 
+                        src={artUrl} 
+                        alt={`${album.album} by ${album.albumartist}`} 
+                        className="mb-4 h-75 w-75 object-cover rounded-xl"
+                        width={800}
+                        height={800}
+                    />
+                </ViewTransition>
                 <div className="flex flex-col gap-2 mt-4">
                     <h1 className="font-heading text-4xl font-semibold">{album.album}</h1>
                     <p className="text-lg text-gray-600">{album.albumartist}</p>

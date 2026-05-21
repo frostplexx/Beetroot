@@ -30,15 +30,6 @@ export default function Library() {
         fetchAlbums();
     });
 
-    // Debug: log sync state changes
-    useEffect(() => {
-        console.log('[Library] Sync state:', {
-            isConnected: syncState.isConnected,
-            isReconciling: syncState.isReconciling,
-            lastUpdate: syncState.lastUpdate
-        });
-    }, [syncState]);
-
     // Initial fetch
     useEffect(() => {
         fetchAlbums();
