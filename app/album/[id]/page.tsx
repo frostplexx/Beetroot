@@ -1,6 +1,8 @@
 import { getAlbumById } from "@/lib/music/database"
-import Image from "next/image"
-import { ViewTransition } from "react"
+import { ChevronLeft, Pencil } from "lucide-react"
+import Link from "next/link"
+import AlbumArtwork from "@/components/album-artwork"
+import DynamicBackground from "@/components/dynamic-background"
 
 export default async function AlbumPage({
     params,
@@ -11,28 +13,105 @@ export default async function AlbumPage({
     const albumId = parseInt(id, 10)
     const album = getAlbumById(albumId)
 
-    const artUrl = `/api/album/${albumId}/art?size=800`
-
     if (!album) {
-        return <div>Album not found</div>
+        return (
+            <div className="flex items-center justify-center h-screen">
+                <p className="text-white/60">Album not found</p>
+            </div>
+        )
     }
 
+    const artUrl = album.artpath ? `/api/album/${albumId}/art?size=800` : null
+    const totalMinutes = album.total_time ? Math.round(album.total_time / 60) : 0
+    const genres = album.genres?.split(",").map(g => g.trim()).filter(Boolean) || []
+
     return (
-        <div className="flex flex-col items-center m-20">
-            <div className="flex flex-row gap-8 ">
-                <ViewTransition name={`album-${album.id}`}>
-                    <Image 
-                        src={artUrl} 
-                        alt={`${album.album} by ${album.albumartist}`} 
-                        className="mb-4 h-75 w-75 object-cover rounded-xl"
-                        width={800}
-                        height={800}
+        <div className="min-h-screen relative">
+            <DynamicBackground artUrl={artUrl} />
+            <div className="relative container mx-auto px-4 py-6">
+                <Link
+                    href="/"
+                    transitionTypes={['nav-back']}
+                    className="inline-flex items-center gap-1.5 py-2 px-3 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm text-sm text-white hover:bg-white/20 hover:border-white/30 hover:scale-105 transition-all group"
+                >
+                    <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
+                    Back
+                </Link>
+
+                <div className="flex flex-col md:flex-row gap-8 items-start mt-8">
+                    <AlbumArtwork
+                        artUrl={artUrl}
+                        album={`${album.album} by ${album.albumartist}`}
+                        albumId={albumId}
                     />
-                </ViewTransition>
-                <div className="flex flex-col gap-2 mt-4">
-                    <h1 className="font-heading text-4xl font-semibold">{album.album}</h1>
-                    <p className="text-lg text-gray-600">{album.albumartist}</p>
-                    <p className="text-sm text-gray-500">{album.year}</p>
+
+                    <div className="flex-1 flex flex-col justify-start gap-4">
+                        <div className="flex items-start justify-between gap-4">
+                            <h1 className="font-heading text-4xl md:text-5xl font-black leading-none tracking-tight">
+                                {album.album}
+                            </h1>
+                            <button
+                                className="p-2 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm hover:bg-white/20 hover:border-white/30 hover:scale-110 active:scale-95 transition-all group"
+                                aria-label="Edit album"
+                            >
+                                <Pencil className="w-4 h-4 transition-transform group-hover:rotate-12" />
+                            </button>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-base">
+                            <span>{album.albumartist}</span>
+                            {album.year && (
+                                <>
+                                    <span className="text-white/40">•</span>
+                                    <span>{album.year}</span>
+                                </>
+                            )}
+                            {album.total_tracks && (
+                                <>
+                                    <span className="text-white/40">•</span>
+                                    <span>{album.total_tracks} songs</span>
+                                </>
+                            )}
+                            {totalMinutes > 0 && (
+                                <>
+                                    <span className="text-white/40">•</span>
+                                    <span>{totalMinutes} min</span>
+                                </>
+                            )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-4">
+                            {album.country && (
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[10px] uppercase tracking-wider text-white/60 font-medium">
+                                        Country
+                                    </label>
+                                    <span className="text-xs font-semibold">{album.country}</span>
+                                </div>
+                            )}
+                            {album.label && (
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[10px] uppercase tracking-wider text-white/60 font-medium">
+                                        Label
+                                    </label>
+                                    <span className="text-xs font-semibold">{album.label}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {genres.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                                {genres.map((genre) => (
+                                    <span
+                                        key={genre}
+                                        className="py-1 px-2.5 bg-white/15 border border-white/20 backdrop-blur-sm rounded-full text-xs font-medium hover:bg-white/25 hover:scale-105 transition-all"
+                                    >
+                                        {genre}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

@@ -4,19 +4,23 @@ import { useEffect, useState } from "react";
 import AlbumCard from "@/components/album_card";
 import { Album } from "@/lib/music/database/albums";
 import { useLibrarySync } from "@/hooks/use-library-sync";
+import { Disc3, ChevronLeft, ChevronRight } from "lucide-react";
 
 export default function Library() {
     const [albums, setAlbums] = useState<Album[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const pageSize = 30;
 
-    // Fetch albums from API
-    const fetchAlbums = async () => {
+    const fetchAlbums = async (page: number) => {
         try {
-            const response = await fetch('/api/albums?page=0&pageSize=30');
+            const response = await fetch(`/api/albums?page=${page - 1}&pageSize=${pageSize}`);
             if (!response.ok) throw new Error('Failed to fetch albums');
 
             const data = await response.json();
             setAlbums(data.albums);
+            setTotalPages(data.pagination.totalPages);
         } catch (error) {
             console.error('[Library] Error fetching albums:', error);
         } finally {
@@ -24,21 +28,19 @@ export default function Library() {
         }
     };
 
-    // Subscribe to library changes and refresh when reconciliation completes
     const syncState = useLibrarySync(() => {
         console.log('[Library] Library updated, refreshing albums...');
-        fetchAlbums();
+        fetchAlbums(currentPage);
     });
 
-    // Initial fetch
     useEffect(() => {
-        fetchAlbums();
-    }, []);
+        fetchAlbums(currentPage);
+    }, [currentPage]);
 
     if (isLoading) {
         return (
             <div className="flex items-center justify-center w-full h-64">
-                <p className="text-muted-foreground">Loading library...</p>
+                <p className="text-white/60">Loading library...</p>
             </div>
         );
     }
@@ -46,25 +48,93 @@ export default function Library() {
     if (albums.length === 0) {
         return (
             <div className="flex items-center justify-center w-full h-64">
-                <p className="text-muted-foreground">No albums in library</p>
+                <p className="text-white/60">No albums in library</p>
             </div>
         );
     }
 
+    const getPageNumbers = () => {
+        const pages = [];
+        const maxVisible = 5;
+        let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+        let end = Math.min(totalPages, start + maxVisible - 1);
+
+        if (end - start < maxVisible - 1) {
+            start = Math.max(1, end - maxVisible + 1);
+        }
+
+        for (let i = start; i <= end; i++) {
+            pages.push(i);
+        }
+        return pages;
+    };
+
     return (
-        <>
+        <div className="container mx-auto px-4 py-4">
             {syncState.isReconciling && (
-                <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                    <p className="text-sm text-blue-600 dark:text-blue-400">
+                <div className="mb-4 p-3 bg-white/10 border border-white/20 backdrop-blur-sm rounded-lg">
+                    <p className="text-sm text-white">
                         Scanning for new music...
                     </p>
                 </div>
             )}
-            <div className="grid w-full gap-4 grid-cols-[repeat(auto-fill,minmax(16rem,1fr))]">
+
+            <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-1.5">
+                    <button className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg bg-white/20 text-white border border-white/30 text-sm font-medium">
+                        <Disc3 className="w-4 h-4" />
+                        Albums
+                    </button>
+                </div>
+
+                <p className="text-sm text-white/60">
+                    {albums.length} albums
+                </p>
+            </div>
+
+            <div className="grid w-full gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                 {albums.map(album => (
                     <AlbumCard key={album.id} album={album} />
                 ))}
             </div>
-        </>
+
+            {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-8">
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className="p-2 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm hover:bg-white/20 hover:border-white/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                        aria-label="Previous page"
+                    >
+                        <ChevronLeft className="w-4 h-4" />
+                    </button>
+
+                    <div className="flex gap-1">
+                        {getPageNumbers().map(page => (
+                            <button
+                                key={page}
+                                onClick={() => setCurrentPage(page)}
+                                className={`min-w-9 h-9 px-2 rounded-lg text-sm font-medium transition-all ${
+                                    currentPage === page
+                                        ? "bg-white/20 text-white border border-white/30"
+                                        : "text-white/70 hover:text-white hover:bg-white/10"
+                                }`}
+                            >
+                                {page}
+                            </button>
+                        ))}
+                    </div>
+
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        className="p-2 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm hover:bg-white/20 hover:border-white/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                        aria-label="Next page"
+                    >
+                        <ChevronRight className="w-4 h-4" />
+                    </button>
+                </div>
+            )}
+        </div>
     );
 }
