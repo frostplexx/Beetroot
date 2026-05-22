@@ -1,8 +1,10 @@
-import { getAlbumById } from "@/lib/music/database"
+import { getAlbumById, getItemsByAlbum, Item } from "@/lib/music/database"
 import { ChevronLeft, Pencil } from "lucide-react"
 import Link from "next/link"
 import AlbumArtwork from "@/components/album-artwork"
 import DynamicBackground from "@/components/dynamic-background"
+import { SongsDataTable } from "./data-table"
+import { columns } from "./columns"
 
 export default async function AlbumPage({
     params,
@@ -112,6 +114,10 @@ export default async function AlbumPage({
                             </div>
                         )}
                     </div>
+
+                </div>
+                <div className="mt-12">
+                    <SongsDataTable columns={columns} data={getItemsByAlbum(albumId)}/>
                 </div>
             </div>
         </div>

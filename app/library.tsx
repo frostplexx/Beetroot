@@ -80,15 +80,9 @@ export default function Library() {
             )}
 
             <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-1.5">
-                    <button className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg bg-white/20 text-white border border-white/30 text-sm font-medium">
-                        <Disc3 className="w-4 h-4" />
-                        Albums
-                    </button>
-                </div>
-
                 <p className="text-sm text-white/60">
-                    {albums.length} albums
+                    {albums.length} albums 
+                    {syncState.isReconciling && " (updating...)"}
                 </p>
             </div>
 

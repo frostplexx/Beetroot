@@ -1,6 +1,6 @@
 "use client"
 
-import { Library, Search, Upload, Settings, MoreHorizontal } from "lucide-react"
+import { Library, Search, Upload, MoreHorizontal } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
@@ -8,8 +8,7 @@ import { useState } from "react"
 export default function Navigation() {
     const pathname = usePathname()
     const [toolsOpen, setToolsOpen] = useState(false)
-    const [settingsOpen, setSettingsOpen] = useState(false)
-    const isLibraryActive = pathname === "/" || pathname.startsWith("/library")
+    const isLibraryActive = pathname === "/" || pathname.startsWith("/library") || pathname.startsWith("/album")
 
     return (
         <header className="sticky top-0 z-50 bg-black/60 backdrop-blur-md border-b border-white/10">
@@ -72,32 +71,6 @@ export default function Navigation() {
                                 )}
                             </div>
 
-                            <div className="relative">
-                                <button
-                                    onClick={() => setSettingsOpen(!settingsOpen)}
-                                    className={`p-2 rounded-full transition-all ${
-                                        settingsOpen
-                                            ? "text-white bg-white/10"
-                                            : "text-white/70 hover:text-white hover:bg-white/10"
-                                    }`}
-                                    aria-label="Settings"
-                                >
-                                    <Settings className="w-5 h-5" />
-                                </button>
-                                {settingsOpen && (
-                                    <div className="absolute right-0 mt-2 w-48 p-2 bg-black/95 backdrop-blur-md border border-white/10 rounded-lg">
-                                        <button className="w-full text-left px-3 py-2 rounded-md text-sm text-white/70 hover:text-white hover:bg-white/10 transition-all">
-                                            Preferences
-                                        </button>
-                                        <button className="w-full text-left px-3 py-2 rounded-md text-sm text-white/70 hover:text-white hover:bg-white/10 transition-all">
-                                            Audio Quality
-                                        </button>
-                                        <button className="w-full text-left px-3 py-2 rounded-md text-sm text-white/70 hover:text-white hover:bg-white/10 transition-all">
-                                            Privacy
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
                         </div>
                     </div>
                 </div>
