@@ -6,7 +6,7 @@ import Image from "next/image";
 import { ViewTransition } from "react";
 
 export default function AlbumCard({ album, className }: { album: Album; className?: string }) {
-    const artUrl = `/api/album/${album.id}/art?size=400`
+    const artUrl = `/api/album/${album.id}/art?size=400&t=${album.added}`
 
     return (
         <Link
