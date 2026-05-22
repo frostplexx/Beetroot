@@ -1,22 +1,22 @@
-import Database from "better-sqlite3"
+import { Database } from "bun:sqlite"
 import { globalConfig } from "../../config"
 import * as fs from "fs"
 import * as path from "path"
 
 // Initialize database with schema
-function initializeDatabase(dbPath: string): Database.Database {
+function initializeDatabase(dbPath: string): Database {
     // Check if database file exists
     const dbExists = fs.existsSync(dbPath)
 
     const db = new Database(dbPath)
 
     // Enable foreign keys
-    db.pragma("foreign_keys = ON")
+    db.run("PRAGMA foreign_keys = ON")
 
     // WAL mode lets readers proceed while the reconcile service is writing.
-    db.pragma("journal_mode = WAL")
-    db.pragma("synchronous = NORMAL")
-    db.pragma("busy_timeout = 5000")
+    db.run("PRAGMA journal_mode = WAL")
+    db.run("PRAGMA synchronous = NORMAL")
+    db.run("PRAGMA busy_timeout = 5000")
 
     // If database doesn't exist or tables are missing, create schema
     if (!dbExists || !hasRequiredTables(db)) {
@@ -26,7 +26,7 @@ function initializeDatabase(dbPath: string): Database.Database {
     return db
 }
 
-function hasRequiredTables(db: Database.Database): boolean {
+function hasRequiredTables(db: Database): boolean {
     const tables = db.prepare(
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).all() as Array<{ name: string }>
@@ -37,10 +37,10 @@ function hasRequiredTables(db: Database.Database): boolean {
     )
 }
 
-function createSchema(db: Database.Database): void {
+function createSchema(db: Database): void {
     console.log("Creating database schema...")
 
-    db.exec(`
+    db.run(`
         -- Albums table
         CREATE TABLE IF NOT EXISTS albums (
             id INTEGER PRIMARY KEY,

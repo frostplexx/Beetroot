@@ -17,7 +17,7 @@ A modern music library manager built with Next.js. Beetroot helps you organize, 
 
 1. **Install dependencies:**
    ```bash
-   npm install
+   bun install
    ```
 
 2. **Create configuration file:**
@@ -28,7 +28,7 @@ A modern music library manager built with Next.js. Beetroot helps you organize, 
 
 3. **Run development server:**
    ```bash
-   npm run dev
+   bun run dev
    ```
 
 4. **Open [http://localhost:3000](http://localhost:3000)**
@@ -39,7 +39,7 @@ If you have Nix with flakes enabled:
 
 ```bash
 nix develop
-npm run dev
+bun run dev
 ```
 
 ## Deployment
@@ -124,15 +124,16 @@ You'll need API keys for full functionality:
 ## Scripts
 
 ```bash
-npm run dev          # Start development server
-npm run build        # Build for production
-npm start            # Start production server
-npm run clean:db     # Clean database only
-npm run clean:all    # Clean database and music directory
+bun run dev          # Start development server
+bun run build        # Build for production
+bun start            # Start production server
+bun run clean:db     # Clean database only
+bun run clean:all    # Clean database and music directory
 ```
 
 ## Tech Stack
 
+- **Runtime**: Bun
 - **Framework**: Next.js 16 with React 19
 - **Database**: SQLite (better-sqlite3)
 - **UI**: Tailwind CSS 4, Radix UI, shadcn components

@@ -120,7 +120,7 @@
 
               serviceConfig = {
                 Type = "simple";
-                ExecStart = "${pkgs.nodejs_22}/bin/npm start";
+                ExecStart = "${pkgs.bun}/bin/bun start";
                 WorkingDirectory = cfg.dataDirectory;
                 User = cfg.user;
                 Group = cfg.group;
@@ -156,21 +156,19 @@
       in {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
-            nodejs_22
-            yarn
+            bun
             sqlit-tui
           ];
 
           shellHook = ''
             echo "Beetroot v2 Development Environment"
             echo "===================================="
-            echo "Node: $(node --version)"
-            echo "npm:  $(npm --version)"
+            echo "Bun: $(bun --version)"
             echo ""
             echo "Commands:"
-            echo "  npm run dev   - Start development server"
-            echo "  npm run build - Build for production"
-            echo "  npm start     - Start production server"
+            echo "  bun run dev   - Start development server"
+            echo "  bun run build - Build for production"
+            echo "  bun start     - Start production server"
             echo ""
           '';
         };

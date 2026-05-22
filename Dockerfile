@@ -1,5 +1,5 @@
 # Stage 1: Dependencies - Build native modules and download chromaprint
-FROM node:22-bookworm-slim AS dependencies
+FROM oven/bun:1-debian AS dependencies
 
 WORKDIR /app
 
@@ -13,15 +13,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
-COPY package*.json ./
+COPY package.json bun.lockb ./
 COPY scripts/postinstall.js ./scripts/
 
 # Install dependencies (includes postinstall -> chromaprint download)
-RUN npm ci --only=production && \
-    npm cache clean --force
+RUN bun install --production --frozen-lockfile
 
 # Stage 2: Builder - Build Next.js application
-FROM node:22-bookworm-slim AS builder
+FROM oven/bun:1-debian AS builder
 
 WORKDIR /app
 
@@ -33,10 +32,10 @@ COPY --from=dependencies /app/lib/bin ./lib/bin
 COPY . .
 
 # Build Next.js application
-RUN npm run build
+RUN bun run build
 
 # Stage 3: Runtime - Slim production image
-FROM node:22-bookworm-slim AS runtime
+FROM oven/bun:1-debian AS runtime
 
 WORKDIR /app
 
@@ -54,7 +53,8 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/lib/bin ./lib/bin
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/bun.lockb ./
 COPY --from=builder /app/next.config.ts ./
 COPY --from=builder /app/instrumentation.ts ./
 
@@ -75,7 +75,7 @@ USER beetroot
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
+    CMD bun -e "require('http').get('http://localhost:3000', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
 
 # Start application
-CMD ["npm", "start"]
+CMD ["bun", "start"]

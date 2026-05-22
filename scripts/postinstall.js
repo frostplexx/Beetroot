@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 const { exec } = require('child_process');
 const version = '1.6.0';
 const baseURL = `https://github.com/acoustid/chromaprint/releases/download/v${version}`;

@@ -3,19 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "postinstall": "node ./scripts/postinstall.js",
-    "test:repository": "npx tsx lib/music/repository/index.ts",
-    "test:coverart": "npx tsx lib/music/repository/test-coverart.ts",
-    "clean:db": "node ./scripts/clean-library.js",
-    "clean:all": "node ./scripts/clean-library.js --with-music"
+    "dev": "bun run next dev",
+    "build": "bun run next build",
+    "start": "bun run next start",
+    "lint": "bun run eslint",
+    "postinstall": "bun ./scripts/postinstall.js",
+    "test:repository": "bun lib/music/repository/index.ts",
+    "test:coverart": "bun lib/music/repository/test-coverart.ts",
+    "clean:db": "bun ./scripts/clean-library.js",
+    "clean:all": "bun ./scripts/clean-library.js --with-music"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
-    "better-sqlite3": "^12.10.0",
     "chokidar": "^5.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -45,7 +44,6 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^7",
     "@types/js-yaml": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
