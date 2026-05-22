@@ -261,6 +261,7 @@ function createSchema(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS item_albumartist ON items(albumartist);
         CREATE INDEX IF NOT EXISTS item_path ON items(path);
         CREATE INDEX IF NOT EXISTS item_mb_trackid ON items(mb_trackid);
+        CREATE INDEX IF NOT EXISTS item_file_hash ON items(file_hash);
 
         -- Indices for flexible attributes
         CREATE INDEX IF NOT EXISTS album_attributes_by_entity ON album_attributes(entity_id);

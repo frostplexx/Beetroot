@@ -70,6 +70,12 @@ class Repository {
 
     async adoptItem(item: Item): Promise<void> {
         try {
+            // 0. Compute file hash if enabled (before any file operations)
+            if (globalConfig.compute_file_hash) {
+                const { computeFileHashIfEnabled } = await import('../utils/hash');
+                item.file_hash = await computeFileHashIfEnabled(item.path, true) || undefined;
+            }
+
             // 1. Write tags to file (will throw on error)
             writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only');
 
@@ -77,6 +83,12 @@ class Repository {
             const moved = moveItem(item);
             if (moved) {
                 console.log(`File moved to ${item.path}`);
+
+                // Recompute hash if file was moved (path changed)
+                if (globalConfig.compute_file_hash) {
+                    const { computeFileHashIfEnabled } = await import('../utils/hash');
+                    item.file_hash = await computeFileHashIfEnabled(item.path, true) || undefined;
+                }
             }
 
             // 3. Write item to DB (creates/updates album)

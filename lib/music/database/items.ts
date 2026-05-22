@@ -1,10 +1,12 @@
 import db from "./db"
 import { decodeRows, decodeRow } from "./utils"
+import { globalConfig } from "@/lib/config"
 
 export interface Item {
     id: number
     source: string
     missing_since: number | null
+    file_hash: string | null
     title: string
     artist: string
     artist_credit: string | null
@@ -247,14 +249,52 @@ export function deleteItemFromDB(id: number): void {
     }
 }
 
-export function writeOrUpdateItem(item: Item): void {
+/**
+ * Find existing item using multi-tier duplicate detection
+ * Priority: mb_trackid > file_hash > path
+ */
+function findExistingItem(item: Item): { id: number } | undefined {
+    // Tier 1: MusicBrainz Track ID (most reliable)
+    if (item.mb_trackid && globalConfig.duplicate_detection !== 'path') {
+        const mbResult = db.prepare('SELECT id FROM items WHERE mb_trackid = ? AND mb_trackid IS NOT NULL')
+            .get(item.mb_trackid) as { id: number } | undefined
+
+        if (mbResult) {
+            console.log(`Duplicate found by mb_trackid: ${item.mb_trackid}`)
+            return mbResult
+        }
+    }
+
+    // Tier 2: File hash (reliable for same content)
+    if (item.file_hash && globalConfig.duplicate_detection !== 'path') {
+        const hashResult = db.prepare('SELECT id FROM items WHERE file_hash = ? AND file_hash IS NOT NULL')
+            .get(item.file_hash) as { id: number } | undefined
+
+        if (hashResult) {
+            console.log(`Duplicate found by file_hash: ${item.file_hash.substring(0, 16)}...`)
+            return hashResult
+        }
+    }
+
+    // Tier 3: Path (current behavior, least reliable)
+    const pathResult = db.prepare('SELECT id FROM items WHERE path = ?')
+        .get(Buffer.from(item.path, 'utf8')) as { id: number } | undefined
+
+    if (pathResult) {
+        console.log(`Duplicate found by path: ${item.path}`)
+    }
+
+    return pathResult
+}
+
+export function writeOrUpdateItem(item: Item): { action: 'inserted' | 'updated' | 'skipped'; id: number } {
     try {
         // Get valid columns from schema
         const columns = db.prepare('PRAGMA table_info(items)').all() as Array<{ name: string }>
         const validColumns = new Set(columns.map(c => c.name))
 
-        // Check if item exists by path
-        const existing = db.prepare('SELECT id FROM items WHERE path = ?').get(Buffer.from(item.path, 'utf8')) as { id: number } | undefined
+        // Multi-tier duplicate detection
+        const existing = findExistingItem(item)
 
         // Prepare item data for database - only include valid columns
         const dbItem: Record<string, any> = {}
@@ -280,7 +320,13 @@ export function writeOrUpdateItem(item: Item): void {
         }
 
         if (existing) {
-            // Update existing item
+            // Duplicate found - check config for action
+            if (globalConfig.duplicate_action === 'skip') {
+                console.log(`Skipping duplicate: ${item.path} (matches existing id ${existing.id})`)
+                return { action: 'skipped', id: existing.id }
+            }
+
+            // Overwrite mode: update existing item
             const fields = Object.keys(dbItem)
                 .filter(key => key !== 'id') // Don't update id
                 .map(key => `${key} = ?`)
@@ -292,6 +338,8 @@ export function writeOrUpdateItem(item: Item): void {
 
             const stmt = db.prepare(`UPDATE items SET ${fields} WHERE id = ?`)
             stmt.run(...values, existing.id)
+            console.log(`Updated duplicate: ${item.path} (existing id ${existing.id})`)
+            return { action: 'updated', id: existing.id }
         } else {
             // Insert new item (exclude id, let it auto-increment)
             const insertFields = Object.keys(dbItem).filter(key => key !== 'id')
@@ -300,7 +348,8 @@ export function writeOrUpdateItem(item: Item): void {
             const values = insertFields.map(key => dbItem[key])
 
             const stmt = db.prepare(`INSERT INTO items (${fields}) VALUES (${placeholders})`)
-            stmt.run(...values)
+            const result = stmt.run(...values)
+            return { action: 'inserted', id: result.lastInsertRowid as number }
         }
     } catch (error) {
         console.error('Error writing/updating item:', error)

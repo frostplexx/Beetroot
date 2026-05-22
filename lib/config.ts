@@ -4,6 +4,8 @@ import { config } from 'process';
 
 export type ConflictResolution = 'keep-db' | 'keep-file' | 'keep-mb' | 'manual';
 export type WriteBackMode = 'always' | 'never' | 'missing-only';
+export type DuplicateDetection = 'mb_trackid' | 'file_hash' | 'path';
+export type DuplicateAction = 'skip' | 'overwrite';
 
 export interface BucketConfig {
     alpha: string[]; // e.g. "A-F"
@@ -29,6 +31,11 @@ interface GlobalConfig {
     delete_after: number; // days
     reconcile_on_startup: boolean;
     reconcile_interval: number; // minutes
+
+    // Duplicate handling settings
+    duplicate_detection?: DuplicateDetection;
+    duplicate_action?: DuplicateAction;
+    compute_file_hash?: boolean;
 }
 
 // Default configuration
@@ -43,6 +50,9 @@ const DEFAULT_CONFIG: Partial<GlobalConfig> = {
     delete_after: 30,
     reconcile_on_startup: true,
     reconcile_interval: 60, // 60 minutes
+    duplicate_detection: 'mb_trackid',
+    duplicate_action: 'skip',
+    compute_file_hash: true,
 };
 
 // globalConfig gets loaded from yaml file
