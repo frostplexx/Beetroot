@@ -28,6 +28,12 @@ interface EditDialogProps {
     image: string | null
 }
 
+interface AlternativeArtwork {
+    source: string
+    url: string
+    thumbnail?: string
+}
+
 export function EditDialog({ album, image }: EditDialogProps) {
     const [open, setOpen] = React.useState(false)
     const [formData, setFormData] = React.useState({
@@ -39,6 +45,27 @@ export function EditDialog({ album, image }: EditDialogProps) {
         genres: album.genres || "",
         image: image || album.image || "",
     })
+    const [alternatives, setAlternatives] = React.useState<AlternativeArtwork[]>([])
+    const [loadingAlternatives, setLoadingAlternatives] = React.useState(false)
+    const [selectedAlt, setSelectedAlt] = React.useState<string | null>(null)
+
+    // Fetch alternatives when dialog opens
+    React.useEffect(() => {
+        if (open && alternatives.length === 0) {
+            setLoadingAlternatives(true)
+            fetch(`/api/album/${album.id}/alternatives`)
+                .then(res => res.json())
+                .then(data => {
+                    setAlternatives(data.alternatives || [])
+                })
+                .catch(error => {
+                    console.error('Failed to fetch alternatives:', error)
+                })
+                .finally(() => {
+                    setLoadingAlternatives(false)
+                })
+        }
+    }, [open, album.id, alternatives.length])
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
@@ -48,7 +75,7 @@ export function EditDialog({ album, image }: EditDialogProps) {
     }
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={setOpen}  modal={false}>
             <DialogTrigger asChild>
                 <button
                     className="p-2 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm hover:bg-white/20 hover:border-white/30 hover:scale-110 active:scale-95 transition-all group"
@@ -85,27 +112,45 @@ export function EditDialog({ album, image }: EditDialogProps) {
                                     Alternative Artwork
                                 </label>
                                 <div className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory">
-                                    {/* Placeholder alternatives - these will be loaded dynamically */}
-                                    {[1, 2, 3, 4].map((idx) => (
-                                        <button
-                                            key={idx}
-                                            type="button"
-                                            className="relative flex-shrink-0 w-16 h-16 rounded border-2 border-transparent hover:border-primary transition-all snap-start"
-                                            onClick={() => {
-                                                // TODO: Load and set alternative image
-                                                console.log('Select alternative:', idx)
-                                            }}
-                                        >
-                                            {formData.image && (
+                                    {loadingAlternatives ? (
+                                        // Skeleton loaders
+                                        Array.from({ length: 6 }).map((_, idx) => (
+                                            <div
+                                                key={`skeleton-${idx}`}
+                                                className="relative flex-shrink-0 w-16 h-16 rounded bg-white/10 animate-pulse snap-start"
+                                            />
+                                        ))
+                                    ) : alternatives.length > 0 ? (
+                                        // Actual alternatives
+                                        alternatives.map((alt, idx) => (
+                                            <button
+                                                key={`${alt.source}-${idx}`}
+                                                type="button"
+                                                className={`relative flex-shrink-0 w-16 h-16 rounded border-2 transition-all snap-start ${
+                                                    selectedAlt === alt.url
+                                                        ? 'border-primary ring-2 ring-primary/50'
+                                                        : 'border-transparent hover:border-primary/50'
+                                                }`}
+                                                onClick={() => {
+                                                    setSelectedAlt(alt.url)
+                                                    setFormData({ ...formData, image: alt.url })
+                                                }}
+                                                title={`${alt.source}`}
+                                            >
                                                 <Image
-                                                    src={formData.image}
-                                                    alt={`Alternative ${idx}`}
+                                                    src={alt.thumbnail || alt.url}
+                                                    alt={`${alt.source} alternative`}
                                                     fill
-                                                    className="rounded object-cover opacity-50 hover:opacity-100 transition-opacity"
+                                                    className="rounded object-cover"
+                                                    unoptimized
                                                 />
-                                            )}
-                                        </button>
-                                    ))}
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <p className="text-xs text-muted-foreground py-2">
+                                            No alternatives found
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         </div>
