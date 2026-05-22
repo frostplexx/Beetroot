@@ -21,12 +21,14 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Pencil } from "lucide-react"
+import Image from "next/image"
 
 interface EditDialogProps {
     album: Album
+    image: string | null
 }
 
-export function EditDialog({ album }: EditDialogProps) {
+export function EditDialog({ album, image }: EditDialogProps) {
     const [open, setOpen] = React.useState(false)
     const [formData, setFormData] = React.useState({
         album: album.album,
@@ -35,6 +37,7 @@ export function EditDialog({ album }: EditDialogProps) {
         country: album.country || "",
         label: album.label || "",
         genres: album.genres || "",
+        image: image || album.image || "",
     })
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -54,7 +57,7 @@ export function EditDialog({ album }: EditDialogProps) {
                     <Pencil className="w-4 h-4 transition-transform group-hover:rotate-12" />
                 </button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="!max-w-[calc(100vw-4rem)]">
                 <DialogHeader>
                     <DialogTitle>Edit Album</DialogTitle>
                     <DialogDescription>
@@ -62,7 +65,53 @@ export function EditDialog({ album }: EditDialogProps) {
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit}>
-                    <FieldGroup>
+                    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] gap-6">
+                        {/* Left column: Image and carousel */}
+                        <div className="flex flex-col gap-4">
+                            {formData.image && (
+                                <div className="relative aspect-square w-full">
+                                    <Image
+                                        src={formData.image}
+                                        alt="Album artwork"
+                                        fill
+                                        className="rounded-lg shadow-lg object-cover"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Alternative images carousel */}
+                            <div className="flex flex-col gap-2">
+                                <label className="text-xs font-medium text-muted-foreground">
+                                    Alternative Artwork
+                                </label>
+                                <div className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory">
+                                    {/* Placeholder alternatives - these will be loaded dynamically */}
+                                    {[1, 2, 3, 4].map((idx) => (
+                                        <button
+                                            key={idx}
+                                            type="button"
+                                            className="relative flex-shrink-0 w-16 h-16 rounded border-2 border-transparent hover:border-primary transition-all snap-start"
+                                            onClick={() => {
+                                                // TODO: Load and set alternative image
+                                                console.log('Select alternative:', idx)
+                                            }}
+                                        >
+                                            {formData.image && (
+                                                <Image
+                                                    src={formData.image}
+                                                    alt={`Alternative ${idx}`}
+                                                    fill
+                                                    className="rounded object-cover opacity-50 hover:opacity-100 transition-opacity"
+                                                />
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Right column: Form fields */}
+                        <FieldGroup>
                         <Field>
                             <FieldLabel htmlFor="album-name">Album Name</FieldLabel>
                             <Input
@@ -137,6 +186,8 @@ export function EditDialog({ album }: EditDialogProps) {
                             </FieldDescription>
                         </Field>
                     </FieldGroup>
+                    </div>
+
                     <DialogFooter className="mt-6">
                         <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                             Cancel

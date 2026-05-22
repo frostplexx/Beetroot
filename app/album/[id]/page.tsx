@@ -54,7 +54,7 @@ export default async function AlbumPage({
                                 <h1 className="font-heading text-4xl md:text-5xl font-black leading-none tracking-tight">
                                     {album.album}
                                 </h1>
-                                <EditDialog album={album} />
+                                <EditDialog album={album} image={artUrl} />
                             </div>
 
                             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-base">
