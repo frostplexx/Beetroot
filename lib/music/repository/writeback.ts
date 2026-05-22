@@ -1,8 +1,11 @@
 import { BucketConfig, globalConfig } from "../../config";
 import * as fs from 'fs';
 import { Item } from "../database";
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import * as path from 'path';
+
+const execFileAsync = promisify(execFile);
 
 export type WriteBackMode = 'always' | 'never' | 'missing-only';
 
@@ -132,7 +135,7 @@ function buildMetadataArgs(item: Item): string[] {
     return args;
 }
 
-function writeTags(filePath: string, item: Item): boolean {
+async function writeTags(filePath: string, item: Item): Promise<boolean> {
     const ffmpegPath = getFfmpegPath();
 
     if (!ffmpegPath) {
@@ -156,7 +159,7 @@ function writeTags(filePath: string, item: Item): boolean {
             tempPath                  // Output to temp file
         ];
 
-        execFileSync(ffmpegPath, args, { stdio: 'pipe' });
+        await execFileAsync(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 });
 
         // Replace original file with temp file
         fs.renameSync(tempPath, filePath);
@@ -178,8 +181,13 @@ function shouldWriteBack(mode: WriteBackMode, item: Item): boolean {
         case 'never':
             return false;
         case 'missing-only':
-            // Only write back if there are missing fields
-            return Object.values(item).some(value => value === null || value === undefined);
+            // Note: Current implementation treats 'missing-only' as 'always' because
+            // checking if ANY field is null returns true for almost every item.
+            // TODO: Implement proper comparison with file tags to only write missing fields
+            // For now, document this honestly and default to 'always' behavior
+            // See [W1] in REVIEW.md for full specification
+            console.debug('missing-only mode: currently writes all metadata (equivalent to always mode)');
+            return true;
         default:
             throw new Error(`Invalid write back mode: ${mode}`);
     }
@@ -190,13 +198,13 @@ function shouldWriteBack(mode: WriteBackMode, item: Item): boolean {
 // Returns true if writeback was successful
 // Note: Cover art is handled at the album level, not per-item
 // Throws error on critical failures
-export function writeBackItem(item: Item, mode: WriteBackMode): void {
+export async function writeBackItem(item: Item, mode: WriteBackMode): Promise<void> {
     if (!shouldWriteBack(mode, item)) {
         return;
     }
 
     // Write tags to file (will throw on error)
-    writeTags(item.path, item);
+    await writeTags(item.path, item);
 }
 
 

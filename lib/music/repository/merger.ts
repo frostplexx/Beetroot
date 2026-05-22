@@ -4,18 +4,86 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 
+// Debug flag for verbose merge logging
+const DEBUG_MERGE = process.env.DEBUG_MERGE === 'true';
+
+// Cache for genres tree - loaded once on first use
+let genresTreeCache: any | null = null;
+let parentMapCache: Map<string, Set<string>> | null = null;
+
+function getGenresTree(): any {
+    if (!genresTreeCache) {
+        const genresTreePath = path.join(process.cwd(), 'lib/music/repository/genres-tree.yaml');
+        genresTreeCache = yaml.load(fs.readFileSync(genresTreePath, 'utf8'));
+    }
+    return genresTreeCache;
+}
+
+function getParentMap(): Map<string, Set<string>> {
+    if (!parentMapCache) {
+        const genresTree = getGenresTree();
+        parentMapCache = new Map<string, Set<string>>();
+
+        function buildParentMap(node: any, parents: string[] = []) {
+            if (node == null) {
+                return;
+            } else if (Array.isArray(node)) {
+                for (const item of node) {
+                    buildParentMap(item, parents);
+                }
+            } else if (typeof node === 'object') {
+                for (const [key, value] of Object.entries(node)) {
+                    const genre = key.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+
+                    if (!parentMapCache!.has(genre)) {
+                        parentMapCache!.set(genre, new Set());
+                    }
+                    for (const parent of parents) {
+                        parentMapCache!.get(genre)!.add(parent);
+                    }
+
+                    buildParentMap(value, [...parents, genre]);
+                }
+            } else if (typeof node === 'string') {
+                const genre = node.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+                if (!parentMapCache!.has(genre)) {
+                    parentMapCache!.set(genre, new Set());
+                }
+                for (const parent of parents) {
+                    parentMapCache!.get(genre)!.add(parent);
+                }
+            }
+        }
+
+        buildParentMap(genresTree);
+    }
+    return parentMapCache;
+}
+
 
 export function mergeData<T extends SourceResult>(items: T[]): T {
     // Filter out items with no data
     const validItems = items.filter(item => item.data != null);
     if (validItems.length === 0) return items[0];
 
-    // Start with the highest confidence source
-    let merged: T = validItems[0];
+    // Sort by confidence descending to get highest confidence source first
+    validItems.sort((a, b) => b.confidence - a.confidence);
+
+    // Create a fresh merged result without mutating the input
+    const merged: T = {
+        ...validItems[0],
+        data: validItems[0].data ? { ...validItems[0].data } : null
+    } as T;
 
     if (merged.data == null) {
         console.warn(`Warning: Highest confidence source "${merged.sourceName}" returned null data. Falling back to next source.`);
-        merged = validItems[1] || merged; // Fallback to next source if available
+        const fallback = validItems[1];
+        if (fallback) {
+            return {
+                ...fallback,
+                data: fallback.data ? { ...fallback.data } : null
+            } as T;
+        }
     }
 
 
@@ -45,48 +113,103 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
             continue;
         }
 
-        // Collect all non-null string values for this key
-        const values = validItems
-            .map(item => item.data == null ? "" : item.data[key])
-            .filter(v => v != null && typeof v === 'string' && v.trim() !== '');
+        // Collect all non-null values for this key with their sources
+        const valuesWithSource = validItems
+            .map(item => ({ value: item.data?.[key], confidence: item.confidence }))
+            .filter(v => v.value != null);
 
-        if (values.length === 0) continue;
-        if (values.length === 1) {
-            merged.data[key] = values[0];
+        if (valuesWithSource.length === 0) continue;
+
+        // If only one source has this field, use it
+        if (valuesWithSource.length === 1) {
+            merged.data[key] = valuesWithSource[0].value;
             continue;
         }
 
-        // Check if there are conflicts (different values)
-        const uniqueValues = new Set(values);
-        if (uniqueValues.size === 1) {
-            // All values are identical
-            merged.data[key] = values[0];
-            continue;
-        }
+        // Determine the type of this field
+        const firstValue = valuesWithSource[0].value;
+        const valueType = Array.isArray(firstValue) ? 'array' : typeof firstValue;
 
-        // Check similarity between values
-        let hasConflict = false;
-        const firstValue = values[0];
-        for (let i = 1; i < values.length; i++) {
-            const distance = calculateLevenshteinDistance(firstValue, values[i]);
-            const maxLength = Math.max(firstValue.length, values[i].length);
-            const similarity = 1 - distance / maxLength;
+        // Merge based on type
+        if (valueType === 'number') {
+            // For numbers: pick by max confidence, fall back to first non-null
+            const sortedByConfidence = [...valuesWithSource].sort((a, b) => b.confidence - a.confidence);
+            merged.data[key] = sortedByConfidence[0].value;
+        } else if (valueType === 'boolean') {
+            // For booleans: pick by max confidence
+            const sortedByConfidence = [...valuesWithSource].sort((a, b) => b.confidence - a.confidence);
+            merged.data[key] = sortedByConfidence[0].value;
+        } else if (valueType === 'array') {
+            // For arrays: union all values (deduplicate)
+            const allArrayValues = valuesWithSource
+                .flatMap(v => Array.isArray(v.value) ? v.value : []);
+            merged.data[key] = [...new Set(allArrayValues)];
+        } else if (valueType === 'string') {
+            // For strings: use the existing conflict detection logic
+            const stringValues = valuesWithSource
+                .map(v => v.value as string)
+                .filter(v => typeof v === 'string' && v.trim() !== '');
 
-            if (similarity <= 0.8) {
-                hasConflict = true;
-                console.warn(`Merge conflict for key "${key}": "${firstValue}" vs "${values[i]}" (similarity: ${similarity.toFixed(2)})`);
-                break;
+            if (stringValues.length === 0) continue;
+            if (stringValues.length === 1) {
+                merged.data[key] = stringValues[0];
+                continue;
             }
-        }
 
-        if (hasConflict) {
-            conflictKeys.add(key);
+            // Check if all values are identical
+            const uniqueValues = new Set(stringValues);
+            if (uniqueValues.size === 1) {
+                merged.data[key] = stringValues[0];
+                continue;
+            }
+
+            // For long text fields (lyrics, comments), skip Levenshtein (O(n·m) is too expensive)
+            // and just pick by max confidence
+            const isLongTextField = key === 'lyrics' || key === 'comments';
+            const firstStringValue = stringValues[0];
+
+            if (isLongTextField || firstStringValue.length > 500) {
+                // Skip similarity check, pick by confidence
+                const sortedByConfidence = [...valuesWithSource]
+                    .filter(v => typeof v.value === 'string' && (v.value as string).trim() !== '')
+                    .sort((a, b) => b.confidence - a.confidence);
+                if (sortedByConfidence.length > 0) {
+                    merged.data[key] = sortedByConfidence[0].value;
+                }
+                continue;
+            }
+
+            // Check similarity between values
+            let hasConflict = false;
+            for (let i = 1; i < stringValues.length; i++) {
+                const distance = calculateLevenshteinDistance(firstStringValue, stringValues[i]);
+                const maxLength = Math.max(firstStringValue.length, stringValues[i].length);
+                const similarity = 1 - distance / maxLength;
+
+                if (similarity <= 0.8) {
+                    hasConflict = true;
+                    if (DEBUG_MERGE) {
+                        console.warn(`Merge conflict for key "${key}": "${firstStringValue}" vs "${stringValues[i]}" (similarity: ${similarity.toFixed(2)})`);
+                    }
+                    break;
+                }
+            }
+
+            if (hasConflict) {
+                conflictKeys.add(key);
+            } else {
+                // Similar enough, pick highest confidence
+                const sortedByConfidence = [...valuesWithSource]
+                    .filter(v => typeof v.value === 'string' && (v.value as string).trim() !== '')
+                    .sort((a, b) => b.confidence - a.confidence);
+                if (sortedByConfidence.length > 0) {
+                    merged.data[key] = sortedByConfidence[0].value;
+                }
+            }
         } else {
-            // Similar enough, pick highest confidence
-            const highestConfItem = validItems
-                .filter(item => item.data[key] != null)
-                .sort((a, b) => b.confidence - a.confidence)[0];
-            merged.data[key] = highestConfItem.data[key];
+            // For other types (objects, etc.), pick by max confidence
+            const sortedByConfidence = [...valuesWithSource].sort((a, b) => b.confidence - a.confidence);
+            merged.data[key] = sortedByConfidence[0].value;
         }
     }
 
@@ -94,9 +217,6 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
     for (const key of conflictKeys) {
         merged.data[key] = resolveConflict(key, validItems);
     }
-
-    console.log("===========================")
-    console.log(merged.data)
 
     return merged;
 }
@@ -124,17 +244,21 @@ function calculateLevenshteinDistance(a: string, b: string): number {
     }
 
     const distance = matrix[b.length][a.length];
-    const maxLen = Math.max(a.length, b.length);
-    const similarity = maxLen > 0 ? 1 - distance / maxLen : 1;
 
-    console.log(`[Levenshtein] "${a}" vs "${b}" -> distance: ${distance}, similarity: ${similarity.toFixed(2)}`);
+    // Debug logging removed - was generating excessive log volume (N·M per file)
+    // Uncomment below if debugging merge conflicts:
+    // const maxLen = Math.max(a.length, b.length);
+    // const similarity = maxLen > 0 ? 1 - distance / maxLen : 1;
+    // console.log(`[Levenshtein] "${a}" vs "${b}" -> distance: ${distance}, similarity: ${similarity.toFixed(2)}`);
 
     return distance;
 }
 
 
 function resolveConflict(key: string, sources: SourceResult[]): any {
-    console.log(`[Conflict Resolution] Resolving conflict for key: "${key}"`);
+    if (DEBUG_MERGE) {
+        console.log(`[Conflict Resolution] Resolving conflict for key: "${key}"`);
+    }
 
     // Check what each source says, normalized to lowercase, a trimmed and only alphanumeric
     // Pick the value that most sources agree on, then use the highest confidence source for the non-normalized return
@@ -146,7 +270,9 @@ function resolveConflict(key: string, sources: SourceResult[]): any {
         const value = source.data?.[key];
         if (typeof value === 'string') {
             const normalized = value.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-            console.log(`  [${source.sourceName}] confidence: ${source.confidence}, value: "${value}", normalized: "${normalized}"`);
+            if (DEBUG_MERGE) {
+                console.log(`  [${source.sourceName}] confidence: ${source.confidence}, value: "${value}", normalized: "${normalized}"`);
+            }
 
             if (!normalizedValues[normalized]) {
                 normalizedValues[normalized] = { count: 0, originalValues: [], confidence: [], sources: [] };
@@ -158,13 +284,15 @@ function resolveConflict(key: string, sources: SourceResult[]): any {
         }
     }
 
-    console.log(`  Normalized value groups:`);
-    for (const norm of Object.keys(normalizedValues)) {
-        const group = normalizedValues[norm];
-        console.log(`    "${norm}": ${group.count} sources`);
-        group.sources.forEach((src, i) => {
-            console.log(`      - ${src.name} (conf: ${src.confidence.toFixed(3)}): "${group.originalValues[i]}"`);
-        });
+    if (DEBUG_MERGE) {
+        console.log(`  Normalized value groups:`);
+        for (const norm of Object.keys(normalizedValues)) {
+            const group = normalizedValues[norm];
+            console.log(`    "${norm}": ${group.count} sources`);
+            group.sources.forEach((src, i) => {
+                console.log(`      - ${src.name} (conf: ${src.confidence.toFixed(3)}): "${group.originalValues[i]}"`);
+            });
+        }
     }
 
     let bestValue: any = null;
@@ -183,7 +311,9 @@ function resolveConflict(key: string, sources: SourceResult[]): any {
         const consensusBoost = 1 + 0.1 * (count - 1);
         const score = maxConfidence * consensusBoost;
 
-        console.log(`  [${normalized}] count: ${count}, avgConf: ${avgConfidence.toFixed(3)}, maxConf: ${maxConfidence.toFixed(3)}, boost: ${consensusBoost.toFixed(2)}, score: ${score.toFixed(3)}`);
+        if (DEBUG_MERGE) {
+            console.log(`  [${normalized}] count: ${count}, avgConf: ${avgConfidence.toFixed(3)}, maxConf: ${maxConfidence.toFixed(3)}, boost: ${consensusBoost.toFixed(2)}, score: ${score.toFixed(3)}`);
+        }
 
         if (score > bestScore) {
             bestScore = score;
@@ -195,7 +325,9 @@ function resolveConflict(key: string, sources: SourceResult[]): any {
     }
 
     if (bestValue !== null) {
-        console.log(`  -> Winner: "${bestValue}" (normalized: "${bestInfo.normalized}", avgConf: ${bestInfo.avgConfidence.toFixed(3)}, sources: ${bestInfo.count})`);
+        if (DEBUG_MERGE) {
+            console.log(`  -> Winner: "${bestValue}" (normalized: "${bestInfo.normalized}", avgConf: ${bestInfo.avgConfidence.toFixed(3)}, sources: ${bestInfo.count})`);
+        }
     } else {
         // Shouldn't happen, but fallback to highest confidence source
         let maxConfidence = -1;
@@ -208,7 +340,9 @@ function resolveConflict(key: string, sources: SourceResult[]): any {
                 maxSource = source.sourceName;
             }
         }
-        console.log(`  -> Fallback: "${bestValue}" from ${maxSource} (confidence: ${maxConfidence})`);
+        if (DEBUG_MERGE) {
+            console.log(`  -> Fallback: "${bestValue}" from ${maxSource} (confidence: ${maxConfidence})`);
+        }
     }
 
     return bestValue;
@@ -227,11 +361,15 @@ function resolveGenres(sources: SourceResult[]): string[] {
 
         const value = source.data?.genres;
         if (Array.isArray(value) && value.length > 0) {
-            console.log(`  [${source.sourceName}] genres: ${value.join(', ')}`);
+            if (DEBUG_MERGE) {
+                console.log(`  [${source.sourceName}] genres: ${value.join(', ')}`);
+            }
             genresWithSource.push(...value.map(g => ({ genre: g, confidence: source.confidence })));
             useAllSources = false;
         } else if (typeof value === 'string' && value.trim().length > 0) {
-            console.log(`  [${source.sourceName}] genres: ${value}`);
+            if (DEBUG_MERGE) {
+                console.log(`  [${source.sourceName}] genres: ${value}`);
+            }
             genresWithSource.push(...(value as string).split(',').map(g => ({ genre: g.trim(), confidence: source.confidence })));
             useAllSources = false;
         }
@@ -239,14 +377,20 @@ function resolveGenres(sources: SourceResult[]): string[] {
 
     // If Last.fm provided no genres, use all sources
     if (useAllSources) {
-        console.log(`  Last.fm provided no genres, falling back to all sources`);
+        if (DEBUG_MERGE) {
+            console.log(`  Last.fm provided no genres, falling back to all sources`);
+        }
         for (const source of sources) {
             const value = source.data?.genres;
             if (Array.isArray(value)) {
-                console.log(`  [${source.sourceName}] genres: ${value.join(', ')}`);
+                if (DEBUG_MERGE) {
+                    console.log(`  [${source.sourceName}] genres: ${value.join(', ')}`);
+                }
                 genresWithSource.push(...value.map(g => ({ genre: g, confidence: source.confidence })));
             } else if (typeof value === 'string') {
-                console.log(`  [${source.sourceName}] genres: ${value}`);
+                if (DEBUG_MERGE) {
+                    console.log(`  [${source.sourceName}] genres: ${value}`);
+                }
                 genresWithSource.push(...(value as string).split(',').map(g => ({ genre: g.trim(), confidence: source.confidence })));
             }
         }
@@ -271,55 +415,12 @@ function resolveGenres(sources: SourceResult[]): string[] {
     }
 
     const normalizedGenres = Array.from(originalCasing.keys());
-    console.log(`  Collected ${normalizedGenres.length} unique genres: [${normalizedGenres.join(', ')}]`);
-
-    // Load genres-tree.yaml which contains a mapping of genre -> parent genres
-    // Use path relative to project root for Next.js compatibility
-    const genresTreePath = path.join(process.cwd(), 'lib/music/repository/genres-tree.yaml');
-    const genresTree = yaml.load(fs.readFileSync(genresTreePath, 'utf8'));
-
-    // Build parent-child relationships: child -> set of all parents
-    const parentMap = new Map<string, Set<string>>();
-
-    function buildParentMap(node: any, parents: string[] = []) {
-        if (node == null) {
-            // Handle null/undefined nodes
-            return;
-        } else if (Array.isArray(node)) {
-            for (const item of node) {
-                buildParentMap(item, parents);
-            }
-        } else if (typeof node === 'object') {
-            for (const [key, value] of Object.entries(node)) {
-                // Normalize: lowercase, trim, remove non-alphanumeric
-                const genre = key.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-
-                // Record all parents for this genre
-                if (!parentMap.has(genre)) {
-                    parentMap.set(genre, new Set());
-                }
-                for (const parent of parents) {
-                    parentMap.get(genre)!.add(parent);
-                }
-
-                // Recurse with this genre added to parents
-                buildParentMap(value, [...parents, genre]);
-            }
-        } else if (typeof node === 'string') {
-            // Normalize: lowercase, trim, remove non-alphanumeric
-            const genre = node.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-
-            // Record all parents for this leaf genre
-            if (!parentMap.has(genre)) {
-                parentMap.set(genre, new Set());
-            }
-            for (const parent of parents) {
-                parentMap.get(genre)!.add(parent);
-            }
-        }
+    if (DEBUG_MERGE) {
+        console.log(`  Collected ${normalizedGenres.length} unique genres: [${normalizedGenres.join(', ')}]`);
     }
 
-    buildParentMap(genresTree);
+    // Use cached genres tree and parent map
+    const parentMap = getParentMap();
 
     // Filter to only genres that exist in the tree, then expand with their parents
     const allGenres = new Set<string>();
@@ -340,10 +441,12 @@ function resolveGenres(sources: SourceResult[]): string[] {
         }
     }
 
-    if (unknownGenres.length > 0) {
+    if (DEBUG_MERGE && unknownGenres.length > 0) {
         console.log(`  Filtered out ${unknownGenres.length} unknown genres: [${unknownGenres.join(', ')}]`);
     }
-    console.log(`  After expanding with parents: [${Array.from(allGenres).join(', ')}]`);
+    if (DEBUG_MERGE) {
+        console.log(`  After expanding with parents: [${Array.from(allGenres).join(', ')}]`);
+    }
 
     // Delete all parent genres and only keep leafs
     const leafGenres = new Set(allGenres);
@@ -360,7 +463,9 @@ function resolveGenres(sources: SourceResult[]): string[] {
     const result = Array.from(leafGenres).map(normalized =>
         originalCasing.get(normalized)?.original || normalized
     );
-    console.log(`  Final leaf genres: [${result.join(', ')}]`);
+    if (DEBUG_MERGE) {
+        console.log(`  Final leaf genres: [${result.join(', ')}]`);
+    }
 
     return result;
 }

@@ -38,13 +38,13 @@ async function fetchImageFromUrl(url: string): Promise<Buffer | null> {
     try {
         const response = await fetch(url);
         if (!response.ok) {
-            console.warn(`Failed to fetch image from ${url}: ${response.status}`);
+            console.debug(`Image fetch failed: ${url} (${response.status})`);
             return null;
         }
         const arrayBuffer = await response.arrayBuffer();
         return Buffer.from(arrayBuffer);
     } catch (error) {
-        console.error(`Error fetching image from ${url}:`, error);
+        console.debug(`Image fetch error: ${url} - ${error instanceof Error ? error.message : String(error)}`);
         return null;
     }
 }
@@ -76,7 +76,7 @@ async function fetchFromItunes(album: Album): Promise<Buffer | null> {
 
         return null;
     } catch (error) {
-        console.error('iTunes API error:', error);
+        console.debug(`iTunes API error: ${error instanceof Error ? error.message : String(error)}`);
         return null;
     }
 }
@@ -87,7 +87,7 @@ async function fetchFromItunes(album: Album): Promise<Buffer | null> {
 async function fetchFromLastfm(album: Album): Promise<Buffer | null> {
     try {
         if (!globalConfig.lastfm_api_key) {
-            console.warn('Last.fm API key not configured');
+            console.debug('Last.fm API key not configured');
             return null;
         }
 
@@ -113,7 +113,7 @@ async function fetchFromLastfm(album: Album): Promise<Buffer | null> {
 
         return null;
     } catch (error) {
-        console.error('Last.fm API error:', error);
+        console.debug(`Last.fm API error: ${error instanceof Error ? error.message : String(error)}`);
         return null;
     }
 }
@@ -175,7 +175,7 @@ async function fetchFromDiscogs(album: Album): Promise<Buffer | null> {
 
         return null;
     } catch (error) {
-        console.error('Discogs API error:', error);
+        console.debug(`Discogs API error: ${error instanceof Error ? error.message : String(error)}`);
         return null;
     }
 }
@@ -242,7 +242,7 @@ function stripEmbeddedCoverArt(filePath: string): boolean {
     const ffmpegPath = getFfmpegPath();
 
     if (!ffmpegPath) {
-        console.error('ffmpeg not found');
+        console.error('ffmpeg not found - install ffmpeg to strip embedded artwork');
         return false;
     }
 
@@ -267,7 +267,7 @@ function stripEmbeddedCoverArt(filePath: string): boolean {
         fs.renameSync(tempPath, filePath);
         return true;
     } catch (error) {
-        console.error(`Error stripping cover art from ${filePath}:`, error);
+        console.error(`Strip artwork failed: ${filePath}`);
         // Clean up temp file if it exists
         if (fs.existsSync(tempPath)) {
             fs.unlinkSync(tempPath);
@@ -283,14 +283,13 @@ async function fetchCoverArtFromSources(album: Album): Promise<Buffer | null> {
     // Try each source until one succeeds
     for (const source of SOURCES) {
         try {
-            console.log(`Trying to fetch cover art from ${source.name} for ${album.albumartist} - ${album.album}...`);
             const coverArt = await source.fetch(album);
             if (coverArt) {
-                console.log(`Successfully fetched cover art from ${source.name}`);
+                console.log(`Artwork: ${album.albumartist} - ${album.album} (from ${source.name})`);
                 return coverArt;
             }
         } catch (error) {
-            console.warn(`Failed to fetch from ${source.name}:`, error);
+            console.debug(`Artwork fetch failed from ${source.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
     return null;
@@ -304,14 +303,14 @@ function getAlbumDirectory(album: Album): string | null {
         // Get first item from album to determine directory
         const items = getItemsByAlbum(album.id);
         if (items.length === 0) {
-            console.warn(`No items found for album ${album.id}`);
+            console.debug(`No items found for album ${album.id}`);
             return null;
         }
 
         // Use the directory of the first track
         return path.dirname(items[0].path);
     } catch (error) {
-        console.error(`Error getting album directory:`, error);
+        console.error(`Error getting album directory: ${error instanceof Error ? error.message : String(error)}`);
         return null;
     }
 }
@@ -332,7 +331,7 @@ function saveCoverArt(coverArtData: Buffer, albumDir: string): string | null {
 
         return coverPath;
     } catch (error) {
-        console.error(`Error saving cover art:`, error);
+        console.error(`Save artwork failed: ${error instanceof Error ? error.message : String(error)}`);
         return null;
     }
 }
@@ -350,8 +349,6 @@ async function stripEmbeddedCoverArtFromAlbum(album: Album): Promise<Buffer | nu
             const hasEmbedded = await hasEmbeddedCoverArt(item.path);
 
             if (hasEmbedded) {
-                console.log(`Found embedded cover art in ${item.path}`);
-
                 // Extract from first file that has it (as fallback)
                 if (!extractedCoverArt) {
                     extractedCoverArt = await extractEmbeddedCoverArt(item.path);
@@ -360,14 +357,14 @@ async function stripEmbeddedCoverArtFromAlbum(album: Album): Promise<Buffer | nu
                 // Strip embedded cover art from file
                 const stripped = stripEmbeddedCoverArt(item.path);
                 if (!stripped) {
-                    console.warn(`Failed to strip embedded cover art from ${item.path}`);
+                    console.error(`Strip embedded artwork failed: ${item.path}`);
                 }
             }
         }
 
         return extractedCoverArt;
     } catch (error) {
-        console.error(`Error stripping embedded cover art from album:`, error);
+        console.error(`Strip embedded artwork failed: ${error instanceof Error ? error.message : String(error)}`);
         return extractedCoverArt;
     }
 }
@@ -386,7 +383,6 @@ export async function handleCoverArt(album: Album): Promise<boolean> {
         const extractedCoverArt = await stripEmbeddedCoverArtFromAlbum(album);
         if (extractedCoverArt) {
             coverArtData = extractedCoverArt;
-            console.log(`Extracted embedded cover art from album tracks`);
         }
 
         // Step 2: Try to fetch higher quality cover art from external sources
@@ -399,7 +395,7 @@ export async function handleCoverArt(album: Album): Promise<boolean> {
         if (coverArtData) {
             const albumDir = getAlbumDirectory(album);
             if (!albumDir) {
-                console.warn(`Could not determine album directory for album ${album.id}`);
+                console.error(`Artwork failed: could not determine directory for ${album.albumartist} - ${album.album}`);
                 return false;
             }
 
@@ -411,17 +407,15 @@ export async function handleCoverArt(album: Album): Promise<boolean> {
                 // Write to database
                 writeOrUpdateAlbum(album);
 
-                console.log(`Cover art saved to ${coverPath} for ${album.albumartist} - ${album.album}`);
                 return true;
             }
         }
 
-        // If no cover art found or all operations failed
-        console.log(`No cover art available for ${album.albumartist} - ${album.album}`);
-        return true; // Not a critical failure
+        // If no cover art found or all operations failed - not a critical failure
+        return true;
 
     } catch (error) {
-        console.error(`Error handling cover art for album ${album.id}:`, error);
+        console.error(`Artwork failed: ${album.albumartist} - ${album.album} - ${error instanceof Error ? error.message : String(error)}`);
         return false;
     }
 }

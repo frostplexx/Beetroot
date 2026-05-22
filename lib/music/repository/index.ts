@@ -11,6 +11,9 @@ import { writeBackItem, moveItem, moveFile } from "./writeback";
 import { globalConfig } from "../../config";
 import fsPromises from 'fs/promises';
 import { enumerateMusicFilesStream } from "../utils/enumerate";
+import { computeFileHashIfEnabled } from "../utils/hash";
+import { handleCoverArt } from "./coverart";
+import { checkForDuplicate } from "./duplicate-check";
 
 
 class Repository {
@@ -70,39 +73,28 @@ class Repository {
 
     async adoptItem(item: Item): Promise<void> {
         try {
-            // 0. Compute file hash if enabled (before any file operations)
+            // 1. Write tags to file (will throw on error)
+            await writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only');
+
+            // 2. Move file if needed (separate step)
+            moveItem(item);
+
+            // 3. Compute file hash AFTER writeback and move (so hash matches final on-disk file)
             if (globalConfig.compute_file_hash) {
-                const { computeFileHashIfEnabled } = await import('../utils/hash');
                 item.file_hash = await computeFileHashIfEnabled(item.path, true) || undefined;
             }
 
-            // 1. Write tags to file (will throw on error)
-            writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only');
-
-            // 2. Move file if needed (separate step)
-            const moved = moveItem(item);
-            if (moved) {
-                console.log(`File moved to ${item.path}`);
-
-                // Recompute hash if file was moved (path changed)
-                if (globalConfig.compute_file_hash) {
-                    const { computeFileHashIfEnabled } = await import('../utils/hash');
-                    item.file_hash = await computeFileHashIfEnabled(item.path, true) || undefined;
-                }
-            }
-
-            // 3. Write item to DB (creates/updates album)
+            // 4. Write item to DB (creates/updates album)
             const albumId = this.writeItemToDB(item);
 
-            // 4. Handle cover art at album level
+            // 5. Handle cover art at album level
             const album = getAlbumById(albumId);
             if (album && !album.artpath) {
-                const { handleCoverArt } = await import('./coverart');
                 await handleCoverArt(album);
             }
         } catch (error) {
             // Log the error and re-throw to abort import
-            console.error(`Failed to adopt item ${item.path}:`, error);
+            console.error(`Adopt failed: ${item.path} - ${error instanceof Error ? error.message : String(error)}`);
             throw error;
         }
     }
@@ -110,17 +102,20 @@ class Repository {
     markItemForDeletion(item: Item): void {
         // Mark item as missing in DB (don't delete immediately to allow for recovery)
         item.marked_for_deletion = Date.now();
-        
-        // Move item to trash directory
 
+        // Move item to trash directory
         const trash = globalConfig.trash_directory ? globalConfig.trash_directory : `${globalConfig.music_directory}/.trash`;
         const trashPath = item.path.replace(globalConfig.music_directory, trash);
-        moveFile(item.path, trashPath);
+
+        // Check if move succeeded before updating DB
+        const moveSucceeded = moveFile(item.path, trashPath);
+        if (!moveSucceeded) {
+            throw new Error(`Failed to move ${item.path} to trash at ${trashPath}`);
+        }
 
         // Update item path to new location in trash
         item.path = trashPath;
         writeOrUpdateItem(item);
-
     }
 
     markMissing(item: Item): void {
@@ -175,17 +170,25 @@ class Repository {
             errors: [],
         };
 
-        console.log('Starting reconciliation...');
+        console.log(`Reconciling: ${globalConfig.music_directory}`);
 
         try {
-            // Step 1: Load all DB paths into memory (Set for O(1) lookup)
-            console.log('Loading database paths...');
-            const dbPaths = getAllItemPaths(); // Map<path, id>
+            // Step 1: Load all DB paths into memory, filtered to music_directory scope
+            const allDbPaths = getAllItemPaths(); // Map<path, id>
+            const musicDir = globalConfig.music_directory.replace('~', process.env.HOME || '');
+
+            // Filter to only paths within current music_directory
+            const dbPaths = new Map<string, number>();
+            for (const [path, id] of allDbPaths.entries()) {
+                if (path.startsWith(musicDir)) {
+                    dbPaths.set(path, id);
+                }
+            }
+
             const dbPathSet = new Set(dbPaths.keys());
-            console.log(`Loaded ${dbPaths.size} items from database`);
+            console.log(`Database: ${dbPaths.size} tracks in scope (${allDbPaths.size} total)`);
 
             // Step 2: Stream files and detect missing/new in a single pass
-            console.log('Scanning filesystem...');
             const newFiles: string[] = [];
             const seenPaths = new Set<string>();
 
@@ -205,10 +208,9 @@ class Repository {
                 }
             }
 
-            console.log(`Scanned ${result.scannedFiles} files, found ${newFiles.length} new files`);
+            console.log(`Scanned: ${result.scannedFiles} files (${newFiles.length} new)`);
 
             // Step 3: Detect missing files (in DB but not on disk)
-            console.log('Detecting missing files...');
             const missingUpdates: Array<{ id: number; fields: Partial<Item> }> = [];
 
             for (const [dbPath, itemId] of dbPaths.entries()) {
@@ -223,7 +225,7 @@ class Repository {
 
             // Batch update missing items
             if (missingUpdates.length > 0) {
-                console.log(`Marking ${missingUpdates.length} items as missing...`);
+                console.log(`Missing: ${missingUpdates.length} files marked`);
 
                 // Collect unique album IDs that need to be checked
                 const affectedAlbumIds = new Set<number>();
@@ -242,7 +244,6 @@ class Repository {
                 }
 
                 // Check and update album missing status for all affected albums
-                console.log(`Checking missing status for ${affectedAlbumIds.size} albums...`);
                 for (const albumId of affectedAlbumIds) {
                     checkAndUpdateAlbumMissingStatus(albumId);
                 }
@@ -250,11 +251,28 @@ class Repository {
 
             // Step 4: Import new files with concurrency control
             if (newFiles.length > 0) {
-                console.log(`Importing ${newFiles.length} new files (concurrency: ${concurrency})...`);
+                console.log(`Importing: ${newFiles.length} files...`);
+
+                // Pre-filter: check for duplicates before expensive metadata fetching
+                const filesToImport: string[] = [];
+                let skippedDuplicates = 0;
+
+                for (const filePath of newFiles) {
+                    const isDuplicate = await checkForDuplicate(filePath);
+                    if (isDuplicate) {
+                        skippedDuplicates++;
+                    } else {
+                        filesToImport.push(filePath);
+                    }
+                }
+
+                if (skippedDuplicates > 0) {
+                    console.log(`Skipped: ${skippedDuplicates} duplicates`);
+                }
 
                 // Process in batches with controlled concurrency
-                for (let i = 0; i < newFiles.length; i += concurrency) {
-                    const batch = newFiles.slice(i, i + concurrency);
+                for (let i = 0; i < filesToImport.length; i += concurrency) {
+                    const batch = filesToImport.slice(i, i + concurrency);
 
                     const promises = batch.map(async (filePath) => {
                         try {
@@ -262,7 +280,7 @@ class Repository {
                             await this.adoptItem(item);
                             result.newFilesImported++;
                         } catch (error) {
-                            const errorMsg = `Failed to import ${filePath}: ${error}`;
+                            const errorMsg = `Import failed: ${filePath} - ${error instanceof Error ? error.message : String(error)}`;
                             console.error(errorMsg);
                             result.errors.push(errorMsg);
                         }
@@ -277,12 +295,11 @@ class Repository {
             }
 
             // Step 5: Fix missing artwork (album-level)
-            console.log('Checking for albums with missing artwork...');
             const albumsWithMissingArtwork = getAlbumsWithMissingArtwork();
             result.missingArtworkDetected = albumsWithMissingArtwork.length;
 
             if (albumsWithMissingArtwork.length > 0) {
-                console.log(`Found ${albumsWithMissingArtwork.length} albums with missing artwork, fixing...`);
+                console.log(`Artwork: fetching for ${albumsWithMissingArtwork.length} albums...`);
 
                 // Process in batches with controlled concurrency
                 for (let i = 0; i < albumsWithMissingArtwork.length; i += concurrency) {
@@ -290,13 +307,12 @@ class Repository {
 
                     const promises = batch.map(async (album) => {
                         try {
-                            const { handleCoverArt } = await import('./coverart');
                             const success = await handleCoverArt(album);
                             if (success) {
                                 result.artworkFixed++;
                             }
                         } catch (error) {
-                            const errorMsg = `Failed to fix artwork for album ${album.id} (${album.albumartist} - ${album.album}): ${error}`;
+                            const errorMsg = `Artwork failed: ${album.albumartist} - ${album.album}`;
                             console.error(errorMsg);
                             result.errors.push(errorMsg);
                         }
@@ -309,29 +325,36 @@ class Repository {
                     }
                 }
 
-                console.log(`Fixed artwork for ${result.artworkFixed}/${result.missingArtworkDetected} albums`);
-            }
-
-            // Step 6: Clean up trash (delete items older than delete_after days)
-            console.log(`Cleaning up trash (delete after ${globalConfig.delete_after} days)...`);
-            const itemsToDelete = getItemsReadyForDeletion(globalConfig.delete_after);
-
-            for (const item of itemsToDelete) {
-                try {
-                    await this.deleteItem(item);
-                    result.deletedItems++;
-                } catch (error) {
-                    const errorMsg = `Failed to delete item ${item.id}: ${error}`;
-                    console.error(errorMsg);
-                    result.errors.push(errorMsg);
+                if (result.artworkFixed > 0) {
+                    console.log(`Artwork: fixed ${result.artworkFixed}/${result.missingArtworkDetected}`);
                 }
             }
 
-            console.log('Reconciliation complete:', result);
+            // Step 6: Clean up trash (delete items older than delete_after days)
+            const itemsToDelete = getItemsReadyForDeletion(globalConfig.delete_after);
+
+            if (itemsToDelete.length > 0) {
+                console.log(`Cleanup: deleting ${itemsToDelete.length} items older than ${globalConfig.delete_after} days`);
+                for (const item of itemsToDelete) {
+                    try {
+                        await this.deleteItem(item);
+                        result.deletedItems++;
+                    } catch (error) {
+                        const errorMsg = `Delete failed: ${item.path} - ${error instanceof Error ? error.message : String(error)}`;
+                        console.error(errorMsg);
+                        result.errors.push(errorMsg);
+                    }
+                }
+            }
+
+            console.log(`Complete: ${result.newFilesImported} imported, ${result.missingFilesDetected} missing, ${result.artworkFixed} artwork, ${result.deletedItems} deleted`);
+            if (result.errors.length > 0) {
+                console.error(`Errors: ${result.errors.length} total`);
+            }
             return result;
 
         } catch (error) {
-            console.error('Reconciliation failed:', error);
+            console.error(`Fatal error: ${error instanceof Error ? error.message : String(error)}`);
             result.errors.push(`Fatal error: ${error}`);
             throw error;
         }
@@ -352,14 +375,15 @@ class Repository {
                     await fsPromises.unlink(item.artpath).catch(() => {}) // Ignore if art doesn't exist
                 }
             } catch (error) {
-                console.error(`Failed to delete file at ${item.path}:`, error);
+                console.error(`Delete failed: ${item.path} - ${error instanceof Error ? error.message : String(error)}`);
                 throw error;
             }
 
             // Delete item from DB
             deleteItemFromDB(item.id);
         } else {
-            console.warn(`Item ${item.id} is not eligible for deletion yet. Marked for deletion at ${item.marked_for_deletion}, path: ${item.path}`);
+            // This should not happen - log as debug since it's a logic error, not user-actionable
+            console.debug(`Delete skipped: item ${item.id} not eligible (marked: ${item.marked_for_deletion}, path: ${item.path})`);
         }
 
     }
@@ -528,33 +552,3 @@ class Repository {
 export default Repository.getInstance();
 
 
-// test
-async function testDataSources() {
-    const testFilePath = '/Users/daniel/Music/Download/stripped_brod.flac'; // Update with actual file path
-    // const testFilePath = '/Users/daniel/Music/BeetsTest/E-L/Ikkimel/POPPSTAR/01 WAS JETZT.flac'; // Update with actual file path
-    // const testFilePath = '/Users/daniel/Music/BeetsTest/A-D/Bergënot/Moselfrankian Tänzelcore Madness/13 Schnake.flac'; // Update with actual file path
-    // const testFilePath = '/Users/daniel/Music/BeetsTest/A-D/Bad Bunny/DeBÍ TiRAR MáS FOToS/04 PERFuMITO NUEVO.m4a'; // Update with actual file path
-    // const testFilePath = '/Users/daniel/Music/Download/Menschenmühle - Kanonenfieber.flac';
-
-
-    // Import flow done
-    const repository = Repository.getInstance();
-    // const item = await repository.resolveItem(testFilePath)
-    // console.log(item);
-    // repository.adoptItem(item);
-
-    // Run reconciliation with progress reporting
-    await repository.reconcile({
-        concurrency: 10,
-        batchSize: 100,
-        progressCallback: (progress) => {
-            console.log(`[${progress.phase}] Scanned: ${progress.scannedFiles}, New: ${progress.newFilesFound}, Missing: ${progress.missingFilesDetected}, Imported: ${progress.newFilesImported}`);
-        }
-    });
-
-}
-
-// Run test with: npm run test:repository
-// Commented out to prevent auto-execution on import
-// Uncomment this line when running tests manually
-// testDataSources().catch(console.error);

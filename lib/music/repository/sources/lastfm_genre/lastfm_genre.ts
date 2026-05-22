@@ -34,10 +34,10 @@ export class LastfmGenreSource extends DataSource {
             const genresPath = path.join(process.cwd(), 'lib/music/repository/sources/lastfm_genre/genres.txt');
             const data = fs.readFileSync(genresPath, 'utf8');
             this.validGenres = data.split('\n').map(line => line.trim().toLowerCase()).filter(line => line.length > 0);
-            console.log(`Loaded ${this.validGenres.length} valid genres from genres.txt`);
+            console.debug(`Loaded ${this.validGenres.length} valid genres from genres.txt`);
             return this.validGenres;
         } catch (err) {
-            console.error('Error reading genres.txt:', err);
+            console.error(`Failed to read genres.txt: ${err instanceof Error ? err.message : String(err)}`);
             this.validGenres = [];
             return [];
         }
@@ -57,9 +57,6 @@ export class LastfmGenreSource extends DataSource {
         });
 
         const response = await fetch(`${LASTFM_BASE_URL}/?${params}`);
-        
-        console.log(response.body)
-
 
         if (!response.ok) return [];
 

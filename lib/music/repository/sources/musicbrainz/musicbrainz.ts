@@ -324,7 +324,7 @@ import { Item } from '../../../database';
 
 export class MusicBrainzSource extends DataSource {
     private readonly baseConfidence = 0.85;
-    confidence = 0.85;
+    readonly confidence = 0.85;
 
     async getData(item: Item): Promise<Item> {
         try {
@@ -346,8 +346,9 @@ export class MusicBrainzSource extends DataSource {
                 return item;
             }
 
-            // Adjust confidence based on AcoustID score (0.0 - 1.0)
-            this.confidence = this.baseConfidence * recording.acoustIdScore;
+            // Note: Confidence is now fixed at baseConfidence to avoid race conditions under Promise.all
+            // The acoustIdScore affects the quality of the data, but confidence remains constant
+            // TODO [Arch-1]: Move to Result<Partial<Item>, Error> to return per-call confidence
 
             // Map Recording to Item fields
             return {

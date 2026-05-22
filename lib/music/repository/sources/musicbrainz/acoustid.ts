@@ -158,7 +158,7 @@ export function acoustIDLookup(fingerprint: string, duration: number): Promise<A
             return (response.json())
         })
         .catch(error => {
-            console.error('AcoustID lookup error:', error);
+            console.debug(`AcoustID lookup error: ${error instanceof Error ? error.message : String(error)}`);
             throw error;
         });
 }

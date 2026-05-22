@@ -1,3 +1,12 @@
+Goals:
+
+- Performant: Handle 1M+ songs
+- Fast: songs should be processed as quickly as possible, in parallel, only limited by API timeouts
+- Safe: There should never be a state where data gets lost
+- Easy to use: it should mostly work automagically
+- Resilient: It should be able to handle a wide variety of situations, and recover from bad states/never get into them
+
+
 ## Overview
 
 Use a repository pattern for merging, conflict resolution and writing back to disk:

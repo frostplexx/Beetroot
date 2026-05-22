@@ -28,6 +28,8 @@ class ReconcileService extends EventEmitter {
 
     private constructor() {
         super();
+        // Allow up to 50 concurrent SSE connections (multiple browser tabs, etc.)
+        this.setMaxListeners(50);
     }
 
     static getInstance(): ReconcileService {
@@ -44,38 +46,31 @@ class ReconcileService extends EventEmitter {
      */
     start(): void {
         if (this.isRunning) {
-            console.log('[ReconcileService] Already running');
             return;
         }
 
         this.isRunning = true;
-        console.log('[ReconcileService] Starting service');
+        console.log('ReconcileService: started');
 
         // Run on startup if configured. Skip in dev so HMR restarts don't
         // kick off a full library scan every time and starve page requests.
         if (globalConfig.reconcile_on_startup && process.env.NODE_ENV === 'production') {
-            console.log('[ReconcileService] Running initial reconciliation on startup');
             this.runReconciliation();
-        } else if (globalConfig.reconcile_on_startup) {
-            console.log('[ReconcileService] Skipping startup reconciliation (NODE_ENV !== production)');
         }
 
         // Set up interval if configured
         if (globalConfig.reconcile_interval && globalConfig.reconcile_interval > 0) {
             const intervalMs = globalConfig.reconcile_interval * 60 * 1000; // Convert minutes to ms
-            console.log(`[ReconcileService] Setting up reconciliation interval: ${globalConfig.reconcile_interval} minutes`);
+            console.log(`ReconcileService: interval ${globalConfig.reconcile_interval}m`);
 
             this.intervalId = setInterval(() => {
-                console.log('[ReconcileService] Running scheduled reconciliation');
                 this.runReconciliation();
             }, intervalMs);
-        } else {
-            console.log('[ReconcileService] Reconciliation interval disabled (set to 0 or not configured)');
         }
 
         // Watch music directory for file system changes
         const musicDir = globalConfig.music_directory.replace('~', process.env.HOME || '');
-        console.log(`[ReconcileService] Watching directory for changes: ${musicDir}`);
+        console.log(`ReconcileService: watching ${musicDir}`);
 
         this.watcher = chokidar.watch(musicDir, {
             ignoreInitial: true,
@@ -111,10 +106,8 @@ class ReconcileService extends EventEmitter {
                     return;
                 }
             } catch (err) {
-                console.error('[ReconcileService] path lookup failed:', err);
+                console.error(`ReconcileService: path lookup failed - ${err instanceof Error ? err.message : String(err)}`);
             }
-
-            console.log(`[ReconcileService] New file detected: ${filePath}`);
 
             // Debounce: wait 10 seconds after last change before reconciling
             // This allows time for multiple file copies to complete
@@ -123,7 +116,7 @@ class ReconcileService extends EventEmitter {
             }
 
             this.debounceTimeout = setTimeout(() => {
-                console.log('[ReconcileService] Triggering reconciliation due to new files');
+                console.log('ReconcileService: new files detected, starting reconciliation');
                 this.runReconciliation();
             }, 10000); // 10 second debounce
         });
@@ -134,11 +127,10 @@ class ReconcileService extends EventEmitter {
      */
     stop(): void {
         if (!this.isRunning) {
-            console.log('[ReconcileService] Not running');
             return;
         }
 
-        console.log('[ReconcileService] Stopping service');
+        console.log('ReconcileService: stopped');
         this.isRunning = false;
 
         if (this.intervalId) {
@@ -152,7 +144,6 @@ class ReconcileService extends EventEmitter {
         }
 
         if (this.watcher) {
-            console.log('[ReconcileService] Stopping file watcher');
             this.watcher.close();
             this.watcher = null;
         }
@@ -163,7 +154,6 @@ class ReconcileService extends EventEmitter {
      */
     private async runReconciliation(): Promise<void> {
         if (this.isReconciling) {
-            console.log('[ReconcileService] Reconciliation already in progress, skipping');
             return;
         }
 
@@ -173,8 +163,6 @@ class ReconcileService extends EventEmitter {
         const startTime = this.currentRunStart;
 
         try {
-            console.log('[ReconcileService] Starting reconciliation...');
-
             // Emit started event
             this.emit('reconcile', { type: 'started' } as ReconcileEvent);
 
@@ -183,11 +171,6 @@ class ReconcileService extends EventEmitter {
                 concurrency: 10,
                 batchSize: 100,
                 progressCallback: (progress) => {
-                    // Log progress periodically
-                    if (progress.scannedFiles % 1000 === 0 && progress.scannedFiles > 0) {
-                        console.log(`[ReconcileService] Progress - ${progress.phase}: scanned ${progress.scannedFiles} files, found ${progress.newFilesFound} new`);
-                    }
-
                     // Snapshot for pollers, then emit for SSE listeners.
                     this.currentProgress = progress;
 
@@ -216,10 +199,9 @@ class ReconcileService extends EventEmitter {
             // Store last result for new SSE / poll responses
             this.lastResult = { ...summary, hasChanges, timestamp: Date.now() };
 
-            console.log('[ReconcileService] Reconciliation complete:', summary);
-
             if (result.errors.length > 0) {
-                console.error('[ReconcileService] Errors during reconciliation:', result.errors.slice(0, 5));
+                console.error(`ReconcileService: ${result.errors.length} errors - showing first 5:`);
+                result.errors.slice(0, 5).forEach(err => console.error(`  ${err}`));
             }
 
             // Emit completed event
@@ -229,7 +211,7 @@ class ReconcileService extends EventEmitter {
             } as ReconcileEvent);
 
         } catch (error) {
-            console.error('[ReconcileService] Reconciliation failed:', error);
+            console.error(`ReconcileService: failed - ${error instanceof Error ? error.message : String(error)}`);
 
             // Emit error event
             this.emit('reconcile', {
@@ -273,7 +255,7 @@ class ReconcileService extends EventEmitter {
      * Manually trigger reconciliation
      */
     async triggerNow(): Promise<void> {
-        console.log('[ReconcileService] Manual reconciliation triggered');
+        console.log('ReconcileService: manual trigger');
         await this.runReconciliation();
     }
 }
