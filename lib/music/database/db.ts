@@ -85,7 +85,8 @@ function createSchema(db: Database): void {
             script TEXT,
             style TEXT,
             year INTEGER,
-            added REAL
+            added REAL,
+            missing_since REAL
         );
 
         -- Items (tracks) table

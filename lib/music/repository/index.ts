@@ -5,7 +5,7 @@ import { DiscogsSource } from "./sources/discogs/discogs";
 import { WikipediaSource } from "./sources/wikipedia/wikipedia";
 import { LrclibSource } from "./sources/lrclib/lrclib";
 import { DataSource, ReconcileProgress, ReconcileResult, SourceResult } from "./types";
-import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, deleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById } from "../database";
+import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, deleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById, checkAndUpdateAlbumMissingStatus, getItemById } from "../database";
 import { mergeData } from "./merger";
 import { writeBackItem, moveItem, moveFile } from "./writeback";
 import { globalConfig } from "../../config";
@@ -126,12 +126,22 @@ class Repository {
     markMissing(item: Item): void {
         item.missing_since = Date.now();
         writeOrUpdateItem(item);
+
+        // Check if all items in the album are missing and mark album accordingly
+        if (item.album_id) {
+            checkAndUpdateAlbumMissingStatus(item.album_id);
+        }
     }
 
 
     unmarkMissing(item: Item): void {
         item.missing_since = null;
         writeOrUpdateItem(item);
+
+        // Check if album should be unmarked as missing
+        if (item.album_id) {
+            checkAndUpdateAlbumMissingStatus(item.album_id);
+        }
     }
 
     markAlbumForDeletion(albumId: number): void {
@@ -214,9 +224,27 @@ class Repository {
             // Batch update missing items
             if (missingUpdates.length > 0) {
                 console.log(`Marking ${missingUpdates.length} items as missing...`);
+
+                // Collect unique album IDs that need to be checked
+                const affectedAlbumIds = new Set<number>();
+
                 for (let i = 0; i < missingUpdates.length; i += batchSize) {
                     const batch = missingUpdates.slice(i, i + batchSize);
                     batchUpdateItems(batch);
+
+                    // Get album_id for each updated item
+                    for (const update of batch) {
+                        const item = getItemById(update.id);
+                        if (item?.album_id) {
+                            affectedAlbumIds.add(item.album_id);
+                        }
+                    }
+                }
+
+                // Check and update album missing status for all affected albums
+                console.log(`Checking missing status for ${affectedAlbumIds.size} albums...`);
+                for (const albumId of affectedAlbumIds) {
+                    checkAndUpdateAlbumMissingStatus(albumId);
                 }
             }
 

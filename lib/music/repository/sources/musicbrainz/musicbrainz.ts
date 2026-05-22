@@ -5,8 +5,9 @@ const USER_AGENT = 'Beetroot/0.1.0 (https://github.com/yourusername/beetroot)';
 
 // Rate limiting: MusicBrainz allows 1 request per second per IP on average
 // Per their docs: https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting
+// Using 1.5s to be more conservative and avoid rate limit errors
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 1000; // 1 second - required by MusicBrainz API
+const MIN_REQUEST_INTERVAL = 1500; // 1.5 seconds - more conservative than the required 1s
 
 async function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -119,7 +120,7 @@ export interface Recording {
 }
 
 async function fetchMusicBrainz(recordingId: string, retryCount = 0): Promise<MusicBrainzRecording> {
-    const maxRetries = 3;
+    const maxRetries = 10;
 
     try {
         // Fetch recording data with minimal release info for picking best release
@@ -128,10 +129,12 @@ async function fetchMusicBrainz(recordingId: string, retryCount = 0): Promise<Mu
             { headers: { 'User-Agent': USER_AGENT } }
         );
 
-        if (response.status === 503 && retryCount < maxRetries) {
-            // Rate limit exceeded - exponential backoff
-            const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
-            console.warn(`Rate limited, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
+        // Retry on server errors (5xx) and rate limits (429, 503)
+        const shouldRetry = response.status >= 500 || response.status === 429 || response.status === 503;
+        if (shouldRetry && retryCount < maxRetries) {
+            // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 64s, up to 120s max
+            const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 120000);
+            console.debug(`MusicBrainz ${response.status} error, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
             await sleep(backoffTime);
             return fetchMusicBrainz(recordingId, retryCount + 1);
         }
@@ -143,9 +146,10 @@ async function fetchMusicBrainz(recordingId: string, retryCount = 0): Promise<Mu
 
         return response.json();
     } catch (error) {
-        if (retryCount < maxRetries && (error as any).message?.includes('503')) {
-            const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
-            console.warn(`Error fetching, retrying in ${backoffTime}ms...`);
+        // Retry on network errors and transient failures
+        if (retryCount < maxRetries) {
+            const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 120000);
+            console.debug(`Error fetching recording ${recordingId}, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
             await sleep(backoffTime);
             return fetchMusicBrainz(recordingId, retryCount + 1);
         }
@@ -153,17 +157,36 @@ async function fetchMusicBrainz(recordingId: string, retryCount = 0): Promise<Mu
     }
 }
 
-async function fetchReleaseDetails(releaseId: string): Promise<MusicBrainzRelease | undefined> {
+async function fetchReleaseDetails(releaseId: string, retryCount = 0): Promise<MusicBrainzRelease | undefined> {
+    const maxRetries = 10;
+
     try {
         // Fetch complete release data including media, tracks, labels, etc.
         const response = await rateLimitedFetch(
             `${BASE_URL}/release/${releaseId}?inc=artist-credits+recordings+release-groups+labels+media&fmt=json`,
             { headers: { 'User-Agent': USER_AGENT } }
         );
+
+        // Retry on server errors (5xx) and rate limits (429, 503)
+        const shouldRetry = response.status >= 500 || response.status === 429 || response.status === 503;
+        if (shouldRetry && retryCount < maxRetries) {
+            const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 120000);
+            console.debug(`MusicBrainz ${response.status} error fetching release, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
+            await sleep(backoffTime);
+            return fetchReleaseDetails(releaseId, retryCount + 1);
+        }
+
         if (!response.ok) return undefined;
         return await response.json();
     } catch (error) {
-        console.warn(`Failed to fetch release details for ${releaseId}:`, error);
+        // Retry on network errors and transient failures
+        if (retryCount < maxRetries) {
+            const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 120000);
+            console.debug(`Error fetching release ${releaseId}, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
+            await sleep(backoffTime);
+            return fetchReleaseDetails(releaseId, retryCount + 1);
+        }
+        console.debug(`Failed to fetch release details for ${releaseId} after ${maxRetries} retries`);
         return undefined;
     }
 }
@@ -276,9 +299,9 @@ async function toRecording(
 export async function getMusicBrainzData(
     acoustIdResults: AcoustIDResult[],
     filePath: string
-): Promise<Recording> {
+): Promise<Recording | null> {
     if (acoustIdResults.length === 0) {
-        throw new Error('No AcoustID results found');
+        return null;
     }
 
     for (const result of acoustIdResults) {
@@ -289,11 +312,11 @@ export async function getMusicBrainzData(
             const mb = await fetchMusicBrainz(recordingId);
             return await toRecording(mb, result, filePath);
         } catch (error) {
-            console.warn(`Failed to fetch recording ${recordingId}, trying next...`, error);
+            console.debug(`Failed to fetch recording ${recordingId}, trying next...`);
         }
     }
 
-    throw new Error('All AcoustID results failed MusicBrainz lookup');
+    return null;
 }
 
 import { DataSource } from '../../types';
@@ -317,6 +340,11 @@ export class MusicBrainzSource extends DataSource {
 
             // Get MusicBrainz data
             const recording = await getMusicBrainzData(acoustidResponse.results, item.path);
+
+            // Return original item if no recording found
+            if (!recording) {
+                return item;
+            }
 
             // Adjust confidence based on AcoustID score (0.0 - 1.0)
             this.confidence = this.baseConfidence * recording.acoustIdScore;
@@ -355,8 +383,8 @@ export class MusicBrainzSource extends DataSource {
                 label: recording.label || item.label,
             };
         } catch (error) {
-            // Silently fail and return original item
-            console.debug(`MusicBrainz lookup failed for ${item.path}:`, error);
+            // Silently fail and return original item (e.g., fpcalc errors, unsupported formats)
+            console.debug(`MusicBrainz lookup failed for ${item.path}: ${error instanceof Error ? error.message : String(error)}`);
             return item;
         }
     }

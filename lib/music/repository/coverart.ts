@@ -203,7 +203,12 @@ async function hasEmbeddedCoverArt(filePath: string): Promise<boolean> {
         const metadata = await parseFile(filePath);
         return !!(metadata.common.picture && metadata.common.picture.length > 0);
     } catch (error) {
-        console.error(`Error reading metadata from ${filePath}:`, error);
+        // Silently handle missing files (ENOENT) - expected for duplicates/moved files
+        if ((error as any)?.code === 'ENOENT') {
+            console.debug(`File not found when checking for embedded cover art: ${filePath}`);
+        } else {
+            console.error(`Error reading metadata from ${filePath}:`, error);
+        }
         return false;
     }
 }
@@ -220,7 +225,12 @@ async function extractEmbeddedCoverArt(filePath: string): Promise<Buffer | null>
         }
         return null;
     } catch (error) {
-        console.error(`Error extracting cover art from ${filePath}:`, error);
+        // Silently handle missing files (ENOENT) - expected for duplicates/moved files
+        if ((error as any)?.code === 'ENOENT') {
+            console.debug(`File not found when extracting cover art: ${filePath}`);
+        } else {
+            console.error(`Error extracting cover art from ${filePath}:`, error);
+        }
         return null;
     }
 }

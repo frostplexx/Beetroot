@@ -45,6 +45,7 @@ export interface Album {
     style: string | null
     year: number | null
     added: number
+    missing_since: number | null
     // Computed properties
     albumtotal?: number
     path?: string | null
@@ -235,5 +236,65 @@ export function getAlbumsWithMissingArtwork(): Album[] {
     } catch (error) {
         console.error('Error fetching albums with missing artwork:', error)
         return []
+    }
+}
+
+// Mark album as missing
+export function markAlbumMissing(albumId: number): void {
+    try {
+        const stmt = db.prepare(`
+            UPDATE albums
+            SET missing_since = ?
+            WHERE id = ?
+        `)
+        stmt.run(Date.now(), albumId)
+    } catch (error) {
+        console.error('Error marking album as missing:', error)
+        throw error
+    }
+}
+
+// Unmark album as missing
+export function unmarkAlbumMissing(albumId: number): void {
+    try {
+        const stmt = db.prepare(`
+            UPDATE albums
+            SET missing_since = NULL
+            WHERE id = ?
+        `)
+        stmt.run(albumId)
+    } catch (error) {
+        console.error('Error unmarking album as missing:', error)
+        throw error
+    }
+}
+
+// Check if all items in an album are missing and mark album accordingly
+export function checkAndUpdateAlbumMissingStatus(albumId: number): void {
+    try {
+        // Get count of all items and missing items for this album
+        const result = db.prepare(`
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN missing_since IS NOT NULL THEN 1 ELSE 0 END) as missing
+            FROM items
+            WHERE album_id = ?
+        `).get(albumId) as { total: number; missing: number }
+
+        if (result.total === 0) {
+            // No items in album, do nothing
+            return
+        }
+
+        if (result.missing === result.total) {
+            // All items are missing, mark album as missing
+            markAlbumMissing(albumId)
+        } else {
+            // At least one item is not missing, unmark album
+            unmarkAlbumMissing(albumId)
+        }
+    } catch (error) {
+        console.error('Error checking album missing status:', error)
+        throw error
     }
 }

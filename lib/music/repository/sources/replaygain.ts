@@ -1,7 +1,6 @@
 import { Item } from "../../database";
 import { DataSource } from "../types";
 import { spawn } from "child_process";
-import * as path from "path";
 
 // Dynamic import for ffmpeg-static since it's a CommonJS module
 let ffmpegPath: string | null = null;
@@ -10,6 +9,9 @@ async function getFFmpegPath(): Promise<string> {
     if (ffmpegPath) return ffmpegPath;
     const ffmpegStatic = await import("ffmpeg-static");
     ffmpegPath = ffmpegStatic.default;
+    if (!ffmpegPath) {
+        throw new Error("FFmpeg binary not found. Please ensure ffmpeg-static is installed.");
+    }
     return ffmpegPath;
 }
 
@@ -116,7 +118,12 @@ export class ReplayGain extends DataSource {
                 rg_track_peak: analysis.rg_track_peak ?? item.rg_track_peak,
             };
         } catch (error) {
-            console.error(`Failed to analyze ReplayGain for ${item.path}:`, error);
+            // Silently handle missing files (ENOENT) - expected for duplicates/moved files
+            if ((error as any)?.code === 'ENOENT') {
+                console.debug(`File not found when analyzing ReplayGain: ${item.path}`);
+            } else {
+                console.error(`Failed to analyze ReplayGain for ${item.path}:`, error);
+            }
             // Return item unchanged if analysis fails
             return item;
         }
