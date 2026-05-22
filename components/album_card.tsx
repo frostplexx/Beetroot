@@ -30,12 +30,12 @@ export default function AlbumCard({ album, className }: { album: Album; classNam
                         <Music2 className="w-20 h-20" />
                     </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/0 rounded-xl" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/40 via-black/20 to-black/0 rounded-xl" />
                 <div className="absolute bottom-0 left-0 p-4 text-white">
-                    <h3 className="font-heading font-semibold text-lg drop-shadow-lg">
+                    <h3 className="font-heading font-semibold drop-shadow-lg line-clamp-2">
                         {album.album}
                     </h3>
-                    <p className="text-sm text-white/90 drop-shadow-lg">
+                    <p className="text-sm text-white/90 drop-shadow-lg line-clamp-1">
                         {album.albumartist}
                     </p>
                 </div>

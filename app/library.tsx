@@ -79,9 +79,9 @@ export default function Library() {
                 </div>
             )}
 
-            <div className="flex justify-between items-center mb-4">
+            <div className="w-full mb-4">
                 <p className="text-sm text-white/60">
-                    {albums.length} albums 
+                    {albums.length} albums
                     {syncState.isReconciling && " (updating...)"}
                 </p>
             </div>

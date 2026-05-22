@@ -67,7 +67,7 @@ export function EditDialog({ album, image }: EditDialogProps) {
         }
     }, [open, album.id, alternatives.length])
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         // TODO: Implement save functionality
         console.log("Save album:", formData)
@@ -84,40 +84,41 @@ export function EditDialog({ album, image }: EditDialogProps) {
                     <Pencil className="w-4 h-4 transition-transform group-hover:rotate-12" />
                 </button>
             </DialogTrigger>
-            <DialogContent className="!max-w-[calc(100vw-4rem)]">
-                <DialogHeader>
-                    <DialogTitle>Edit Album</DialogTitle>
-                    <DialogDescription>
-                        Make changes to album metadata. Click save when you're done.
+            <DialogContent className="!max-w-[calc(100vw-4rem)] max-h-[calc(100vh-4rem)] overflow-y-auto">
+                <DialogHeader className="pb-2">
+                    <DialogTitle className="text-2xl">Edit Album</DialogTitle>
+                    <DialogDescription className="text-muted-foreground/80">
+                        Make changes to album metadata
                     </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleSubmit}>
-                    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] gap-6">
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-8">
                         {/* Left column: Image and carousel */}
-                        <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-6">
                             {formData.image && (
-                                <div className="relative aspect-square w-full">
+                                <div className="relative aspect-square w-full rounded-xl overflow-hidden ring-1 ring-border/50 shadow-2xl">
                                     <Image
                                         src={formData.image}
                                         alt="Album artwork"
                                         fill
-                                        className="rounded-lg shadow-lg object-cover"
+                                        className="object-cover"
+                                        priority
                                     />
                                 </div>
                             )}
 
                             {/* Alternative images carousel */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-xs font-medium text-muted-foreground">
+                            <div className="flex flex-col gap-3">
+                                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                                     Alternative Artwork
                                 </label>
-                                <div className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory">
+                                <div className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory -mx-1 px-1">
                                     {loadingAlternatives ? (
                                         // Skeleton loaders
                                         Array.from({ length: 6 }).map((_, idx) => (
                                             <div
                                                 key={`skeleton-${idx}`}
-                                                className="relative flex-shrink-0 w-16 h-16 rounded bg-white/10 animate-pulse snap-start"
+                                                className="relative flex-shrink-0 w-20 h-20 rounded-lg bg-muted/50 animate-pulse snap-start"
                                             />
                                         ))
                                     ) : alternatives.length > 0 ? (
@@ -126,10 +127,10 @@ export function EditDialog({ album, image }: EditDialogProps) {
                                             <button
                                                 key={`${alt.source}-${idx}`}
                                                 type="button"
-                                                className={`relative flex-shrink-0 w-16 h-16 rounded border-2 transition-all snap-start ${
+                                                className={`group relative flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden transition-all snap-start ${
                                                     selectedAlt === alt.url
-                                                        ? 'border-primary ring-2 ring-primary/50'
-                                                        : 'border-transparent hover:border-primary/50'
+                                                        ? 'ring-2 ring-primary shadow-lg scale-105'
+                                                        : 'ring-1 ring-border/40 hover:ring-primary/60 hover:scale-105'
                                                 }`}
                                                 onClick={() => {
                                                     setSelectedAlt(alt.url)
@@ -141,9 +142,12 @@ export function EditDialog({ album, image }: EditDialogProps) {
                                                     src={alt.thumbnail || alt.url}
                                                     alt={`${alt.source} alternative`}
                                                     fill
-                                                    className="rounded object-cover"
+                                                    className="object-cover transition-transform group-hover:scale-110"
                                                     unoptimized
                                                 />
+                                                {selectedAlt === alt.url && (
+                                                    <div className="absolute inset-0 bg-primary/20 pointer-events-none" />
+                                                )}
                                             </button>
                                         ))
                                     ) : (
@@ -156,88 +160,109 @@ export function EditDialog({ album, image }: EditDialogProps) {
                         </div>
 
                         {/* Right column: Form fields */}
-                        <FieldGroup>
-                        <Field>
-                            <FieldLabel htmlFor="album-name">Album Name</FieldLabel>
-                            <Input
-                                id="album-name"
-                                value={formData.album}
-                                onChange={(e) =>
-                                    setFormData({ ...formData, album: e.target.value })
-                                }
-                                placeholder="Album name"
-                            />
-                        </Field>
-                        <Field>
-                            <FieldLabel htmlFor="album-artist">Artist</FieldLabel>
-                            <Input
-                                id="album-artist"
-                                value={formData.albumartist}
-                                onChange={(e) =>
-                                    setFormData({ ...formData, albumartist: e.target.value })
-                                }
-                                placeholder="Artist name"
-                            />
-                        </Field>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-5">
                             <Field>
-                                <FieldLabel htmlFor="album-year">Year</FieldLabel>
+                                <FieldLabel htmlFor="album-name" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                                    Album Name
+                                </FieldLabel>
                                 <Input
-                                    id="album-year"
-                                    type="number"
-                                    value={formData.year}
+                                    id="album-name"
+                                    value={formData.album}
                                     onChange={(e) =>
-                                        setFormData({ ...formData, year: e.target.value })
+                                        setFormData({ ...formData, album: e.target.value })
                                     }
-                                    placeholder="2024"
+                                    placeholder="Album name"
+                                    className="h-10"
                                 />
                             </Field>
+
                             <Field>
-                                <FieldLabel htmlFor="album-country">Country</FieldLabel>
+                                <FieldLabel htmlFor="album-artist" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                                    Artist
+                                </FieldLabel>
                                 <Input
-                                    id="album-country"
-                                    value={formData.country}
+                                    id="album-artist"
+                                    value={formData.albumartist}
                                     onChange={(e) =>
-                                        setFormData({ ...formData, country: e.target.value })
+                                        setFormData({ ...formData, albumartist: e.target.value })
                                     }
-                                    placeholder="US"
+                                    placeholder="Artist name"
+                                    className="h-10"
                                 />
+                            </Field>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <Field>
+                                    <FieldLabel htmlFor="album-year" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                                        Year
+                                    </FieldLabel>
+                                    <Input
+                                        id="album-year"
+                                        type="number"
+                                        value={formData.year}
+                                        onChange={(e) =>
+                                            setFormData({ ...formData, year: e.target.value })
+                                        }
+                                        placeholder="2024"
+                                        className="h-10"
+                                    />
+                                </Field>
+                                <Field>
+                                    <FieldLabel htmlFor="album-country" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                                        Country
+                                    </FieldLabel>
+                                    <Input
+                                        id="album-country"
+                                        value={formData.country}
+                                        onChange={(e) =>
+                                            setFormData({ ...formData, country: e.target.value })
+                                        }
+                                        placeholder="US"
+                                        className="h-10"
+                                    />
+                                </Field>
+                            </div>
+
+                            <Field>
+                                <FieldLabel htmlFor="album-label" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                                    Label
+                                </FieldLabel>
+                                <Input
+                                    id="album-label"
+                                    value={formData.label}
+                                    onChange={(e) =>
+                                        setFormData({ ...formData, label: e.target.value })
+                                    }
+                                    placeholder="Record label"
+                                    className="h-10"
+                                />
+                            </Field>
+
+                            <Field>
+                                <FieldLabel htmlFor="album-genres" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                                    Genres
+                                </FieldLabel>
+                                <Textarea
+                                    id="album-genres"
+                                    value={formData.genres}
+                                    onChange={(e) =>
+                                        setFormData({ ...formData, genres: e.target.value })
+                                    }
+                                    placeholder="rock, alternative, indie"
+                                    className="min-h-[80px] resize-none"
+                                />
+                                <FieldDescription className="text-xs text-muted-foreground/70 mt-1.5">
+                                    Comma-separated list of genres
+                                </FieldDescription>
                             </Field>
                         </div>
-                        <Field>
-                            <FieldLabel htmlFor="album-label">Label</FieldLabel>
-                            <Input
-                                id="album-label"
-                                value={formData.label}
-                                onChange={(e) =>
-                                    setFormData({ ...formData, label: e.target.value })
-                                }
-                                placeholder="Record label"
-                            />
-                        </Field>
-                        <Field>
-                            <FieldLabel htmlFor="album-genres">Genres</FieldLabel>
-                            <Textarea
-                                id="album-genres"
-                                value={formData.genres}
-                                onChange={(e) =>
-                                    setFormData({ ...formData, genres: e.target.value })
-                                }
-                                placeholder="rock, alternative, indie"
-                                className="min-h-[80px]"
-                            />
-                            <FieldDescription>
-                                Comma-separated list of genres
-                            </FieldDescription>
-                        </Field>
-                    </FieldGroup>
                     </div>
 
-                    <DialogFooter className="mt-6">
-                        <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                    <DialogFooter className="pt-4 gap-3">
+                        <Button type="button" variant="outline" onClick={() => setOpen(false)} className="min-w-24">
                             Cancel
                         </Button>
-                        <Button type="submit">Save Changes</Button>
+                        <Button type="submit" className="min-w-24">Save Changes</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
