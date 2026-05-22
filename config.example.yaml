@@ -1,0 +1,61 @@
+# Beetroot V2 Configuration Example
+# Copy this file to config.yaml and update with your settings
+
+# Required: SQLite database location
+database_path: ./db.sqlite3
+
+# Required: Music library directory
+music_directory: ~/Music/Beetroot/
+
+# Required: AcoustID API key for audio fingerprinting
+# Get your key at: https://acoustid.org/new-application
+acoustid_api_key: YOUR_ACOUSTID_API_KEY_HERE
+
+# Required: Last.fm API key for metadata enrichment
+# Get your key at: https://www.last.fm/api/account/create
+lastfm_api_key: YOUR_LASTFM_API_KEY_HERE
+
+# Optional: Discogs API token for additional album artwork
+# Get your token at: https://www.discogs.com/settings/developers
+# discogs_token: YOUR_DISCOGS_TOKEN_HERE
+
+# File organization pattern (uses bucketing for large libraries)
+# Variables: $albumartist, $album, $track, $title, $year, $genre
+# Buckets: %bucket{$albumartist,alpha} or %bucket{$year,year}
+path: '%bucket{$albumartist,alpha}/$albumartist/$album/$track $title'
+
+# Bucket configuration
+bucket:
+  alpha: ['A-F', 'G-M', 'N-Z']
+  year: ['1960s', '1970s', '1980s', '1990s', '2000s', '2010s', '2020s']
+
+# Metadata conflict resolution strategy
+# Options: keep-db (use database), keep-file (use file tags), keep-mb (use MusicBrainz), manual
+conflict_resolution: keep-db
+
+# When to write metadata back to files
+# Options: always, never, missing-only
+writeback_mode: missing-only
+
+# Duplicate detection method
+# Options: mb_trackid (MusicBrainz Track ID), file_hash (SHA256), path (file path)
+duplicate_detection: mb_trackid
+
+# Action when duplicate is found
+# Options: skip (don't import), overwrite (replace existing)
+duplicate_action: skip
+
+# Compute SHA256 hash of files (slower imports, but enables file_hash duplicate detection)
+compute_file_hash: true
+
+# Optional: Custom trash directory (defaults to music_directory/.trash)
+# trash_directory: ~/Music/Beetroot/.trash
+
+# Days to keep deleted files in trash before permanent deletion
+delete_after: 30
+
+# Run metadata reconciliation on server startup
+reconcile_on_startup: true
+
+# Automatic reconciliation interval in minutes (0 to disable)
+reconcile_interval: 60

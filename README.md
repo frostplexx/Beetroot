@@ -1,36 +1,157 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Beetroot V2
 
-## Getting Started
+A modern music library manager built with Next.js. Beetroot helps you organize, manage, and discover your music collection with automatic metadata enrichment, album artwork, and powerful search capabilities.
 
-First, run the development server:
+## Features
+
+- **Automatic Metadata Enrichment**: Uses AcoustID fingerprinting and MusicBrainz for accurate metadata
+- **Album Artwork**: Fetches high-quality cover art from multiple sources (Last.fm, Discogs, Apple Music)
+- **Smart Organization**: Flexible file organization with bucketing by artist, album, year, etc.
+- **Duplicate Detection**: Multiple strategies to prevent duplicate imports
+- **Background Sync**: Automatic library reconciliation and updates
+- **Modern UI**: Built with Next.js 16, React 19, and Tailwind CSS
+
+## Quick Start
+
+### Development
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Create configuration file:**
+   ```bash
+   cp config.example.yaml config.yaml
+   # Edit config.yaml with your settings
+   ```
+
+3. **Run development server:**
+   ```bash
+   npm run dev
+   ```
+
+4. **Open [http://localhost:3000](http://localhost:3000)**
+
+### Using Nix
+
+If you have Nix with flakes enabled:
 
 ```bash
+nix develop
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Deployment
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Beetroot V2 can be deployed using Docker or NixOS. See the [deployment guide](docs/deployment.md) for detailed instructions.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Docker Quick Start
 
-## Learn More
+```bash
+# Copy example docker-compose file
+cp docker-compose.example.yml docker-compose.yml
 
-To learn more about Next.js, take a look at the following resources:
+# Create data directory and config
+mkdir -p data
+cat > data/config.yaml <<EOF
+database_path: /data/db.sqlite3
+music_directory: /music
+acoustid_api_key: YOUR_KEY
+lastfm_api_key: YOUR_KEY
+EOF
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Edit docker-compose.yml to set your music directory
+# Then start the container
+docker compose up -d
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### NixOS Deployment
 
-## Deploy on Vercel
+Add to your NixOS configuration:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```nix
+{
+  services.beetroot-v2 = {
+    enable = true;
+    musicDirectory = "/srv/music";
+    acoustidApiKey = "YOUR_KEY";
+    lastfmApiKey = "YOUR_KEY";
+    openFirewall = true;
+  };
+}
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [docs/deployment.md](docs/deployment.md) for complete deployment documentation.
+
+## Configuration
+
+Beetroot supports both file-based and environment variable configuration:
+
+### Config File (`config.yaml`)
+
+```yaml
+database_path: ./db.sqlite3
+music_directory: ~/Music/Beetroot/
+acoustid_api_key: your_key
+lastfm_api_key: your_key
+path: '%bucket{$albumartist,alpha}/$albumartist/$album/$track $title'
+duplicate_detection: mb_trackid
+duplicate_action: skip
+```
+
+### Environment Variables
+
+All config options can be set via environment variables (useful for Docker):
+
+```bash
+DATABASE_PATH=/data/db.sqlite3
+MUSIC_DIRECTORY=/music
+ACOUSTID_API_KEY=your_key
+LASTFM_API_KEY=your_key
+```
+
+Environment variables override config file values.
+
+## API Keys
+
+You'll need API keys for full functionality:
+
+- **AcoustID**: https://acoustid.org/new-application (required for fingerprinting)
+- **Last.fm**: https://www.last.fm/api/account/create (required for metadata)
+- **Discogs**: https://www.discogs.com/settings/developers (optional, for additional artwork)
+
+## Scripts
+
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production
+npm start            # Start production server
+npm run clean:db     # Clean database only
+npm run clean:all    # Clean database and music directory
+```
+
+## Tech Stack
+
+- **Framework**: Next.js 16 with React 19
+- **Database**: SQLite (better-sqlite3)
+- **UI**: Tailwind CSS 4, Radix UI, shadcn components
+- **Music Metadata**: music-metadata, chromaprint (AcoustID)
+- **Audio Processing**: ffmpeg-static, flac-tagger, node-id3
+
+## Project Structure
+
+```
+├── app/              # Next.js App Router (pages & API routes)
+├── lib/              # Core library logic
+│   ├── music/        # Music library management
+│   ├── database/     # SQLite database layer
+│   └── repository/   # Metadata reconciliation
+├── components/       # React components
+├── docs/             # Documentation
+└── config.yaml       # Configuration file
+```
+
+## License
+
+MIT

@@ -48,6 +48,8 @@ export function EditDialog({ album, image }: EditDialogProps) {
     const [alternatives, setAlternatives] = React.useState<AlternativeArtwork[]>([])
     const [loadingAlternatives, setLoadingAlternatives] = React.useState(false)
     const [selectedAlt, setSelectedAlt] = React.useState<string | null>(null)
+    const [saving, setSaving] = React.useState(false)
+    const [error, setError] = React.useState<string | null>(null)
 
     // Fetch alternatives when dialog opens
     React.useEffect(() => {
@@ -67,11 +69,34 @@ export function EditDialog({ album, image }: EditDialogProps) {
         }
     }, [open, album.id, alternatives.length])
 
-    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
-        // TODO: Implement save functionality
-        console.log("Save album:", formData)
-        setOpen(false)
+        setSaving(true)
+        setError(null)
+
+        try {
+            const response = await fetch(`/api/album/${album.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData),
+            })
+
+            const data = await response.json()
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to update album')
+            }
+
+            // Success - close dialog and reload page
+            setOpen(false)
+            window.location.reload()
+
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to save changes')
+            console.error('Error saving album:', err)
+        } finally {
+            setSaving(false)
+        }
     }
 
     return (
@@ -258,11 +283,25 @@ export function EditDialog({ album, image }: EditDialogProps) {
                         </div>
                     </div>
 
+                    {error && (
+                        <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3 text-sm text-red-200">
+                            {error}
+                        </div>
+                    )}
+
                     <DialogFooter className="pt-4 gap-3">
-                        <Button type="button" variant="outline" onClick={() => setOpen(false)} className="min-w-24">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setOpen(false)}
+                            className="min-w-24"
+                            disabled={saving}
+                        >
                             Cancel
                         </Button>
-                        <Button type="submit" className="min-w-24">Save Changes</Button>
+                        <Button type="submit" className="min-w-24" disabled={saving}>
+                            {saving ? 'Saving...' : 'Save Changes'}
+                        </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>

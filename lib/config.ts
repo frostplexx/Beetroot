@@ -61,17 +61,53 @@ export const globalConfig: GlobalConfig = loadConfig()
 
 function loadConfig(): GlobalConfig {
     const configPath = getConfigPath()
-    if (!fs.existsSync(configPath)) {
-        throw new Error(`Config file not found at ${configPath}`)
-    }
-    const fileContents = fs.readFileSync(configPath, 'utf-8')
-    const config = yaml.load(fileContents) as GlobalConfig
 
-    // Merge with defaults
+    // Load from file if exists
+    let fileConfig: Partial<GlobalConfig> = {}
+    if (fs.existsSync(configPath)) {
+        const fileContents = fs.readFileSync(configPath, 'utf-8')
+        fileConfig = yaml.load(fileContents) as Partial<GlobalConfig>
+    } else if (!hasEnvOverrides()) {
+        throw new Error(`Config file not found at ${configPath} and no environment variables provided`)
+    }
+
+    // Build environment variable overrides
+    const envConfig: Partial<GlobalConfig> = {
+        database_path: process.env.DATABASE_PATH,
+        music_directory: process.env.MUSIC_DIRECTORY,
+        acoustid_api_key: process.env.ACOUSTID_API_KEY,
+        lastfm_api_key: process.env.LASTFM_API_KEY,
+        discogs_token: process.env.DISCOGS_TOKEN,
+        conflict_resolution: process.env.CONFLICT_RESOLUTION as ConflictResolution,
+        writeback_mode: process.env.WRITEBACK_MODE as WriteBackMode,
+        path: process.env.PATH_TEMPLATE,
+        delete_after: process.env.DELETE_AFTER ? parseInt(process.env.DELETE_AFTER, 10) : undefined,
+        reconcile_on_startup: process.env.RECONCILE_ON_STARTUP === 'true',
+        reconcile_interval: process.env.RECONCILE_INTERVAL ? parseInt(process.env.RECONCILE_INTERVAL, 10) : undefined,
+        duplicate_detection: process.env.DUPLICATE_DETECTION as DuplicateDetection,
+        duplicate_action: process.env.DUPLICATE_ACTION as DuplicateAction,
+        compute_file_hash: process.env.COMPUTE_FILE_HASH === 'true',
+    }
+
+    // Remove undefined values from envConfig
+    Object.keys(envConfig).forEach(key =>
+        envConfig[key as keyof GlobalConfig] === undefined && delete envConfig[key as keyof GlobalConfig]
+    )
+
+    // Merge: defaults < file < env (env vars have highest priority)
     return {
         ...DEFAULT_CONFIG,
-        ...config,
+        ...fileConfig,
+        ...envConfig,
     } as GlobalConfig;
+}
+
+function hasEnvOverrides(): boolean {
+    // Check if critical environment variables are provided
+    return !!(
+        process.env.DATABASE_PATH ||
+        process.env.MUSIC_DIRECTORY
+    )
 }
 
 

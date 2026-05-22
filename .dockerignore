@@ -1,0 +1,58 @@
+# Git
+.git
+.gitignore
+.github
+
+# Next.js
+.next
+out
+
+# Dependencies
+node_modules
+
+# Downloaded binaries
+lib/bin
+
+# Database files
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Environment and config
+.env
+.env.*
+config.yaml
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Claude
+.claude
+
+# Nix
+.direnv
+.envrc
+flake.lock
+
+# Documentation
+README.md
+docs
+
+# Test and deployment
+test-deploy
+docker-compose.yml
+
+# Scripts not needed in production
+scripts/clean-library.js
