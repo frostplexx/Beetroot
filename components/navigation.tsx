@@ -3,12 +3,28 @@
 import { Library, Search, Upload, MoreHorizontal, Bell } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { Button } from "./ui/button"
+import { Kbd, KbdGroup } from "./ui/kbd"
+import { CommandBar } from "./command-bar"
 
 export default function Navigation() {
     const pathname = usePathname()
     const [toolsOpen, setToolsOpen] = useState(false)
+    const [commandOpen, setCommandOpen] = useState(false)
     const isLibraryActive = pathname === "/" || pathname.startsWith("/library") || pathname.startsWith("/album")
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                setCommandOpen((open) => !open)
+            }
+        }
+
+        document.addEventListener("keydown", handleKeyDown)
+        return () => document.removeEventListener("keydown", handleKeyDown)
+    }, [])
 
     return (
         <header className="sticky top-0 z-50 bg-black/60 backdrop-blur-md border-b border-white/10">
@@ -39,11 +55,19 @@ export default function Navigation() {
                         <div className="flex items-center gap-2 flex-1 max-w-2xl">
                             <div className="relative flex-1">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" />
-                                <input
-                                    type="text"
-                                    placeholder="Search albums, artists..."
-                                    className="w-full h-9 pl-10 pr-4 text-sm bg-white/10 border border-white/20 rounded-full text-white placeholder:text-white/50 focus:bg-white/15 focus:border-white/30 focus:outline-none transition-all"
-                                />
+                                <Button
+                                    onClick={() => setCommandOpen(true)}
+                                    className="transition-all hover:text-white hover:bg-white/10 w-full h-9 pl-10 pr-4 text-sm bg-white/10 border border-white/20 rounded-full text-white placeholder:text-white/50 focus:bg-white/15 focus:border-white/30 focus:outline-none transition-all"
+                                >
+                                    <span className="text-white/70 flex-1 flex items-center gap-2">
+                                        Search albums, artists...
+                                        <span className="flex-1"></span>
+                                        <KbdGroup>
+                                            <Kbd>⌘</Kbd>
+                                            <Kbd>K</Kbd>
+                                        </KbdGroup>
+                                    </span>
+                                </Button>
                             </div>
 
                             <div className="flex gap-2">
@@ -89,6 +113,7 @@ export default function Navigation() {
 
                 </div>
             </div>
+            <CommandBar open={commandOpen} onOpenChange={setCommandOpen} />
         </header>
     )
 }
