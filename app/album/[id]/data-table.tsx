@@ -9,7 +9,6 @@ import {
     flexRender,
     getCoreRowModel,
     getFilteredRowModel,
-    getPaginationRowModel,
     getSortedRowModel,
     useReactTable,
 } from "@tanstack/react-table"
@@ -54,7 +53,6 @@ export function SongsDataTable<TData, TValue>({
         onColumnFiltersChange: setColumnFilters,
         onColumnVisibilityChange: setColumnVisibility,
         getCoreRowModel: getCoreRowModel(),
-        getPaginationRowModel: getPaginationRowModel(),
         getSortedRowModel: getSortedRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
         state: {
@@ -150,30 +148,8 @@ export function SongsDataTable<TData, TValue>({
                     </TableBody>
                 </Table>
             </div>
-            <div className="flex items-center justify-between">
-                <div className="text-sm text-white/60">
-                    {table.getFilteredRowModel().rows.length} song(s)
-                </div>
-                <div className="flex items-center space-x-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => table.previousPage()}
-                        disabled={!table.getCanPreviousPage()}
-                        className="bg-white/10 border-white/20 hover:bg-white/20"
-                    >
-                        Previous
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => table.nextPage()}
-                        disabled={!table.getCanNextPage()}
-                        className="bg-white/10 border-white/20 hover:bg-white/20"
-                    >
-                        Next
-                    </Button>
-                </div>
+            <div className="text-sm text-white/60">
+                {table.getFilteredRowModel().rows.length} song(s)
             </div>
         </div>
     )
