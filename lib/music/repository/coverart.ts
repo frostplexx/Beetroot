@@ -439,10 +439,13 @@ export async function handleCoverArt(album: Album): Promise<boolean> {
             coverArtData = extractedCoverArt;
         }
 
-        // Step 2: Try to fetch higher quality cover art from external sources
-        const externalCoverArt = await fetchCoverArtFromSources(album);
-        if (externalCoverArt) {
-            coverArtData = externalCoverArt;
+        // Step 2: Only fetch external if no embedded art found
+        // Embedded art is often higher quality than external sources (600x600 iTunes JPEG)
+        if (!coverArtData) {
+            const externalCoverArt = await fetchCoverArtFromSources(album);
+            if (externalCoverArt) {
+                coverArtData = externalCoverArt;
+            }
         }
 
         // Step 3: If we have cover art (either extracted or fetched), save it
