@@ -1,6 +1,6 @@
 import { LastfmGenreSource } from "./sources/lastfm_genre/lastfm_genre";
 import { LocalTagsSource } from "./sources/tags";
-import { MusicBrainzSource } from "./sources/musicbrainz/musicbrainz";
+import { MusicBrainzSource, lookupReleaseForCluster } from "./sources/musicbrainz/musicbrainz";
 import { DiscogsSource } from "./sources/discogs/discogs";
 import { WikipediaSource } from "./sources/wikipedia/wikipedia";
 import { LrclibSource } from "./sources/lrclib/lrclib";
@@ -15,6 +15,7 @@ import { enumerateMusicFilesStream } from "../utils/enumerate";
 import { computeFileHashIfEnabled } from "../utils/hash";
 import { handleCoverArt } from "./coverart";
 import { checkForDuplicate } from "./duplicate-check";
+import { clusterTracks, Cluster } from "./cluster";
 import db from "../database/db";
 
 
@@ -383,10 +384,64 @@ class Repository {
                     console.log(`Skipped: ${skippedDuplicates} duplicates`);
                 }
 
-                // Process in batches with controlled concurrency
+                // Clustering pass (Picard-style "Cluster -> Lookup"). Pre-read
+                // local tags so we can group tracks of one album together before
+                // any MB lookup happens; then do ONE MB release search per
+                // cluster so every track in the cluster ends up with the same
+                // mb_albumid and lands on a single albums row. This is what
+                // stops a stray track from being misclassified as a single.
+                const tagsSource = new LocalTagsSource();
+                const tagged: Item[] = [];
+                const tagFailed: string[] = [];
+
                 for (let i = 0; i < filesToImport.length; i += concurrency) {
                     const batch = filesToImport.slice(i, i + concurrency);
+                    const readResults = await Promise.all(batch.map(async (filePath) => {
+                        try {
+                            const tmp = makeEmptyImportItem(filePath);
+                            const item = await tagsSource.getData(tmp);
+                            return { filePath, item, ok: true as const };
+                        } catch (error) {
+                            console.debug(`Tag pre-read failed for ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+                            return { filePath, ok: false as const };
+                        }
+                    }));
+                    for (const r of readResults) {
+                        if (r.ok) tagged.push(r.item);
+                        else tagFailed.push(r.filePath);
+                    }
+                }
 
+                const clusters = clusterTracks(tagged);
+                console.log(`Clustering: ${tagged.length} files → ${clusters.length} clusters`);
+
+                for (const cluster of clusters) {
+                    await this.seedClusterFromMusicBrainz(cluster);
+
+                    for (let i = 0; i < cluster.tracks.length; i += concurrency) {
+                        const batch = cluster.tracks.slice(i, i + concurrency);
+                        const promises = batch.map(async (seeded) => {
+                            try {
+                                const item = await this.resolveItem(seeded);
+                                await this.adoptItem(item);
+                                result.newFilesImported++;
+                            } catch (error) {
+                                const errorMsg = `Import failed: ${seeded.path} - ${error instanceof Error ? error.message : String(error)}`;
+                                console.error(errorMsg);
+                                result.errors.push(errorMsg);
+                            }
+                        });
+                        await Promise.all(promises);
+                        if (progressCallback) {
+                            progressCallback({ ...result, phase: 'importing' });
+                        }
+                    }
+                }
+
+                // Files whose tag pre-read failed bypass clustering entirely
+                // and fall back to the original per-file path.
+                for (let i = 0; i < tagFailed.length; i += concurrency) {
+                    const batch = tagFailed.slice(i, i + concurrency);
                     const promises = batch.map(async (filePath) => {
                         try {
                             const item = await this.resolveItem(filePath);
@@ -398,9 +453,7 @@ class Repository {
                             result.errors.push(errorMsg);
                         }
                     });
-
                     await Promise.all(promises);
-
                     if (progressCallback) {
                         progressCallback({ ...result, phase: 'importing' });
                     }
@@ -629,6 +682,51 @@ class Repository {
         return itemToAlbum(item);
     }
 
+    // One MB release lookup per cluster, then seed every cluster track's
+    // mb_albumid (+ mb_releasegroupid) so the downstream MusicBrainzSource
+    // short-circuits to the same release and writeOrUpdateAlbum's cascade
+    // collapses the cluster onto a single albums row. No-op when the
+    // cluster has no album signal at all, in which case the per-track MB
+    // path runs as today.
+    private async seedClusterFromMusicBrainz(cluster: Cluster): Promise<void> {
+        if (!cluster.seedAlbum) return;
+
+        // Reuse a release-group hint if any track already has one from tags.
+        const rgHint = cluster.tracks.find(t => t.mb_releasegroupid)?.mb_releasegroupid ?? null;
+
+        const hit = await lookupReleaseForCluster({
+            albumartist: cluster.seedAlbumArtist,
+            album: cluster.seedAlbum,
+            trackCount: cluster.tracks.length,
+            releaseGroupId: rgHint,
+        });
+
+        if (!hit) {
+            console.debug(`Cluster lookup miss: "${cluster.seedAlbum}" by "${cluster.seedAlbumArtist ?? '?'}" (${cluster.tracks.length} tracks)`);
+            return;
+        }
+
+        for (const t of cluster.tracks) {
+            t.mb_albumid = hit.mb_albumid;
+            if (hit.mb_releasegroupid) t.mb_releasegroupid = hit.mb_releasegroupid;
+        }
+        console.log(`Cluster → release ${hit.mb_albumid}: "${cluster.seedAlbum}" (${cluster.tracks.length} tracks)`);
+    }
+}
+
+function makeEmptyImportItem(filePath: string): Item {
+    return {
+        id: 0,
+        path: filePath,
+        title: '',
+        artist: '',
+        album: '',
+        source: 'test',
+        missing_since: null,
+        added: Date.now(),
+        track: null,
+        year: null,
+    } as Item;
 }
 
 export function itemToAlbum(item: Item): Album {

@@ -153,8 +153,15 @@ async function fetchMusicBrainz(recordingId: string): Promise<MusicBrainzRecordi
     });
 }
 
+// In-flight cache so concurrent per-track resolves in the same cluster
+// dedupe to a single network request. Cleared when the promise settles.
+const releaseDetailsInFlight = new Map<string, Promise<MusicBrainzRelease | undefined>>();
+
 async function fetchReleaseDetails(releaseId: string): Promise<MusicBrainzRelease | undefined> {
-    return withRetry(async () => {
+    const cached = releaseDetailsInFlight.get(releaseId);
+    if (cached) return cached;
+
+    const promise = withRetry(async () => {
         // Fetch complete release data including media, tracks, labels, etc.
         const response = await rateLimitedFetch(
             `${BASE_URL}/release/${releaseId}?inc=artist-credits+recordings+release-groups+labels+media&fmt=json`,
@@ -164,7 +171,7 @@ async function fetchReleaseDetails(releaseId: string): Promise<MusicBrainzReleas
         // 404 or other client errors - don't retry, just return undefined
         if (!response.ok) return undefined;
 
-        return await response.json();
+        return await response.json() as MusicBrainzRelease;
     }, {
         maxRetries: 10,
         baseDelay: 1000,
@@ -176,7 +183,12 @@ async function fetchReleaseDetails(releaseId: string): Promise<MusicBrainzReleas
     }).catch((error) => {
         console.debug(`Failed to fetch release details for ${releaseId}: ${error instanceof Error ? error.message : String(error)}`);
         return undefined;
+    }).finally(() => {
+        releaseDetailsInFlight.delete(releaseId);
     });
+
+    releaseDetailsInFlight.set(releaseId, promise);
+    return promise;
 }
 
 async function pickBestRelease(releases: MusicBrainzRelease[], artistId: string): Promise<MusicBrainzRelease | undefined> {
@@ -366,6 +378,234 @@ export async function searchMusicBrainzByText(
 
 import { DataSource } from '../../types';
 import { Item } from '../../../database';
+import { normalizeAlbumString } from '../../../database/normalize';
+
+// === Cluster-level release lookup (Picard "Cluster → Lookup" flow) ===
+
+export interface ClusterReleaseInput {
+    albumartist: string | null;
+    album: string | null;
+    trackCount: number;
+    releaseGroupId?: string | null;
+}
+
+export interface ClusterReleaseResult {
+    mb_albumid: string;
+    mb_releasegroupid: string | null;
+    release: MusicBrainzRelease;
+}
+
+type ReleaseSearchHit = MusicBrainzRelease & {
+    score?: number;
+    'track-count'?: number;
+};
+
+function totalTrackCount(r: MusicBrainzRelease): number {
+    if (!r.media?.length) return 0;
+    return r.media.reduce((sum, m) => sum + (m['track-count'] ?? 0), 0);
+}
+
+async function searchReleasesByArtistAlbum(
+    artist: string,
+    album: string,
+    limit = 25
+): Promise<ReleaseSearchHit[]> {
+    const parts: string[] = [];
+    if (album) parts.push(`release:"${escapeLucene(album)}"`);
+    if (artist) parts.push(`artistname:"${escapeLucene(artist)}"`);
+    if (!parts.length) return [];
+
+    const query = parts.join(' AND ');
+    const url = `${BASE_URL}/release/?query=${encodeURIComponent(query)}&fmt=json&limit=${limit}`;
+
+    try {
+        return await withRetry(async () => {
+            const response = await rateLimitedFetch(url, { headers: { 'User-Agent': USER_AGENT } });
+            if (!response.ok) throw new Error(`MusicBrainz release search ${response.status}`);
+            const data = await response.json();
+            return (data?.releases as ReleaseSearchHit[]) ?? [];
+        }, {
+            maxRetries: 3,
+            baseDelay: 1000,
+            maxDelay: 30000,
+            shouldRetry: isRetryableHttpError,
+        });
+    } catch {
+        return [];
+    }
+}
+
+// Picard-style: given a whole cluster's worth of context, pick one MusicBrainz
+// release that the cluster belongs to. Prefers releases whose track count
+// matches the cluster size, which is what stops a stray single-track lookup
+// from getting matched against a "single" release instead of the album.
+export async function lookupReleaseForCluster(
+    input: ClusterReleaseInput
+): Promise<ClusterReleaseResult | null> {
+    const artist = input.albumartist?.trim() ?? '';
+    const album = input.album?.trim() ?? '';
+
+    if (!album) return null;
+
+    const hits = await searchReleasesByArtistAlbum(artist, album);
+    if (!hits.length) return null;
+
+    const targetCount = input.trackCount;
+    const normAlbum = normalizeAlbumString(album);
+    const normArtist = normalizeAlbumString(artist);
+
+    let best: { hit: ReleaseSearchHit; score: number } | null = null;
+    for (const hit of hits) {
+        let score = hit.score ?? 0; // MB's own 0-100 match score
+
+        const tc = totalTrackCount(hit) || hit['track-count'] || 0;
+        if (tc > 0) {
+            const diff = Math.abs(tc - targetCount);
+            if (diff === 0) score += 40;
+            else if (diff === 1) score += 20;
+            else if (diff <= 2) score += 5;
+            else score -= 20; // discourage releases with wildly different track counts
+        }
+
+        if (hit.status === 'Official') score += 15;
+
+        if (normAlbum && normalizeAlbumString(hit.title) === normAlbum) score += 15;
+
+        if (normArtist) {
+            const hitArtist = hit['artist-credit']?.[0]?.artist.name;
+            if (hitArtist && normalizeAlbumString(hitArtist) === normArtist) score += 15;
+        }
+
+        if (input.releaseGroupId && hit['release-group']?.id === input.releaseGroupId) {
+            score += 25;
+        }
+
+        if (!best || score > best.score) best = { hit, score };
+    }
+
+    // Demand a meaningful match; otherwise the caller should fall back to
+    // per-track lookup so we never regress on cluster-less imports.
+    if (!best || best.score < 70) return null;
+
+    const full = await fetchReleaseDetails(best.hit.id);
+    if (!full) return null;
+
+    return {
+        mb_albumid: full.id,
+        mb_releasegroupid: full['release-group']?.id ?? null,
+        release: full,
+    };
+}
+
+export interface MatchedReleaseTrack {
+    trackId: string;
+    recordingId: string;
+    trackNumber: number;
+    trackTotal: number;
+    discNumber: number;
+    discTotal: number;
+    title: string;
+}
+
+// Map an item (from local tags) to a specific recording inside a release.
+// Tries (disc, track) → track-only → fuzzy title.
+export function matchTrackInRelease(
+    release: MusicBrainzRelease,
+    item: Pick<Item, 'track' | 'disc' | 'title'>
+): MatchedReleaseTrack | null {
+    if (!release.media?.length) return null;
+    const discTotal = release.media.length;
+
+    const buildMatch = (
+        medium: NonNullable<MusicBrainzRelease['media']>[number],
+        track: NonNullable<NonNullable<MusicBrainzRelease['media']>[number]['tracks']>[number]
+    ): MatchedReleaseTrack | null => {
+        if (!track.recording?.id) return null;
+        return {
+            trackId: track.id,
+            recordingId: track.recording.id,
+            trackNumber: track.position,
+            trackTotal: medium['track-count'],
+            discNumber: medium.position,
+            discTotal,
+            title: track.title,
+        };
+    };
+
+    const trackNum = item.track ?? null;
+    const discNum = item.disc ?? null;
+
+    if (trackNum != null && discNum != null) {
+        const medium = release.media.find(m => m.position === discNum);
+        const track = medium?.tracks?.find(
+            t => t.position === trackNum || Number(t.number) === trackNum
+        );
+        if (medium && track) return buildMatch(medium, track);
+    }
+
+    if (trackNum != null) {
+        for (const medium of release.media) {
+            const track = medium.tracks?.find(
+                t => t.position === trackNum || Number(t.number) === trackNum
+            );
+            if (track) return buildMatch(medium, track);
+        }
+    }
+
+    if (item.title) {
+        const wanted = normalizeAlbumString(item.title);
+        for (const medium of release.media) {
+            const track = medium.tracks?.find(t => normalizeAlbumString(t.title) === wanted);
+            if (track) return buildMatch(medium, track);
+        }
+    }
+
+    return null;
+}
+
+// Enrich an item from a release we already chose at cluster level. Mirrors
+// the field mapping done in MusicBrainzSource.getData but driven by a release
+// instead of a recording, so every cluster track gets identical album-level
+// fields and matches the same albums row in writeOrUpdateAlbum.
+export function applyClusterReleaseToItem(
+    item: Item,
+    release: MusicBrainzRelease
+): Item {
+    const albumArtistCredit = release['artist-credit'];
+    const albumArtist = albumArtistCredit?.[0]?.artist.name;
+    const albumArtistIds = albumArtistCredit?.map(a => a.artist.id);
+
+    const labelInfo = release['label-info']?.[0];
+    const label = labelInfo?.label?.name;
+    const catalogNumber = labelInfo?.['catalog-number'];
+
+    const matched = matchTrackInRelease(release, item);
+
+    return {
+        ...item,
+        mb_albumid: release.id || item.mb_albumid,
+        mb_releasegroupid: release['release-group']?.id || item.mb_releasegroupid,
+        mb_albumartistid: albumArtistIds?.[0] || item.mb_albumartistid,
+        mb_albumartistids: albumArtistIds?.join(', ') || item.mb_albumartistids,
+        mb_trackid: matched?.recordingId || item.mb_trackid,
+        mb_releasetrackid: matched?.trackId || item.mb_releasetrackid,
+        title: matched?.title || item.title,
+        track: matched?.trackNumber ?? item.track,
+        tracktotal: matched?.trackTotal ?? item.tracktotal,
+        disc: matched?.discNumber ?? item.disc,
+        disctotal: matched?.discTotal ?? item.disctotal,
+        album: release.title || item.album,
+        albumartist: albumArtist || item.albumartist,
+        year: release.date ? new Date(release.date).getFullYear() : item.year,
+        month: release.date ? new Date(release.date).getMonth() + 1 : item.month,
+        day: release.date ? new Date(release.date).getDate() : item.day,
+        country: release.country || item.country,
+        albumstatus: release.status || item.albumstatus,
+        barcode: release.barcode || item.barcode,
+        catalognum: catalogNumber || item.catalognum,
+        label: label || item.label,
+    };
+}
 
 export class MusicBrainzSource extends DataSource {
     private readonly baseConfidence = 0.85;
@@ -373,6 +613,19 @@ export class MusicBrainzSource extends DataSource {
 
     async getData(item: Item): Promise<Item> {
         try {
+            // Album-anchored short-circuit: if the item already carries an
+            // mb_albumid (from file tags or a cluster seed), fetch the release
+            // and enrich from it. This avoids fingerprint/AcoustID picking a
+            // different release per track and is the path the cluster pipeline
+            // relies on. fetchReleaseDetails is in-flight-cached so concurrent
+            // cluster tracks share one network call.
+            if (item.mb_albumid) {
+                const release = await fetchReleaseDetails(item.mb_albumid);
+                if (release) {
+                    return applyClusterReleaseToItem(item, release);
+                }
+            }
+
             let recording: Recording | null = null;
 
             // Primary path: fingerprint → AcoustID → MusicBrainz. May fail for
