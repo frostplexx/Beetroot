@@ -340,16 +340,27 @@ class Repository {
             if (newFiles.length > 0) {
                 console.log(`Importing: ${newFiles.length} files...`);
 
-                // Pre-filter: check for duplicates before expensive metadata fetching
+                // Pre-filter: check for duplicates in parallel with bounded concurrency
                 const filesToImport: string[] = [];
                 let skippedDuplicates = 0;
 
-                for (const filePath of newFiles) {
-                    const isDuplicate = await checkForDuplicate(filePath);
-                    if (isDuplicate) {
-                        skippedDuplicates++;
-                    } else {
-                        filesToImport.push(filePath);
+                // Process duplicate checks in batches with same concurrency as import
+                for (let i = 0; i < newFiles.length; i += concurrency) {
+                    const batch = newFiles.slice(i, i + concurrency);
+
+                    const duplicateChecks = await Promise.all(
+                        batch.map(async (filePath) => ({
+                            filePath,
+                            isDuplicate: await checkForDuplicate(filePath)
+                        }))
+                    );
+
+                    for (const { filePath, isDuplicate } of duplicateChecks) {
+                        if (isDuplicate) {
+                            skippedDuplicates++;
+                        } else {
+                            filesToImport.push(filePath);
+                        }
                     }
                 }
 
