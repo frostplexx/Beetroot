@@ -1,4 +1,5 @@
 import * as path from "path";
+import { globalConfig } from "../../../config";
 
 export interface ChromaPrintResult {
     duration: number;
@@ -134,10 +135,13 @@ export function getAcoustidFingerprint(filePath: string): Promise<ChromaPrintRes
 ///     console.error(error);
 /// });
 export function acoustIDLookup(fingerprint: string, duration: number): Promise<AcoustIDResponse> {
+    if (!globalConfig.acoustid_api_key) {
+        return Promise.reject(new Error('AcoustID API key not configured'));
+    }
+
     const lookupURL = `https://api.acoustid.org/v2/lookup`;
     const params = new URLSearchParams({
-        // client: process.env.ACOUSTID_API_KEY || "fYNQTpyxjB",
-        client: 'XHzreNgplB',
+        client: globalConfig.acoustid_api_key,
         format: 'json',
         duration: duration.toString(),
         fingerprint: fingerprint,

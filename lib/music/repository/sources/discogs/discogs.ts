@@ -6,23 +6,23 @@ const DISCOGS_BASE_URL = 'https://api.discogs.com';
 const USER_AGENT = 'Beetroot/0.1.0';
 
 // Rate limiting: Discogs allows 60 requests per minute for authenticated requests
-let lastRequestTime = 0;
 const MIN_REQUEST_INTERVAL = 1000; // 1 second to be safe
 
 async function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Promise chain for rate limiting - ensures sequential execution
+let rateLimitChain: Promise<void> = Promise.resolve();
+
 async function rateLimitedFetch(url: string): Promise<Response> {
-    const now = Date.now();
-    const timeSinceLastRequest = now - lastRequestTime;
+    // Chain this request after the previous one
+    const mySlot = rateLimitChain.then(async () => {
+        await sleep(MIN_REQUEST_INTERVAL);
+    });
 
-    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-        const waitTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
-        await sleep(waitTime);
-    }
-
-    lastRequestTime = Date.now();
+    // Update chain for next request
+    rateLimitChain = mySlot;
 
     const headers: Record<string, string> = {
         'User-Agent': USER_AGENT,
@@ -32,6 +32,8 @@ async function rateLimitedFetch(url: string): Promise<Response> {
         headers['Authorization'] = `Discogs token=${globalConfig.discogs_token}`;
     }
 
+    // Wait for our slot, then execute
+    await mySlot;
     return fetch(url, { headers });
 }
 
@@ -74,8 +76,8 @@ export class DiscogsSource extends DataSource {
                 return item;
             }
 
-            // Get detailed release info
-            const details = await this.getReleaseDetails(release.id);
+            // Get detailed release info (use type to determine endpoint)
+            const details = await this.getReleaseDetails(release.id, release.type);
 
             if (!details) {
                 return item;
@@ -118,16 +120,12 @@ export class DiscogsSource extends DataSource {
         }
     }
 
-    private async getReleaseDetails(releaseId: number): Promise<DiscogsRelease | null> {
+    private async getReleaseDetails(releaseId: number, type: string): Promise<DiscogsRelease | null> {
         try {
-            // Try master first, then release
-            let url = `${DISCOGS_BASE_URL}/masters/${releaseId}`;
-            let response = await rateLimitedFetch(url);
-
-            if (!response.ok) {
-                url = `${DISCOGS_BASE_URL}/releases/${releaseId}`;
-                response = await rateLimitedFetch(url);
-            }
+            // Use the correct endpoint based on type from search result
+            const endpoint = type === 'master' ? 'masters' : 'releases';
+            const url = `${DISCOGS_BASE_URL}/${endpoint}/${releaseId}`;
+            const response = await rateLimitedFetch(url);
 
             if (!response.ok) {
                 return null;

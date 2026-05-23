@@ -6,23 +6,26 @@ const USER_AGENT = 'Beetroot/0.1.0 (https://github.com/yourusername/beetroot)';
 // Rate limiting: MusicBrainz allows 1 request per second per IP on average
 // Per their docs: https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting
 // Using 1.5s to be more conservative and avoid rate limit errors
-let lastRequestTime = 0;
 const MIN_REQUEST_INTERVAL = 1500; // 1.5 seconds - more conservative than the required 1s
 
 async function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Promise chain for rate limiting - ensures sequential execution
+let rateLimitChain: Promise<void> = Promise.resolve();
+
 async function rateLimitedFetch(url: string, options?: RequestInit): Promise<Response> {
-    const now = Date.now();
-    const timeSinceLastRequest = now - lastRequestTime;
+    // Chain this request after the previous one
+    const mySlot = rateLimitChain.then(async () => {
+        await sleep(MIN_REQUEST_INTERVAL);
+    });
 
-    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-        const waitTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
-        await sleep(waitTime);
-    }
+    // Update chain for next request
+    rateLimitChain = mySlot;
 
-    lastRequestTime = Date.now();
+    // Wait for our slot, then execute
+    await mySlot;
     return fetch(url, options);
 }
 
@@ -139,6 +142,11 @@ async function fetchMusicBrainz(recordingId: string, retryCount = 0): Promise<Mu
             return fetchMusicBrainz(recordingId, retryCount + 1);
         }
 
+        // 404 means recording doesn't exist - don't retry
+        if (response.status === 404) {
+            throw new Error(`MusicBrainz recording ${recordingId} not found (404)`);
+        }
+
         if (!response.ok) {
             const body = await response.text();
             throw new Error(`MusicBrainz API error ${response.status}: ${body}`);
@@ -146,10 +154,13 @@ async function fetchMusicBrainz(recordingId: string, retryCount = 0): Promise<Mu
 
         return response.json();
     } catch (error) {
-        // Retry on network errors and transient failures
-        if (retryCount < maxRetries) {
+        // Only retry on network errors, not API errors (404, 400, etc.)
+        // API errors have a specific format and should not be retried
+        const isApiError = error instanceof Error && error.message.startsWith('MusicBrainz');
+        if (!isApiError && retryCount < maxRetries) {
+            // Network error - retry with backoff
             const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 120000);
-            console.debug(`Error fetching recording ${recordingId}, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
+            console.debug(`Network error fetching recording ${recordingId}, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
             await sleep(backoffTime);
             return fetchMusicBrainz(recordingId, retryCount + 1);
         }
@@ -176,17 +187,23 @@ async function fetchReleaseDetails(releaseId: string, retryCount = 0): Promise<M
             return fetchReleaseDetails(releaseId, retryCount + 1);
         }
 
+        // 404 or other client errors - don't retry, just return undefined
         if (!response.ok) return undefined;
+
         return await response.json();
     } catch (error) {
-        // Retry on network errors and transient failures
-        if (retryCount < maxRetries) {
+        // Only retry on network errors, not JSON parse errors or other non-network issues
+        // Network errors typically don't have detailed messages
+        const isLikelyNetworkError = error instanceof Error &&
+            (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('ECONNRESET'));
+
+        if (isLikelyNetworkError && retryCount < maxRetries) {
             const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 120000);
-            console.debug(`Error fetching release ${releaseId}, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
+            console.debug(`Network error fetching release ${releaseId}, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
             await sleep(backoffTime);
             return fetchReleaseDetails(releaseId, retryCount + 1);
         }
-        console.debug(`Failed to fetch release details for ${releaseId} after ${maxRetries} retries`);
+        console.debug(`Failed to fetch release details for ${releaseId}: ${error instanceof Error ? error.message : String(error)}`);
         return undefined;
     }
 }

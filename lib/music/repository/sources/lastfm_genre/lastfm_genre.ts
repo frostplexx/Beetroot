@@ -13,9 +13,10 @@ export class LastfmGenreSource extends DataSource {
     private validGenres: string[] | null = null;
 
     async getData(item: Item): Promise<Item> {
-
+        // If API key not configured, skip this source silently
         if (globalConfig.lastfm_api_key === undefined) {
-            throw new Error('LASTFM_API_KEY not set');
+            console.debug('Last.fm API key not configured, skipping genre fetch');
+            return item;
         }
 
         const genres = await this.fetchGenres(item.albumartist || item.artist, item.album);
@@ -61,8 +62,9 @@ export class LastfmGenreSource extends DataSource {
         if (!response.ok) return [];
 
         const data = await response.json();
-        const tags: Array<{ name: string; count: number }> = data.toptags?.tag ?? [];
-
+        // Last.fm returns a single object when there's only one tag, not an array
+        const rawTags = data.toptags?.tag ?? [];
+        const tags: Array<{ name: string; count: number }> = Array.isArray(rawTags) ? rawTags : [rawTags];
 
         // filter anything that isn't in the genres.txt list
         const genres = this.getValidGenres();

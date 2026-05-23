@@ -22,6 +22,7 @@ export default function AlbumCard({ album, className }: { album: Album; classNam
                             alt={`${album.album} by ${album.albumartist}`}
                             className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 rounded-xl shadow-2xl ring-1 ring-white/10"
                             width={400}
+                            loading="eager"
                             height={400}
                         />
                     </ViewTransition>
