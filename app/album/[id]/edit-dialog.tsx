@@ -99,14 +99,18 @@ export function EditDialog({ album, image }: EditDialogProps) {
         }
     }
 
+    const isMissing = album.missing_since != null
+
     return (
         <Dialog open={open} onOpenChange={setOpen}  modal={false}>
             <DialogTrigger asChild>
                 <button
-                    className="p-2 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm hover:bg-white/20 hover:border-white/30 hover:scale-110 active:scale-95 transition-all group"
-                    aria-label="Edit album"
+                    className="p-2 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm hover:bg-white/20 hover:border-white/30 hover:scale-110 active:scale-95 transition-all group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/10 disabled:hover:border-white/20 disabled:hover:scale-100"
+                    aria-label={isMissing ? "Edit unavailable — album files are missing" : "Edit album"}
+                    title={isMissing ? "Album files are missing — edit is unavailable" : undefined}
+                    disabled={isMissing}
                 >
-                    <Pencil className="w-4 h-4 transition-transform group-hover:rotate-12" />
+                    <Pencil className="w-4 h-4 transition-transform group-hover:rotate-12 group-disabled:rotate-0" />
                 </button>
             </DialogTrigger>
             <DialogContent className="!max-w-[calc(100vw-4rem)] max-h-[calc(100vh-4rem)] overflow-y-auto">
