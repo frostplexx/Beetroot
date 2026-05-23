@@ -70,21 +70,11 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
     validItems.sort((a, b) => b.confidence - a.confidence);
 
     // Create a fresh merged result without mutating the input
+    // Note: merged.data cannot be null here since validItems is filtered to data != null
     const merged: T = {
         ...validItems[0],
-        data: validItems[0].data ? { ...validItems[0].data } : null
+        data: { ...validItems[0].data! }
     } as T;
-
-    if (merged.data == null) {
-        console.warn(`Warning: Highest confidence source "${merged.sourceName}" returned null data. Falling back to next source.`);
-        const fallback = validItems[1];
-        if (fallback) {
-            return {
-                ...fallback,
-                data: fallback.data ? { ...fallback.data } : null
-            } as T;
-        }
-    }
 
 
     // Collect all unique keys across all sources
@@ -101,11 +91,6 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
     // First pass: collect all values and detect conflicts
     for (const key of allKeys) {
         if (key === 'path') continue; // Skip path, it's always the same
-
-        if (merged.data == null) {
-            console.warn(`Warning: Merged data is null when processing key "${key}". Skipping.`);
-            continue;
-        }
 
         // Special handling for genres
         if (key === 'genres') {
@@ -132,18 +117,48 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
 
         // Merge based on type
         if (valueType === 'number') {
-            // For numbers: pick by max confidence, fall back to first non-null
-            const sortedByConfidence = [...valuesWithSource].sort((a, b) => b.confidence - a.confidence);
-            merged.data[key] = sortedByConfidence[0].value;
+            // Audio-only fields should always prefer LocalTagsSource (actual file data)
+            const audioOnlyFields = ['length', 'bitrate', 'samplerate', 'bitdepth', 'channels'];
+            if (audioOnlyFields.includes(key)) {
+                // Find LocalTagsSource value
+                const localTagsValue = validItems.find(s => s.sourceName === 'LocalTagsSource')?.data?.[key];
+                if (localTagsValue != null) {
+                    merged.data[key] = localTagsValue;
+                } else {
+                    // Fallback to max confidence if LocalTags doesn't have it
+                    // validItems is already sorted by confidence descending, so just take first
+                    merged.data[key] = valuesWithSource[0].value;
+                }
+            } else {
+                // For other numbers: pick by max confidence
+                // validItems is already sorted by confidence descending, so just take first
+                merged.data[key] = valuesWithSource[0].value;
+            }
+        }
         } else if (valueType === 'boolean') {
             // For booleans: pick by max confidence
-            const sortedByConfidence = [...valuesWithSource].sort((a, b) => b.confidence - a.confidence);
-            merged.data[key] = sortedByConfidence[0].value;
+            // validItems is already sorted by confidence descending, so just take first
+            merged.data[key] = valuesWithSource[0].value;
         } else if (valueType === 'array') {
-            // For arrays: union all values (deduplicate)
-            const allArrayValues = valuesWithSource
-                .flatMap(v => Array.isArray(v.value) ? v.value : []);
-            merged.data[key] = [...new Set(allArrayValues)];
+            // Ordered arrays (credits) should preserve order from highest confidence source
+            // Unordered arrays (genres, styles) can be unioned
+            const orderedArrayFields = [
+                'artists', 'artists_ids', 'albumartists', 'albumartists_ids',
+                'composers', 'composers_ids', 'arrangers', 'arrangers_ids',
+                'lyricists', 'lyricists_ids', 'remixers', 'remixers_ids'
+            ];
+
+            if (orderedArrayFields.includes(key)) {
+                // For ordered arrays: pick the whole array from the highest confidence source
+                // validItems is already sorted by confidence descending, so just take first
+                merged.data[key] = valuesWithSource[0].value;
+            } else {
+                // For unordered arrays: union all values from sources with confidence >= 0.65
+                const filteredValues = valuesWithSource.filter(v => v.confidence >= 0.65);
+                const allArrayValues = filteredValues
+                    .flatMap(v => Array.isArray(v.value) ? v.value : []);
+                merged.data[key] = [...new Set(allArrayValues)];
+            }
         } else if (valueType === 'string') {
             // For strings: use the existing conflict detection logic
             const stringValues = valuesWithSource
@@ -170,11 +185,12 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
 
             if (isLongTextField || firstStringValue.length > 500) {
                 // Skip similarity check, pick by confidence
-                const sortedByConfidence = [...valuesWithSource]
-                    .filter(v => typeof v.value === 'string' && (v.value as string).trim() !== '')
-                    .sort((a, b) => b.confidence - a.confidence);
-                if (sortedByConfidence.length > 0) {
-                    merged.data[key] = sortedByConfidence[0].value;
+                // valuesWithSource is derived from validItems which is already sorted by confidence
+                const firstNonEmpty = valuesWithSource.find(v =>
+                    typeof v.value === 'string' && (v.value as string).trim() !== ''
+                );
+                if (firstNonEmpty) {
+                    merged.data[key] = firstNonEmpty.value;
                 }
                 continue;
             }
@@ -199,17 +215,18 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
                 conflictKeys.add(key);
             } else {
                 // Similar enough, pick highest confidence
-                const sortedByConfidence = [...valuesWithSource]
-                    .filter(v => typeof v.value === 'string' && (v.value as string).trim() !== '')
-                    .sort((a, b) => b.confidence - a.confidence);
-                if (sortedByConfidence.length > 0) {
-                    merged.data[key] = sortedByConfidence[0].value;
+                // valuesWithSource is derived from validItems which is already sorted by confidence
+                const firstNonEmpty = valuesWithSource.find(v =>
+                    typeof v.value === 'string' && (v.value as string).trim() !== ''
+                );
+                if (firstNonEmpty) {
+                    merged.data[key] = firstNonEmpty.value;
                 }
             }
         } else {
             // For other types (objects, etc.), pick by max confidence
-            const sortedByConfidence = [...valuesWithSource].sort((a, b) => b.confidence - a.confidence);
-            merged.data[key] = sortedByConfidence[0].value;
+            // validItems is already sorted by confidence descending, so just take first
+            merged.data[key] = valuesWithSource[0].value;
         }
     }
 
