@@ -106,34 +106,39 @@ function findDuplicates(): DuplicateGroup[] {
         for (const r of rows) seen.add(r.id);
     }
 
-    // Pass 3: fold "Unknown Album" rows into a named sibling by the same artist.
-    // - If exactly one named album exists for an artist with unknown rows, merge
-    //   all the unknowns into it.
-    // - If no named sibling exists but multiple unknowns share an artist, collapse
-    //   them into a single canonical unknown row.
-    // - If multiple named siblings exist, the fold is ambiguous and we leave the
-    //   unknown row alone (user can merge manually).
-    const unknownsByArtist = new Map<string, AlbumRow[]>();
-    const namedByArtist = new Map<string, AlbumRow[]>();
+    // Pass 3: fold "Unknown Album" rows into a named sibling by the same
+    // (artist, year). Year is required because users frequently own multiple
+    // albums by the same artist, and matching on artist alone misattributes
+    // tracks (e.g. a Slipknot "Left Behind" / "I Am Hated" track does not
+    // belong on Iowa just because it's tagged "Slipknot").
+    // - If exactly one named album exists at (artist, year) with unknown rows
+    //   sharing the same (artist, year), merge those unknowns into it.
+    // - If no named sibling at (artist, year) and 2+ unknowns share (artist,
+    //   year), consolidate them into a single canonical unknown row.
+    // - If multiple named siblings share (artist, year) the fold is ambiguous
+    //   and we leave the unknowns alone.
+    const unknownsByArtistYear = new Map<string, AlbumRow[]>();
+    const namedByArtistYear = new Map<string, AlbumRow[]>();
     for (const row of all) {
         if (seen.has(row.id)) continue;
         if (!row.albumartist_normalized) continue;
-        const bucket = isUnknown(row) ? unknownsByArtist : namedByArtist;
-        if (!bucket.has(row.albumartist_normalized)) bucket.set(row.albumartist_normalized, []);
-        bucket.get(row.albumartist_normalized)!.push(row);
+        const key = `${row.albumartist_normalized}|${row.year ?? ''}`;
+        const bucket = isUnknown(row) ? unknownsByArtistYear : namedByArtistYear;
+        if (!bucket.has(key)) bucket.set(key, []);
+        bucket.get(key)!.push(row);
     }
 
-    for (const [artist, unknowns] of unknownsByArtist) {
-        const named = namedByArtist.get(artist) ?? [];
+    for (const [key, unknowns] of unknownsByArtistYear) {
+        const named = namedByArtistYear.get(key) ?? [];
         if (named.length === 1) {
             const canonical = named[0];
-            const key = `fold:${canonical.id}`;
-            groups.set(key, [canonical, ...unknowns]);
+            const groupKey = `fold:${canonical.id}`;
+            groups.set(groupKey, [canonical, ...unknowns]);
             seen.add(canonical.id);
             for (const u of unknowns) seen.add(u.id);
         } else if (named.length === 0 && unknowns.length >= 2) {
-            const key = `fold:unknowns@${artist}`;
-            groups.set(key, unknowns);
+            const groupKey = `fold:unknowns@${key}`;
+            groups.set(groupKey, unknowns);
             for (const u of unknowns) seen.add(u.id);
         }
     }
