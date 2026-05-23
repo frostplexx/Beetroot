@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const SCROLL_STORAGE_KEY = "library-scroll";
 import AlbumCard from "@/components/album_card";
+import { AlbumContextMenu } from "@/components/album-context-menu";
 import { Album } from "@/lib/music/database/albums";
 import { useLibrarySync } from "@/hooks/use-library-sync";
 import { Disc3, ChevronLeft, ChevronRight } from "lucide-react";
@@ -136,7 +137,9 @@ export default function Library() {
 
             <div className="grid w-full gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                 {albums.map(album => (
-                    <AlbumCard key={album.id} album={album} />
+                    <AlbumContextMenu key={album.id} album={album}>
+                        <AlbumCard album={album} />
+                    </AlbumContextMenu>
                 ))}
             </div>
 

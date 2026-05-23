@@ -75,7 +75,7 @@ export function SongsDataTable<TData, TValue>({
                     }
                     className="max-w-sm bg-white/10 border-white/20 placeholder:text-white/40"
                 />
-                <DropdownMenu modal={false}>
+                <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="outline" className="ml-auto shrink-0 bg-white/10 border-white/20 hover:bg-white/20 data-[state=open]:bg-white/20">
                             <Settings2 className="mr-2 h-4 w-4" />

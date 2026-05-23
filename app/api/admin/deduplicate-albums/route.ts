@@ -30,6 +30,7 @@ type MergeReport = {
     albumsMerged: number;
     itemsReassigned: number;
     namesRestored: number;
+    itemDuplicatesRemoved: number;
     groups: Array<{
         key: string;
         canonicalId: number;
@@ -208,6 +209,101 @@ function executeMerge(groups: DuplicateGroup[]): { itemsReassigned: number; albu
     return { itemsReassigned, albumsMerged };
 }
 
+type ItemDupRow = {
+    id: number;
+    track: number | null;
+    disc: number | null;
+    title: string | null;
+    mb_trackid: string | null;
+    file_hash: string | null;
+    added: number;
+};
+
+// Collapse multiple items pointing at the same logical track inside one album.
+// Groups by (track, disc) when a track number is present, otherwise by
+// normalized title. Picks a canonical row (prefer mb_trackid > file_hash >
+// oldest added) and deletes the rest. Files on disk are not touched — the
+// next reconcile will see them as new and the in-import duplicate check
+// will refuse to re-insert them.
+function dedupeItemsWithinAlbums(): number {
+    const albums = db.prepare(
+        'SELECT DISTINCT album_id FROM items WHERE album_id IS NOT NULL'
+    ).all() as Array<{ album_id: number }>;
+
+    const fetchItems = db.prepare(`
+        SELECT id, track, disc, title, mb_trackid, file_hash, added
+        FROM items
+        WHERE album_id = ?
+    `);
+    const deleteItem = db.prepare('DELETE FROM items WHERE id = ?');
+
+    let deleted = 0;
+
+    for (const { album_id } of albums) {
+        const items = fetchItems.all(album_id) as ItemDupRow[];
+        const buckets = new Map<string, ItemDupRow[]>();
+
+        for (const it of items) {
+            const key =
+                it.track != null
+                    ? `td:${it.track}|${it.disc ?? ''}`
+                    : it.title
+                        ? `t:${it.title.toLowerCase().trim()}`
+                        : null;
+            if (!key) continue;
+            const arr = buckets.get(key);
+            if (arr) arr.push(it);
+            else buckets.set(key, [it]);
+        }
+
+        for (const group of buckets.values()) {
+            if (group.length < 2) continue;
+            const canonical = [...group].sort((a, b) => {
+                if ((a.mb_trackid != null) !== (b.mb_trackid != null)) {
+                    return a.mb_trackid != null ? -1 : 1;
+                }
+                if ((a.file_hash != null) !== (b.file_hash != null)) {
+                    return a.file_hash != null ? -1 : 1;
+                }
+                return a.added - b.added;
+            })[0];
+
+            for (const it of group) {
+                if (it.id === canonical.id) continue;
+                deleteItem.run(it.id);
+                deleted++;
+            }
+        }
+    }
+
+    return deleted;
+}
+
+function countItemDuplicates(): number {
+    // Dry-run counter mirroring dedupeItemsWithinAlbums' grouping logic.
+    const rows = db.prepare(`
+        SELECT album_id, track, disc, title FROM items
+        WHERE album_id IS NOT NULL
+    `).all() as Array<{ album_id: number; track: number | null; disc: number | null; title: string | null }>;
+
+    const buckets = new Map<string, number>();
+    for (const r of rows) {
+        const key =
+            r.track != null
+                ? `${r.album_id}|td|${r.track}|${r.disc ?? ''}`
+                : r.title
+                    ? `${r.album_id}|t|${r.title.toLowerCase().trim()}`
+                    : null;
+        if (!key) continue;
+        buckets.set(key, (buckets.get(key) ?? 0) + 1);
+    }
+    let extras = 0;
+    for (const count of buckets.values()) {
+        if (count > 1) extras += count - 1;
+    }
+    return extras;
+}
+
 async function runDedup(dryRun: boolean): Promise<MergeReport> {
     const groups = findDuplicates();
 
@@ -217,6 +313,7 @@ async function runDedup(dryRun: boolean): Promise<MergeReport> {
         albumsMerged: 0,
         itemsReassigned: 0,
         namesRestored: 0,
+        itemDuplicatesRemoved: 0,
         groups: groups.map(g => {
             const canon = g.albums.find(a => a.id === g.canonicalId)!;
             return {
@@ -231,13 +328,19 @@ async function runDedup(dryRun: boolean): Promise<MergeReport> {
         }),
     };
 
-    if (dryRun) return report;
+    if (dryRun) {
+        report.itemDuplicatesRemoved = countItemDuplicates();
+        return report;
+    }
 
     db.transaction(() => {
         const merge = executeMerge(groups);
         report.albumsMerged = merge.albumsMerged;
         report.itemsReassigned = merge.itemsReassigned;
         report.namesRestored = restoreNames();
+        // Run item dedup AFTER album merging so reassigned items get
+        // collapsed with their new siblings in one pass.
+        report.itemDuplicatesRemoved = dedupeItemsWithinAlbums();
     })();
 
     return report;

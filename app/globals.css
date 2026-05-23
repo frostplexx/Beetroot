@@ -126,8 +126,8 @@
   }
   html {
     @apply font-sans;
-    overflow-y: scroll;
   }
+
 
   /* Custom scrollbar styling */
   ::-webkit-scrollbar {
