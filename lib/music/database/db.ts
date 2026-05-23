@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite"
 import { globalConfig } from "../../config"
+import { normalizeAlbumString } from "./normalize"
 import * as fs from "fs"
 import * as path from "path"
 
@@ -22,6 +23,9 @@ function initializeDatabase(dbPath: string): Database {
     if (!dbExists || !hasRequiredTables(db)) {
         createSchema(db)
     }
+
+    // Run migrations for existing databases
+    runMigrations(db)
 
     return db
 }
@@ -86,7 +90,9 @@ function createSchema(db: Database): void {
             style TEXT,
             year INTEGER,
             added REAL,
-            missing_since REAL
+            missing_since REAL,
+            album_normalized TEXT,
+            albumartist_normalized TEXT
         );
 
         -- Items (tracks) table
@@ -253,6 +259,7 @@ function createSchema(db: Database): void {
         CREATE INDEX IF NOT EXISTS album_albumartist ON albums(albumartist);
         CREATE INDEX IF NOT EXISTS album_added ON albums(added);
         CREATE INDEX IF NOT EXISTS album_mb_albumid ON albums(mb_albumid);
+        CREATE INDEX IF NOT EXISTS idx_album_normalized ON albums(album_normalized, albumartist_normalized, year);
 
         -- Indices for items
         CREATE INDEX IF NOT EXISTS idx_item_album_id ON items(album_id);
@@ -278,6 +285,58 @@ function createSchema(db: Database): void {
     `)
 
     console.log("Database schema created successfully")
+}
+
+function runMigrations(db: Database): void {
+    // Migration: Add normalized columns to albums table
+    const migrationName = 'add_album_normalized_columns';
+    const existing = db.prepare(
+        'SELECT 1 FROM migrations WHERE name = ? AND table_name = ?'
+    ).get(migrationName, 'albums');
+
+    if (!existing) {
+        console.log('Running migration: add normalized columns to albums...');
+
+        // Check if columns already exist (in case schema was just created)
+        const tableInfo = db.prepare('PRAGMA table_info(albums)').all() as Array<{ name: string }>;
+        const hasNormalizedColumns = tableInfo.some(col => col.name === 'album_normalized');
+
+        if (!hasNormalizedColumns) {
+            // Add columns
+            db.run('ALTER TABLE albums ADD COLUMN album_normalized TEXT');
+            db.run('ALTER TABLE albums ADD COLUMN albumartist_normalized TEXT');
+
+            // Create index
+            db.run('CREATE INDEX IF NOT EXISTS idx_album_normalized ON albums(album_normalized, albumartist_normalized, year)');
+        }
+
+        // Backfill NULL album names with 'Unknown Album'
+        db.run("UPDATE albums SET album = 'Unknown Album' WHERE album IS NULL OR album = ''");
+
+        // Backfill normalized values for existing albums
+        const albums = db.prepare('SELECT id, album, albumartist FROM albums').all() as Array<{
+            id: number;
+            album: string | null;
+            albumartist: string | null;
+        }>;
+
+        const updateStmt = db.prepare(
+            'UPDATE albums SET album_normalized = ?, albumartist_normalized = ? WHERE id = ?'
+        );
+
+        for (const album of albums) {
+            updateStmt.run(
+                normalizeAlbumString(album.album),
+                normalizeAlbumString(album.albumartist),
+                album.id
+            );
+        }
+
+        // Record migration
+        db.run('INSERT INTO migrations (name, table_name) VALUES (?, ?)', migrationName, 'albums');
+
+        console.log(`Migration complete: backfilled ${albums.length} albums with normalized values`);
+    }
 }
 
 // Ensure the database directory exists

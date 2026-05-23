@@ -1,5 +1,6 @@
 import db from "./db"
 import { decodeRows, decodeRow } from "./utils"
+import { normalizeAlbumString } from "./normalize"
 
 // Cache for schema introspection - loaded once on first use
 let validAlbumsColumns: Set<string> | null = null;
@@ -204,25 +205,30 @@ export function writeOrUpdateAlbum(album: Album): number {
         // Get valid columns from schema (cached)
         const validColumns = getValidAlbumsColumns();
 
-        // Check if album exists - prefer mb_albumid, fallback to album+albumartist+year
+        // Normalize album and artist names for matching
+        const normalizedAlbum = normalizeAlbumString(album.album);
+        const normalizedArtist = normalizeAlbumString(album.albumartist);
+
+        // Check if album exists - prefer mb_albumid, fallback to normalized matching
         let existing: { id: number; mb_albumid: string | null } | undefined
         if (album.mb_albumid) {
             existing = db.prepare('SELECT id, mb_albumid FROM albums WHERE mb_albumid = ?').get(album.mb_albumid) as { id: number; mb_albumid: string | null } | undefined
         }
-        if (!existing) {
-            // NULL-safe comparison for album, albumartist, and year to reduce false positives
-            // Year is included to distinguish re-releases and compilations
+        if (!existing && normalizedAlbum) {
+            // Use normalized matching to prevent duplicates
+            // Album name is now required, so no NULL check needed for album_normalized
             existing = db.prepare(`
                 SELECT id, mb_albumid FROM albums
-                WHERE (album IS NULL AND ? IS NULL OR album = ?)
-                  AND (albumartist IS NULL AND ? IS NULL OR albumartist = ?)
+                WHERE album_normalized = ?
+                  AND (albumartist_normalized IS NULL AND ? IS NULL
+                       OR albumartist_normalized = ?)
                   AND (year IS NULL AND ? IS NULL OR year = ?)
-            `).get(album.album, album.album, album.albumartist, album.albumartist, album.year, album.year) as { id: number; mb_albumid: string | null } | undefined
+            `).get(normalizedAlbum, normalizedArtist, normalizedArtist, album.year, album.year) as { id: number; mb_albumid: string | null } | undefined
 
             // Warn if we're potentially merging albums with different mb_albumids
             if (existing && existing.mb_albumid && album.mb_albumid && existing.mb_albumid !== album.mb_albumid) {
                 console.warn(
-                    `Album match by (album, albumartist, year) but mb_albumid differs: ` +
+                    `Album match by normalized name but mb_albumid differs: ` +
                     `existing=${existing.mb_albumid}, new=${album.mb_albumid}, ` +
                     `album="${album.album}", artist="${album.albumartist}", year=${album.year}`
                 );
@@ -235,6 +241,15 @@ export function writeOrUpdateAlbum(album: Album): number {
             if (validColumns.has(key)) {
                 dbAlbum[key] = (album as any)[key]
             }
+        }
+
+        // Add normalized values for duplicate prevention
+        dbAlbum.album_normalized = normalizedAlbum;
+        dbAlbum.albumartist_normalized = normalizedArtist;
+
+        // Ensure album name is not NULL (use 'Unknown Album' as fallback)
+        if (!dbAlbum.album) {
+            dbAlbum.album = 'Unknown Album';
         }
 
         // D4: artpath is now TEXT, no Buffer conversion needed
