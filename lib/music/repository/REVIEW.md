@@ -32,9 +32,18 @@ The following issues from the review remain and should be addressed in future it
 **High Priority (FIXED)**:
 - ✅ [B2-B13, B15]: Source bugs resolved (rate limiting, retry logic, API keys, date parsing, etc.)
 
+**High Priority (FIXED)**:
+- ✅ [R3]: MusicBrainzSource enrichment leak eliminated
+- ✅ [R4]: Dead code checking for merged.error removed
+- ✅ [R5]: N+1 query for album_id eliminated
+- ✅ [R6]: Duplicate-check pre-filter parallelized
+- ✅ [R7]: Silent 1000-album cap on missing artwork removed
+- ✅ [R10]: Album matching improved to prevent incorrect merges
+- ✅ [R12]: getAllItemPaths filter pushed into SQL
+- ✅ [R15]: Singleton pattern simplified
+
 **High Priority (remaining)**:
 - [B14]: Shared retry helper (deferred - requires larger refactoring)
-- [R3-R15]: Repository issues (N+1 queries, sequential pre-filter, etc.)
 - [W3]: Use format-specific tag writers instead of ffmpeg (performance)
 - [C1-C8]: Cover art issues (races, overwrites, etc.)
 - [D2-D7]: Database layer inefficiencies
