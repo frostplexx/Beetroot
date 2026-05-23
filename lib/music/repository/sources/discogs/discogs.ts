@@ -1,6 +1,7 @@
 import { globalConfig } from "../../../../config";
 import { DataSource } from "../../types";
 import { Item } from "../../../database";
+import { withRetry, isRetryableHttpError } from "../../utils/retry";
 
 const DISCOGS_BASE_URL = 'https://api.discogs.com';
 const USER_AGENT = 'Beetroot/0.1.0';
@@ -99,14 +100,14 @@ export class DiscogsSource extends DataSource {
     }
 
     private async searchRelease(artist: string, album: string): Promise<DiscogsSearchResult | null> {
-        try {
+        return withRetry(async () => {
             const query = encodeURIComponent(`${artist} ${album}`);
             const url = `${DISCOGS_BASE_URL}/database/search?q=${query}&type=release&per_page=5`;
 
             const response = await rateLimitedFetch(url);
 
             if (!response.ok) {
-                return null;
+                throw new Error(`Discogs API error ${response.status}: ${await response.text()}`);
             }
 
             const data = await response.json();
@@ -114,28 +115,36 @@ export class DiscogsSource extends DataSource {
 
             // Return the first master or release result
             return results.find(r => r.type === 'master' || r.type === 'release') || null;
-        } catch (error) {
+        }, {
+            maxRetries: 5,
+            baseDelay: 1000,
+            shouldRetry: isRetryableHttpError,
+        }).catch((error) => {
             console.debug('Discogs search failed:', error);
             return null;
-        }
+        });
     }
 
     private async getReleaseDetails(releaseId: number, type: string): Promise<DiscogsRelease | null> {
-        try {
+        return withRetry(async () => {
             // Use the correct endpoint based on type from search result
             const endpoint = type === 'master' ? 'masters' : 'releases';
             const url = `${DISCOGS_BASE_URL}/${endpoint}/${releaseId}`;
             const response = await rateLimitedFetch(url);
 
             if (!response.ok) {
-                return null;
+                throw new Error(`Discogs API error ${response.status}: ${await response.text()}`);
             }
 
             return await response.json();
-        } catch (error) {
+        }, {
+            maxRetries: 5,
+            baseDelay: 1000,
+            shouldRetry: isRetryableHttpError,
+        }).catch((error) => {
             console.debug('Discogs release details failed:', error);
             return null;
-        }
+        });
     }
 
     private mergeGenres(existing: string[] | null, genres?: string[], styles?: string[]): string[] {

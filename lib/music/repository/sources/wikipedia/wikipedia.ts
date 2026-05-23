@@ -1,5 +1,6 @@
 import { DataSource } from "../../types";
 import { Item } from "../../../database";
+import { withRetry, isRetryableHttpError } from "../../utils/retry";
 
 const WIKIPEDIA_API_URL = 'https://en.wikipedia.org/w/api.php';
 const WIKIDATA_API_URL = 'https://www.wikidata.org/w/api.php';
@@ -78,12 +79,17 @@ export class WikipediaSource extends DataSource {
     }
 
     private async findWikidataId(artist: string, album: string): Promise<string | null> {
-        try {
+        return withRetry(async () => {
             // Search Wikipedia for the album
             const searchQuery = encodeURIComponent(`${album} ${artist} album`);
             const searchUrl = `${WIKIPEDIA_API_URL}?action=query&list=search&srsearch=${searchQuery}&format=json&origin=*`;
 
             const searchResponse = await fetch(searchUrl);
+
+            if (!searchResponse.ok) {
+                throw new Error(`Wikipedia API error ${searchResponse.status}: ${await searchResponse.text()}`);
+            }
+
             const searchData = await searchResponse.json();
 
             if (!searchData.query?.search?.length) {
@@ -95,6 +101,11 @@ export class WikipediaSource extends DataSource {
             // Get Wikidata ID from Wikipedia page
             const wikidataUrl = `${WIKIPEDIA_API_URL}?action=query&titles=${encodeURIComponent(pageTitle)}&prop=pageprops&format=json&origin=*`;
             const wikidataResponse = await fetch(wikidataUrl);
+
+            if (!wikidataResponse.ok) {
+                throw new Error(`Wikipedia API error ${wikidataResponse.status}: ${await wikidataResponse.text()}`);
+            }
+
             const wikidataData = await wikidataResponse.json();
 
             const pages = wikidataData.query?.pages;
@@ -102,23 +113,36 @@ export class WikipediaSource extends DataSource {
 
             const page = Object.values(pages)[0] as any;
             return page?.pageprops?.wikibase_item || null;
-        } catch (error) {
+        }, {
+            maxRetries: 2,
+            baseDelay: 1000,
+            shouldRetry: isRetryableHttpError,
+        }).catch((error) => {
             console.debug('Wikipedia search failed:', error);
             return null;
-        }
+        });
     }
 
     private async getWikidataEntity(wikidataId: string): Promise<WikidataEntity | null> {
-        try {
+        return withRetry(async () => {
             const url = `${WIKIDATA_API_URL}?action=wbgetentities&ids=${wikidataId}&format=json&origin=*`;
             const response = await fetch(url);
+
+            if (!response.ok) {
+                throw new Error(`Wikidata API error ${response.status}: ${await response.text()}`);
+            }
+
             const data = await response.json();
 
             return data.entities?.[wikidataId] || null;
-        } catch (error) {
+        }, {
+            maxRetries: 2,
+            baseDelay: 1000,
+            shouldRetry: isRetryableHttpError,
+        }).catch((error) => {
             console.debug('Wikidata fetch failed:', error);
             return null;
-        }
+        });
     }
 
     private async extractGenres(entity: WikidataEntity): Promise<string[]> {
@@ -138,9 +162,14 @@ export class WikipediaSource extends DataSource {
         }
 
         // Batch fetch all genre labels in one request (Wikidata supports up to 50 IDs)
-        try {
+        return withRetry(async () => {
             const url = `${WIKIDATA_API_URL}?action=wbgetentities&ids=${genreIds.join('|')}&format=json&origin=*`;
             const response = await fetch(url);
+
+            if (!response.ok) {
+                throw new Error(`Wikidata API error ${response.status}: ${await response.text()}`);
+            }
+
             const data = await response.json();
 
             // Extract labels from all entities (keep original casing)
@@ -150,11 +179,16 @@ export class WikipediaSource extends DataSource {
                     genres.push(genreLabel); // Keep original casing - let merger handle normalization
                 }
             }
-        } catch (error) {
-            console.debug('Failed to fetch genre labels:', error);
-        }
 
-        return genres;
+            return genres;
+        }, {
+            maxRetries: 2,
+            baseDelay: 1000,
+            shouldRetry: isRetryableHttpError,
+        }).catch((error) => {
+            console.debug('Failed to fetch genre labels:', error);
+            return genres;
+        });
     }
 
     private extractYear(entity: WikidataEntity): number | null {

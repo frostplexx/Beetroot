@@ -1,6 +1,7 @@
 import { globalConfig } from "../../../../config";
 import { DataSource } from "../../types";
 import { Item } from "../../../database";
+import { withRetry, isRetryableHttpError } from "../../utils/retry";
 import * as fs from 'fs';
 import path from "path";
 
@@ -48,29 +49,40 @@ export class LastfmGenreSource extends DataSource {
         if (!globalConfig.lastfm_api_key) throw new Error('LASTFM_API_KEY not set');
         if (!artistName) return [];
 
-        const params = new URLSearchParams({
-            method: 'album.getTopTags',
-            artist: artistName,
-            album: albumTitle,
-            api_key: globalConfig.lastfm_api_key,
-            format: 'json',
-            autocorrect: '1',
+        return withRetry(async () => {
+            const params = new URLSearchParams({
+                method: 'album.getTopTags',
+                artist: artistName,
+                album: albumTitle,
+                api_key: globalConfig.lastfm_api_key!,
+                format: 'json',
+                autocorrect: '1',
+            });
+
+            const response = await fetch(`${LASTFM_BASE_URL}/?${params}`);
+
+            if (!response.ok) {
+                throw new Error(`Last.fm API error ${response.status}: ${await response.text()}`);
+            }
+
+            const data = await response.json();
+            // Last.fm returns a single object when there's only one tag, not an array
+            const rawTags = data.toptags?.tag ?? [];
+            const tags: Array<{ name: string; count: number }> = Array.isArray(rawTags) ? rawTags : [rawTags];
+
+            // filter anything that isn't in the genres.txt list
+            const genres = this.getValidGenres();
+            return tags
+                .map(t => t.name)
+                .filter(t => genres.includes(t.toLocaleLowerCase()));
+        }, {
+            maxRetries: 3,
+            baseDelay: 1000,
+            shouldRetry: isRetryableHttpError,
+        }).catch((error) => {
+            console.debug('Last.fm genre fetch failed:', error);
+            return [];
         });
-
-        const response = await fetch(`${LASTFM_BASE_URL}/?${params}`);
-
-        if (!response.ok) return [];
-
-        const data = await response.json();
-        // Last.fm returns a single object when there's only one tag, not an array
-        const rawTags = data.toptags?.tag ?? [];
-        const tags: Array<{ name: string; count: number }> = Array.isArray(rawTags) ? rawTags : [rawTags];
-
-        // filter anything that isn't in the genres.txt list
-        const genres = this.getValidGenres();
-        return tags
-            .map(t => t.name)
-            .filter(t => genres.includes(t.toLocaleLowerCase()));
     }
 }
 

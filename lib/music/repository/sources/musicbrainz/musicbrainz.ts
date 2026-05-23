@@ -1,4 +1,5 @@
 import { acoustIDLookup, AcoustIDResult, getAcoustidFingerprint } from "./acoustid";
+import { withRetry, isRetryableHttpError } from "../../utils/retry";
 
 const BASE_URL = 'https://musicbrainz.org/ws/2';
 const USER_AGENT = 'Beetroot/0.1.0 (https://github.com/yourusername/beetroot)';
@@ -122,25 +123,13 @@ export interface Recording {
     filePath: string;
 }
 
-async function fetchMusicBrainz(recordingId: string, retryCount = 0): Promise<MusicBrainzRecording> {
-    const maxRetries = 10;
-
-    try {
+async function fetchMusicBrainz(recordingId: string): Promise<MusicBrainzRecording> {
+    return withRetry(async () => {
         // Fetch recording data with minimal release info for picking best release
         const response = await rateLimitedFetch(
             `${BASE_URL}/recording/${recordingId}?inc=artists+releases+release-groups+isrcs&fmt=json`,
             { headers: { 'User-Agent': USER_AGENT } }
         );
-
-        // Retry on server errors (5xx) and rate limits (429, 503)
-        const shouldRetry = response.status >= 500 || response.status === 429 || response.status === 503;
-        if (shouldRetry && retryCount < maxRetries) {
-            // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 64s, up to 120s max
-            const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 120000);
-            console.debug(`MusicBrainz ${response.status} error, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
-            await sleep(backoffTime);
-            return fetchMusicBrainz(recordingId, retryCount + 1);
-        }
 
         // 404 means recording doesn't exist - don't retry
         if (response.status === 404) {
@@ -153,59 +142,41 @@ async function fetchMusicBrainz(recordingId: string, retryCount = 0): Promise<Mu
         }
 
         return response.json();
-    } catch (error) {
-        // Only retry on network errors, not API errors (404, 400, etc.)
-        // API errors have a specific format and should not be retried
-        const isApiError = error instanceof Error && error.message.startsWith('MusicBrainz');
-        if (!isApiError && retryCount < maxRetries) {
-            // Network error - retry with backoff
-            const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 120000);
-            console.debug(`Network error fetching recording ${recordingId}, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
-            await sleep(backoffTime);
-            return fetchMusicBrainz(recordingId, retryCount + 1);
-        }
-        throw error;
-    }
+    }, {
+        maxRetries: 10,
+        baseDelay: 1000,
+        maxDelay: 120000,
+        shouldRetry: isRetryableHttpError,
+        onRetry: (error, attempt) => {
+            console.debug(`MusicBrainz error, retrying (attempt ${attempt}/10): ${error.message}`);
+        },
+    });
 }
 
-async function fetchReleaseDetails(releaseId: string, retryCount = 0): Promise<MusicBrainzRelease | undefined> {
-    const maxRetries = 10;
-
-    try {
+async function fetchReleaseDetails(releaseId: string): Promise<MusicBrainzRelease | undefined> {
+    return withRetry(async () => {
         // Fetch complete release data including media, tracks, labels, etc.
         const response = await rateLimitedFetch(
             `${BASE_URL}/release/${releaseId}?inc=artist-credits+recordings+release-groups+labels+media&fmt=json`,
             { headers: { 'User-Agent': USER_AGENT } }
         );
 
-        // Retry on server errors (5xx) and rate limits (429, 503)
-        const shouldRetry = response.status >= 500 || response.status === 429 || response.status === 503;
-        if (shouldRetry && retryCount < maxRetries) {
-            const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 120000);
-            console.debug(`MusicBrainz ${response.status} error fetching release, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
-            await sleep(backoffTime);
-            return fetchReleaseDetails(releaseId, retryCount + 1);
-        }
-
         // 404 or other client errors - don't retry, just return undefined
         if (!response.ok) return undefined;
 
         return await response.json();
-    } catch (error) {
-        // Only retry on network errors, not JSON parse errors or other non-network issues
-        // Network errors typically don't have detailed messages
-        const isLikelyNetworkError = error instanceof Error &&
-            (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('ECONNRESET'));
-
-        if (isLikelyNetworkError && retryCount < maxRetries) {
-            const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 120000);
-            console.debug(`Network error fetching release ${releaseId}, retrying in ${backoffTime}ms (attempt ${retryCount + 1}/${maxRetries})...`);
-            await sleep(backoffTime);
-            return fetchReleaseDetails(releaseId, retryCount + 1);
-        }
+    }, {
+        maxRetries: 10,
+        baseDelay: 1000,
+        maxDelay: 120000,
+        shouldRetry: isRetryableHttpError,
+        onRetry: (error, attempt) => {
+            console.debug(`MusicBrainz error fetching release, retrying (attempt ${attempt}/10): ${error.message}`);
+        },
+    }).catch((error) => {
         console.debug(`Failed to fetch release details for ${releaseId}: ${error instanceof Error ? error.message : String(error)}`);
         return undefined;
-    }
+    });
 }
 
 async function pickBestRelease(releases: MusicBrainzRelease[], artistId: string): Promise<MusicBrainzRelease | undefined> {

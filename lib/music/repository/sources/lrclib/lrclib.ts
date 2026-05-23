@@ -1,5 +1,6 @@
 import { DataSource } from '../../types';
 import { Item } from '../../../database';
+import { withRetry, isRetryableHttpError } from '../../utils/retry';
 
 const BASE_URL = 'https://lrclib.net/api';
 
@@ -15,7 +16,7 @@ interface LrclibResponse {
 }
 
 async function fetchLyrics(track: string, artist: string, album?: string, duration?: number): Promise<LrclibResponse | null> {
-    try {
+    return withRetry(async () => {
         const params = new URLSearchParams({
             track_name: track,
             artist_name: artist,
@@ -36,19 +37,24 @@ async function fetchLyrics(track: string, artist: string, album?: string, durati
             },
         });
 
+        if (response.status === 404) {
+            // No lyrics found - not an error
+            return null;
+        }
+
         if (!response.ok) {
-            if (response.status === 404) {
-                // No lyrics found
-                return null;
-            }
             throw new Error(`Lrclib API error ${response.status}: ${await response.text()}`);
         }
 
         return await response.json();
-    } catch (error) {
+    }, {
+        maxRetries: 2,
+        baseDelay: 500,
+        shouldRetry: isRetryableHttpError,
+    }).catch((error) => {
         console.debug(`Lrclib lookup failed:`, error);
         return null;
-    }
+    });
 }
 
 export class LrclibSource extends DataSource {
