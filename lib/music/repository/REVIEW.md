@@ -15,10 +15,8 @@ This document is written for **Sonnet 4.5** to act on. Each finding has:
 
 The following issues from the review remain and should be addressed in future iterations:
 
-**Critical (deferred)**:
-- [R1]: adoptItem atomicity (requires transaction + stage-then-commit file moves)
-
 **Critical (FIXED)**:
+- ✅ [R1]: adoptItem atomicity implemented with stage-then-commit + DB rollback
 - ✅ [NEW-M14]: length field now prefers LocalTagsSource (audio file) over MusicBrainz
 - ✅ [NEW-R16 + NEW-D8]: album `added` timestamp preserved on updates
 
@@ -57,14 +55,13 @@ See individual sections below for full details on remaining issues.
 
 ## TL;DR (action-ordered top hits)
 
-1. **`adoptItem` is not atomic** — writeback / move / DB writes have no rollback; a crash leaves a file moved with no row, or tags edited with no row. See [R1].
-2. **Sources return `Item` on failure** — the SourceResult contract makes "no data" indistinguishable from "real data" for the merger. Move to `Result<Partial<Item>, Error>`. See [T1] and [Arch‑1].
-3. **`reconcile-service` loses watcher events while a reconcile is running** — debounced trigger fires, `isReconciling` guard drops it, no requeue. See [S1].
-4. **Module-level rate-limit state is racy across `Promise.all`**. Both MusicBrainz and Discogs share this bug. See [B2].
-5. **`_resolveItem` checks for `merged.error` but `mergeData` never sets it**. See [R4].
-6. **Reconcile Step 3 does an N+1 query on `getItemById`**. See [R5].
-7. **Duplicate-check pre-filter is sequential, not parallel**. See [R6].
-8. **`getAlbumsWithMissingArtwork()` silently caps at 1000**. See [R7].
+1. **Sources return `Item` on failure** — the SourceResult contract makes "no data" indistinguishable from "real data" for the merger. Move to `Result<Partial<Item>, Error>`. See [T1] and [Arch‑1].
+2. **`reconcile-service` loses watcher events while a reconcile is running** — debounced trigger fires, `isReconciling` guard drops it, no requeue. See [S1].
+3. **Module-level rate-limit state is racy across `Promise.all`**. Both MusicBrainz and Discogs share this bug. See [B2].
+4. **`_resolveItem` checks for `merged.error` but `mergeData` never sets it**. See [R4].
+5. **Reconcile Step 3 does an N+1 query on `getItemById`**. See [R5].
+6. **Duplicate-check pre-filter is sequential, not parallel**. See [R6].
+7. **`getAlbumsWithMissingArtwork()` silently caps at 1000**. See [R7].
 
 ---
 
