@@ -33,18 +33,51 @@ interface CoverArtSource {
 
 /**
  * Fetch image from URL and return as Buffer
+ * Includes timeout (15s) and size limit (5MB) to prevent abuse
  */
 async function fetchImageFromUrl(url: string): Promise<Buffer | null> {
+    const TIMEOUT_MS = 15_000;
+    const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+
     try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            console.debug(`Image fetch failed: ${url} (${response.status})`);
-            return null;
+        // Create AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+        try {
+            const response = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                console.debug(`Image fetch failed: ${url} (${response.status})`);
+                return null;
+            }
+
+            // Check content length if available
+            const contentLength = response.headers.get('content-length');
+            if (contentLength && parseInt(contentLength) > MAX_SIZE_BYTES) {
+                console.debug(`Image too large: ${url} (${contentLength} bytes)`);
+                return null;
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+
+            // Verify size after download
+            if (arrayBuffer.byteLength > MAX_SIZE_BYTES) {
+                console.debug(`Image too large after download: ${url} (${arrayBuffer.byteLength} bytes)`);
+                return null;
+            }
+
+            return Buffer.from(arrayBuffer);
+        } finally {
+            clearTimeout(timeoutId);
         }
-        const arrayBuffer = await response.arrayBuffer();
-        return Buffer.from(arrayBuffer);
     } catch (error) {
-        console.debug(`Image fetch error: ${url} - ${error instanceof Error ? error.message : String(error)}`);
+        if (error instanceof Error && error.name === 'AbortError') {
+            console.debug(`Image fetch timeout: ${url}`);
+        } else {
+            console.debug(`Image fetch error: ${url} - ${error instanceof Error ? error.message : String(error)}`);
+        }
         return null;
     }
 }
