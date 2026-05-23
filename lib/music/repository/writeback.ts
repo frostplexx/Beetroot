@@ -214,7 +214,14 @@ export async function writeBackItem(item: Item, mode: WriteBackMode): Promise<vo
 
 // == File moving logic
 
-export function moveItem(item: Item): boolean {
+/**
+ * Compute the target path for an item based on the path template in config.
+ * This is a pure function with no side effects - it only computes the path.
+ *
+ * @param item The item to compute the path for
+ * @returns The canonical path where the item should be located
+ */
+export function computeTargetPath(item: Item): string {
     // Extract file extension (e.g. "mp3") for later reattachment
     const ext = item.path.split('.').pop()!;
 
@@ -225,7 +232,6 @@ export function moveItem(item: Item): boolean {
         .replace("~", process.env.HOME || '')  // ensure music_directory ends with '/' and expand ~ to home dir;
 
     // vars available to path template: $albumartist, $album, $track, $title (extend as needed)
-    // TODO: make this dynamic?
     const result = clean_music_path + evaluate(nodes, {
         albumartist: item.albumartist || 'Unknown Artist',
         album: item.album || 'Unknown Album',
@@ -236,11 +242,17 @@ export function moveItem(item: Item): boolean {
         .replace(/\s+\./g, '.') // Remove spaces before extensions
         .concat('.' + ext);  // add file extension back on;
 
-    // Only move file if the evaluated path is different from current path
-    const shouldMove = item.path !== result;
+    return result;
+}
 
-    if (shouldMove && moveFile(item.path, result)) {
-        item.path = result;  // Update item path after successful move
+export function moveItem(item: Item): boolean {
+    const targetPath = computeTargetPath(item);
+
+    // Only move file if the evaluated path is different from current path
+    const shouldMove = item.path !== targetPath;
+
+    if (shouldMove && moveFile(item.path, targetPath)) {
+        item.path = targetPath;  // Update item path after successful move
         return true;
     }
     return false;

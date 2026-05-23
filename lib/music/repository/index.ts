@@ -8,13 +8,30 @@ import { ReplayGain } from "./sources/replaygain";
 import { DataSource, ReconcileProgress, ReconcileResult, SourceResult } from "./types";
 import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, deleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById, checkAndUpdateAlbumMissingStatus, getItemById } from "../database";
 import { mergeData } from "./merger";
-import { writeBackItem, moveItem, moveFile } from "./writeback";
+import { writeBackItem, moveItem, moveFile, computeTargetPath } from "./writeback";
 import { globalConfig } from "../../config";
 import fsPromises from 'fs/promises';
 import { enumerateMusicFilesStream } from "../utils/enumerate";
 import { computeFileHashIfEnabled } from "../utils/hash";
 import { handleCoverArt } from "./coverart";
 import { checkForDuplicate } from "./duplicate-check";
+import db from "../database/db";
+
+
+/**
+ * Custom error class for adoption failures with phase tracking
+ */
+class AdoptionError extends Error {
+    constructor(
+        message: string,
+        public readonly phase: 'tags' | 'hash' | 'db' | 'move' | 'rollback' | 'cover',
+        public readonly retryable: boolean,
+        public readonly itemPath: string
+    ) {
+        super(message);
+        this.name = 'AdoptionError';
+    }
+}
 
 
 class Repository {
@@ -73,31 +90,104 @@ class Repository {
     }
 
 
+    /**
+     * Atomically adopt an item into the library with proper rollback on failure.
+     *
+     * Strategy: Stage-then-commit
+     * 1. Write tags (atomic via temp+rename)
+     * 2. Compute target path (pure function)
+     * 3. Compute hash at current location
+     * 4. Write to DB with TARGET path (transaction)
+     * 5. Move file to target path
+     * 6. On move failure: rollback DB
+     * 7. Handle cover art (best effort)
+     */
     async adoptItem(item: Item): Promise<void> {
+        let dbCommitted = false;
+        let itemId: number | undefined;
+        let albumId: number | undefined;
+        const originalPath = item.path;
+
         try {
-            // 1. Write tags to file (will throw on error)
+            // Phase 1: Write tags (atomic via temp+rename)
             await writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only');
 
-            // 2. Move file if needed (separate step)
-            moveItem(item);
+            // Phase 2: Compute target path (pure function, cannot fail)
+            const targetPath = computeTargetPath(item);
 
-            // 3. Compute file hash AFTER writeback and move (so hash matches final on-disk file)
+            // Phase 3: Compute hash at original location (read-only)
             if (globalConfig.compute_file_hash) {
-                item.file_hash = await computeFileHashIfEnabled(item.path, true) || undefined;
+                item.file_hash = await computeFileHashIfEnabled(originalPath, true) || undefined;
             }
 
-            // 4. Write item to DB (creates/updates album)
-            const albumId = this.writeItemToDB(item);
+            // Phase 4: Atomic DB transaction with TARGET path
+            const album = this.itemToAlbum(item);
+            const result = db.transaction(() => {
+                const aId = writeOrUpdateAlbum(album);
+                item.album_id = aId;
+                item.path = targetPath; // CRITICAL: Write target path, not current
+                const { id } = writeOrUpdateItem(item);
+                return { albumId: aId, itemId: id };
+            })();
 
-            // 5. Handle cover art at album level
-            const album = getAlbumById(albumId);
-            if (album && !album.artpath) {
-                await handleCoverArt(album);
+            dbCommitted = true;
+            itemId = result.itemId;
+            albumId = result.albumId;
+
+            // Phase 5: Move file (only if target differs from original)
+            if (originalPath !== targetPath) {
+                const moved = moveFile(originalPath, targetPath);
+                if (!moved) {
+                    throw new AdoptionError(
+                        `File move failed: ${originalPath} → ${targetPath}`,
+                        'move',
+                        true,
+                        originalPath
+                    );
+                }
             }
+
+            // Update in-memory path to match DB
+            item.path = targetPath;
+
+            // Phase 6: Cover art (best effort, non-blocking)
+            if (albumId) {
+                const albumRecord = getAlbumById(albumId);
+                if (albumRecord && !albumRecord.artpath) {
+                    await handleCoverArt(albumRecord).catch(err => {
+                        console.warn(`Cover art failed for album ${albumId}:`, err);
+                    });
+                }
+            }
+
         } catch (error) {
-            // Log the error and re-throw to abort import
-            console.error(`Adopt failed: ${item.path} - ${error instanceof Error ? error.message : String(error)}`);
-            throw error;
+            // Rollback DB if file move failed after DB commit
+            if (dbCommitted && itemId) {
+                console.error(`Adoption failed after DB commit, rolling back item ${itemId}`);
+                try {
+                    db.transaction(() => {
+                        deleteItemFromDB(itemId!);
+                    })();
+                    console.log(`Rollback successful: removed item ${itemId} from database`);
+                } catch (rollbackError) {
+                    console.error('CRITICAL: DB rollback failed', {
+                        itemId,
+                        originalPath,
+                        rollbackError
+                    });
+                    // TODO: Log to monitoring system for manual intervention
+                }
+            }
+
+            // Re-throw as AdoptionError for better error tracking
+            throw error instanceof AdoptionError
+                ? error
+                : new AdoptionError(
+                      error instanceof Error ? error.message : String(error),
+                      'unknown',
+                      false,
+                      originalPath
+                  );
         }
     }
 
