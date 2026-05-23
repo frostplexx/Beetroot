@@ -35,8 +35,6 @@ class AdoptionError extends Error {
 
 
 class Repository {
-    private static instance: Repository;
-
     private readonly dataSources: DataSource[] = [
         new LocalTagsSource(),      // confidence: 0.6
         new MusicBrainzSource(),    // confidence: 0.85 (adjusted by AcoustID score)
@@ -47,15 +45,7 @@ class Repository {
         new ReplayGain(),           // confidence: 0.9 (calculated from audio)
     ];
 
-    private constructor() {
-    }
-
-    // Singleton pattern
-    static getInstance(): Repository {
-        if (!Repository.instance) {
-            Repository.instance = new Repository();
-        }
-        return Repository.instance;
+    constructor() {
     }
 
     // == Public functions
@@ -639,6 +629,5 @@ class Repository {
 
 }
 
-export default Repository.getInstance();
-
-
+// Export a single instance (singleton)
+export default new Repository();
