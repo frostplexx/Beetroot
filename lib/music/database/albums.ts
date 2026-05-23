@@ -394,3 +394,38 @@ export function updateAlbumArtpath(albumId: number, artpath: string): void {
         throw error
     }
 }
+
+// Unconditionally overwrite the supplied album fields. Use this for explicit
+// user edits — [[writeOrUpdateAlbum]] is fill-NULLs-only and will silently
+// drop changes to columns that already hold a value.
+export function updateAlbumFields(albumId: number, fields: Partial<Album>): void {
+    const validColumns = getValidAlbumsColumns();
+    const cols: string[] = [];
+    const values: unknown[] = [];
+
+    for (const [key, value] of Object.entries(fields)) {
+        if (key === 'id' || key === 'added') continue;
+        if (!validColumns.has(key)) continue;
+        cols.push(key);
+        values.push(value);
+
+        if (key === 'album' && validColumns.has('album_normalized')) {
+            cols.push('album_normalized');
+            values.push(normalizeAlbumString(value as string) || 'unknownalbum');
+        }
+        if (key === 'albumartist' && validColumns.has('albumartist_normalized')) {
+            cols.push('albumartist_normalized');
+            values.push(normalizeAlbumString(value as string));
+        }
+    }
+
+    if (cols.length === 0) return;
+
+    try {
+        const setClause = cols.map(c => `${c} = ?`).join(', ');
+        db.prepare(`UPDATE albums SET ${setClause} WHERE id = ?`).run(...values, albumId);
+    } catch (error) {
+        console.error('Error updating album fields:', error);
+        throw error;
+    }
+}

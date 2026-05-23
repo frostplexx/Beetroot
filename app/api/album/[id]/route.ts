@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getAlbumById, writeOrUpdateAlbum } from "@/lib/music/database/albums"
+import { getAlbumById, updateAlbumFields } from "@/lib/music/database/albums"
 import { getItemsByAlbum, batchUpdateItems } from "@/lib/music/database/items"
 import { writeBackItem } from "@/lib/music/repository/writeback"
 import { globalConfig } from "@/lib/config"
@@ -108,8 +108,18 @@ export async function PATCH(
             }
         }
 
-        // Save album to database
-        writeOrUpdateAlbum(album)
+        // Save album to database. Use updateAlbumFields (not writeOrUpdateAlbum)
+        // because this is an explicit user edit — writeOrUpdateAlbum is
+        // fill-NULLs-only and would silently drop overwrites of existing values.
+        updateAlbumFields(album.id, {
+            album: album.album,
+            albumartist: album.albumartist,
+            year: album.year,
+            country: album.country,
+            label: album.label,
+            genres: album.genres,
+            artpath: album.artpath,
+        })
 
         // Propagate changes to all tracks
         const items = getItemsByAlbum(albumId)

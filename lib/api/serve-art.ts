@@ -40,7 +40,10 @@ const CONTENT_TYPE_BY_EXT: Record<string, string> = {
 function baseHeaders(contentType: string, etag: string, mtimeMs: number) {
     return {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=31536000, immutable",
+        // No `immutable` — art bytes can be replaced via the edit dialog. The
+        // browser still uses the cache for normal navigation, but revalidates
+        // via ETag on explicit reload so freshly-saved art shows up.
+        "Cache-Control": "public, max-age=31536000",
         "ETag": etag,
         "Last-Modified": new Date(mtimeMs).toUTCString(),
         "Access-Control-Allow-Origin": "*",
@@ -95,7 +98,7 @@ export async function serveArtFromPath(
     if (ifNoneMatch && ifNoneMatch === etag) {
         return new NextResponse(null, {
             status: 304,
-            headers: { ETag: etag, "Cache-Control": "public, max-age=31536000, immutable" },
+            headers: { ETag: etag, "Cache-Control": "public, max-age=31536000" },
         })
     }
 
