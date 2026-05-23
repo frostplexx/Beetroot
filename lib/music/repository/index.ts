@@ -485,26 +485,31 @@ class Repository {
      * Fetch data from all sources in parallel when possible.
      * Sources run sequentially until we have base metadata (artist + album),
      * then remaining sources run in parallel.
+     *
+     * IMPORTANT: All sources operate on the ORIGINAL item to avoid circular evidence.
+     * The merger combines results based on confidence, not sequential enrichment.
      */
     private async fetchFromAllSources(item: Item): Promise<SourceResult[]> {
         const results: SourceResult[] = [];
-        let enrichedItem = { ...item };
+        const originalItem = { ...item };
 
         // Check if we have minimal metadata needed for other sources
-        const hasMinimalMetadata = (item: Item): boolean => {
-            return !!(item.artist && item.album);
+        const hasMinimalMetadata = (): boolean => {
+            // Check if any source has provided minimal metadata
+            return results.some(r => r.data?.artist && r.data?.album);
         };
 
         let remainingSources = [...this.dataSources];
 
         // Run sources sequentially until we have base metadata
-        while (!hasMinimalMetadata(enrichedItem) && remainingSources.length > 0) {
+        while (!hasMinimalMetadata() && remainingSources.length > 0) {
             const source = remainingSources.shift()!;
             const startTime = Date.now();
             const sourceName = source.constructor.name;
 
             try {
-                const data = await source.getData({ ...enrichedItem });
+                // Always call on original item, never enriched
+                const data = await source.getData({ ...originalItem });
                 const duration = Date.now() - startTime;
 
                 results.push({
@@ -513,8 +518,6 @@ class Repository {
                     data,
                     duration,
                 });
-
-                enrichedItem = data;
             } catch (error) {
                 const duration = Date.now() - startTime;
 
@@ -528,14 +531,15 @@ class Repository {
             }
         }
 
-        // Run remaining sources in parallel with the enriched metadata
+        // Run remaining sources in parallel on the original item
         if (remainingSources.length > 0) {
             const sourcePromises = remainingSources.map(async (source) => {
                 const startTime = Date.now();
                 const sourceName = source.constructor.name;
 
                 try {
-                    const data = await source.getData({ ...enrichedItem });
+                    // Always call on original item, never enriched
+                    const data = await source.getData({ ...originalItem });
                     const duration = Date.now() - startTime;
 
                     return {
