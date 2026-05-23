@@ -1,6 +1,6 @@
 "use client"
 
-import { Library, Search, Upload, MoreHorizontal, Bell } from "lucide-react"
+import { Library, Search, Upload, MoreHorizontal, Bell, Wrench } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
@@ -94,6 +94,14 @@ export default function Navigation() {
                                             <button className="w-full text-left px-3 py-2 rounded-md text-sm text-white/70 hover:text-white hover:bg-white/10 transition-all">
                                                 Scan Files
                                             </button>
+                                            <Link
+                                                href="/admin"
+                                                onClick={() => setToolsOpen(false)}
+                                                className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-white/70 hover:text-white hover:bg-white/10 transition-all"
+                                            >
+                                                <Wrench className="w-4 h-4" />
+                                                Maintenance
+                                            </Link>
                                         </div>
                                     )}
                                 </div>
