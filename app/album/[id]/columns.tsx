@@ -2,7 +2,7 @@
 
 import { Item } from "@/lib/music/database"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Play, Info } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Play, Info, FileQuestion } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
     DropdownMenu,
@@ -46,6 +46,24 @@ export const columns: ColumnDef<Item>[] = [
                     Title
                     <ArrowUpDown className="ml-2 h-3 w-3" />
                 </Button>
+            )
+        },
+        cell: ({ row, getValue }) => {
+            const title = getValue<string>()
+            const missing = row.original.missing_since != null
+            return (
+                <div className="flex items-center gap-2">
+                    <span>{title}</span>
+                    {missing && (
+                        <span
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-red-400/70"
+                            title="File missing from disk"
+                        >
+                            <FileQuestion className="w-3 h-3" />
+                            missing
+                        </span>
+                    )}
+                </div>
             )
         },
     },

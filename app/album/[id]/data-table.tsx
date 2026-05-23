@@ -127,20 +127,24 @@ export function SongsDataTable<TData, TValue>({
                     </TableHeader>
                     <TableBody>
                         {table.getRowModel().rows?.length ? (
-                            table.getRowModel().rows.map((row) => (
-                                <SongContextMenu key={row.id} item={row.original as Item}>
-                                    <TableRow
-                                        data-state={row.getIsSelected() && "selected"}
-                                        className="border-white/10 hover:bg-white/5 data-[state=open]:bg-white/10"
-                                    >
-                                        {row.getVisibleCells().map((cell) => (
-                                            <TableCell key={cell.id}>
-                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                            </TableCell>
-                                        ))}
-                                    </TableRow>
-                                </SongContextMenu>
-                            ))
+                            table.getRowModel().rows.map((row) => {
+                                const item = row.original as Item
+                                const missing = item.missing_since != null
+                                return (
+                                    <SongContextMenu key={row.id} item={item}>
+                                        <TableRow
+                                            data-state={row.getIsSelected() && "selected"}
+                                            className={`border-white/10 hover:bg-white/5 data-[state=open]:bg-white/10 ${missing ? "text-white/40" : ""}`}
+                                        >
+                                            {row.getVisibleCells().map((cell) => (
+                                                <TableCell key={cell.id}>
+                                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                                </TableCell>
+                                            ))}
+                                        </TableRow>
+                                    </SongContextMenu>
+                                )
+                            })
                         ) : (
                             <TableRow>
                                 <TableCell colSpan={columns.length} className="h-24 text-center text-white/60">
