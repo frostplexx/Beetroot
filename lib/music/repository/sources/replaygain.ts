@@ -2,18 +2,8 @@ import { Item } from "../../database";
 import { DataSource } from "../types";
 import { spawn } from "child_process";
 
-// Dynamic import for ffmpeg-static since it's a CommonJS module
-let ffmpegPath: string | null = null;
-
-async function getFFmpegPath(): Promise<string> {
-    if (ffmpegPath) return ffmpegPath;
-    const ffmpegStatic = await import("ffmpeg-static");
-    ffmpegPath = ffmpegStatic.default;
-    if (!ffmpegPath) {
-        throw new Error("FFmpeg binary not found. Please ensure ffmpeg-static is installed.");
-    }
-    return ffmpegPath;
-}
+// Use system ffmpeg - assumes ffmpeg is installed and in PATH
+const FFMPEG_BIN = 'ffmpeg';
 
 interface FFmpegAnalysisResult {
     r128_track_gain?: number;
@@ -25,8 +15,6 @@ interface FFmpegAnalysisResult {
  * Analyze audio file using FFmpeg's ebur128 filter to get ReplayGain data
  */
 async function analyzeAudioFile(filePath: string): Promise<FFmpegAnalysisResult> {
-    const ffmpeg = await getFFmpegPath();
-
     return new Promise((resolve, reject) => {
         const args = [
             "-i", filePath,
@@ -35,7 +23,7 @@ async function analyzeAudioFile(filePath: string): Promise<FFmpegAnalysisResult>
             "-"
         ];
 
-        const process = spawn(ffmpeg, args);
+        const process = spawn(FFMPEG_BIN, args);
 
         // Set timeout to prevent hung ffmpeg processes
         const timer = setTimeout(() => {

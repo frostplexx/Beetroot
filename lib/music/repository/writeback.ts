@@ -9,30 +9,8 @@ const execFileAsync = promisify(execFile);
 
 export type WriteBackMode = 'always' | 'never' | 'missing-only';
 
-// Get ffmpeg path - resolve relative to project root for Next.js compatibility
-function getFfmpegPath(): string {
-    // Try to use ffmpeg-static if available
-    try {
-        const ffmpegStatic = require('ffmpeg-static');
-        // If it's a valid absolute path, use it
-        if (typeof ffmpegStatic === 'string' && path.isAbsolute(ffmpegStatic) && fs.existsSync(ffmpegStatic)) {
-            return ffmpegStatic;
-        }
-    } catch (e) {
-        // ffmpeg-static not available
-    }
-
-    // Fallback: resolve relative to project root
-    const projectRoot = process.cwd();
-    const ffmpegPath = path.join(projectRoot, 'node_modules/ffmpeg-static/ffmpeg');
-
-    if (fs.existsSync(ffmpegPath)) {
-        return ffmpegPath;
-    }
-
-    // Last resort: try system ffmpeg
-    return 'ffmpeg';
-}
+// Use system ffmpeg - assumes ffmpeg is installed and in PATH
+const FFMPEG_BIN = 'ffmpeg';
 
 
 
@@ -136,13 +114,6 @@ function buildMetadataArgs(item: Item): string[] {
 }
 
 async function writeTags(filePath: string, item: Item): Promise<boolean> {
-    const ffmpegPath = getFfmpegPath();
-
-    if (!ffmpegPath) {
-        console.error('ffmpeg not found');
-        return false;
-    }
-
     // Use same extension as original file so ffmpeg can detect format
     const ext = filePath.substring(filePath.lastIndexOf('.'));
     const tempPath = filePath + '.writing' + ext;
@@ -159,7 +130,7 @@ async function writeTags(filePath: string, item: Item): Promise<boolean> {
             tempPath                  // Output to temp file
         ];
 
-        await execFileAsync(ffmpegPath, args, {
+        await execFileAsync(FFMPEG_BIN, args, {
             maxBuffer: 10 * 1024 * 1024,
             timeout: 60_000,  // 60s timeout for metadata-only rewrite
             killSignal: 'SIGKILL'

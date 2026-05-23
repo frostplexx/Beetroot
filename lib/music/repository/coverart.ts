@@ -5,26 +5,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { globalConfig } from "../../config";
 
-// Get ffmpeg path - resolve relative to project root for Next.js compatibility
-function getFfmpegPath(): string {
-    try {
-        const ffmpegStatic = require('ffmpeg-static');
-        if (typeof ffmpegStatic === 'string' && path.isAbsolute(ffmpegStatic) && fs.existsSync(ffmpegStatic)) {
-            return ffmpegStatic;
-        }
-    } catch (e) {
-        // ffmpeg-static not available
-    }
-
-    const projectRoot = process.cwd();
-    const ffmpegPath = path.join(projectRoot, 'node_modules/ffmpeg-static/ffmpeg');
-
-    if (fs.existsSync(ffmpegPath)) {
-        return ffmpegPath;
-    }
-
-    return 'ffmpeg';
-}
+// Use system ffmpeg - assumes ffmpeg is installed and in PATH
+const FFMPEG_BIN = 'ffmpeg';
 
 // Per-album lock to prevent concurrent cover art operations on same album
 const albumLocks = new Map<number, Promise<void>>();
@@ -277,13 +259,6 @@ async function extractEmbeddedCoverArt(filePath: string): Promise<{ hasArt: bool
  * Strip embedded cover art from file using ffmpeg
  */
 function stripEmbeddedCoverArt(filePath: string): boolean {
-    const ffmpegPath = getFfmpegPath();
-
-    if (!ffmpegPath) {
-        console.error('ffmpeg not found - install ffmpeg to strip embedded artwork');
-        return false;
-    }
-
     const ext = path.extname(filePath);
     const tempPath = filePath + '.stripping' + ext;
 
@@ -299,7 +274,7 @@ function stripEmbeddedCoverArt(filePath: string): boolean {
             tempPath
         ];
 
-        execFileSync(ffmpegPath, args, { stdio: 'pipe' });
+        execFileSync(FFMPEG_BIN, args, { stdio: 'pipe' });
 
         // Replace original with stripped version
         fs.renameSync(tempPath, filePath);
