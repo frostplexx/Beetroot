@@ -141,8 +141,9 @@ export class DiscogsSource extends DataSource {
     private mergeGenres(existing: string[] | null, genres?: string[], styles?: string[]): string[] {
         const merged = new Set<string>(existing || []);
 
-        genres?.forEach(g => merged.add(g.toLowerCase()));
-        styles?.forEach(s => merged.add(s.toLowerCase()));
+        // Keep original casing - let merger handle normalization
+        genres?.forEach(g => merged.add(g));
+        styles?.forEach(s => merged.add(s));
 
         return Array.from(merged);
     }

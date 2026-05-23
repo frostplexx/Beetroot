@@ -128,23 +128,30 @@ export class WikipediaSource extends DataSource {
             return genres;
         }
 
-        for (const claim of entity.claims.P136) {
-            const genreId = claim.mainsnak.datavalue?.value.id;
-            if (!genreId) continue;
+        // Collect all genre IDs first
+        const genreIds = entity.claims.P136
+            .map(claim => claim.mainsnak.datavalue?.value.id)
+            .filter((id): id is string => !!id);
 
-            // Fetch genre label
-            try {
-                const url = `${WIKIDATA_API_URL}?action=wbgetentities&ids=${genreId}&format=json&origin=*`;
-                const response = await fetch(url);
-                const data = await response.json();
+        if (genreIds.length === 0) {
+            return genres;
+        }
 
+        // Batch fetch all genre labels in one request (Wikidata supports up to 50 IDs)
+        try {
+            const url = `${WIKIDATA_API_URL}?action=wbgetentities&ids=${genreIds.join('|')}&format=json&origin=*`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            // Extract labels from all entities (keep original casing)
+            for (const genreId of genreIds) {
                 const genreLabel = data.entities?.[genreId]?.labels?.en?.value;
                 if (genreLabel) {
-                    genres.push(genreLabel.toLowerCase());
+                    genres.push(genreLabel); // Keep original casing - let merger handle normalization
                 }
-            } catch (error) {
-                console.debug('Failed to fetch genre label:', error);
             }
+        } catch (error) {
+            console.debug('Failed to fetch genre labels:', error);
         }
 
         return genres;
@@ -164,6 +171,7 @@ export class WikipediaSource extends DataSource {
 
     private mergeGenres(existing: string[] | null, newGenres: string[]): string[] {
         const merged = new Set<string>(existing || []);
+        // Keep original casing - let merger handle normalization
         newGenres.forEach(g => merged.add(g));
         return Array.from(merged);
     }

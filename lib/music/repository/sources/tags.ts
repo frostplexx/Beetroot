@@ -26,12 +26,12 @@ export class LocalTagsSource extends DataSource {
 
         return {
             ...item,
-            // Basic metadata
-            title: common.title || item.title,
-            artist: common.artist || item.artist,
-            artists: common.artists?.join(', ') || item.artists,
-            album: common.album || item.album,
-            albumartist: common.albumartist || item.albumartist,
+            // Basic metadata (use ?? for nullish coalescing - empty string is valid)
+            title: common.title ?? item.title,
+            artist: common.artist ?? item.artist,
+            artists: common.artists?.join(', ') ?? item.artists,
+            album: common.album ?? item.album,
+            albumartist: common.albumartist ?? item.albumartist,
 
             // Track info
             track: common.track?.no ?? item.track,
@@ -39,13 +39,10 @@ export class LocalTagsSource extends DataSource {
             disc: common.disk?.no ?? item.disc,
             disctotal: common.disk?.of ?? item.disctotal,
 
-            // Dates
+            // Dates (validate to avoid NaN from invalid date strings)
             year: common.year ?? item.year,
-            month: common.date ? new Date(common.date).getMonth() + 1 : item.month,
-            day: common.date ? new Date(common.date).getDate() : item.day,
-            original_year: common.originaldate ? new Date(common.originaldate).getFullYear() : item.original_year,
-            original_month: common.originaldate ? new Date(common.originaldate).getMonth() + 1 : item.original_month,
-            original_day: common.originaldate ? new Date(common.originaldate).getDate() : item.original_day,
+            ...this.parseDate(common.date, item),
+            ...this.parseOriginalDate(common.originaldate, item),
 
             // Additional metadata
             genres: common.genre || item.genres,
@@ -87,6 +84,51 @@ export class LocalTagsSource extends DataSource {
             // Media
             media: common.media || item.media,
             catalognum: common.catalognumber?.join(', ') || item.catalognum,
+        };
+    }
+
+    private parseDate(dateString: string | undefined, item: Item): { month?: number; day?: number } {
+        if (!dateString) return { month: item.month, day: item.day };
+
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) {
+            // Invalid date string
+            return { month: item.month, day: item.day };
+        }
+
+        return {
+            month: date.getMonth() + 1,
+            day: date.getDate()
+        };
+    }
+
+    private parseOriginalDate(dateString: string | undefined, item: Item): {
+        original_year?: number;
+        original_month?: number;
+        original_day?: number;
+    } {
+        if (!dateString) {
+            return {
+                original_year: item.original_year,
+                original_month: item.original_month,
+                original_day: item.original_day
+            };
+        }
+
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) {
+            // Invalid date string
+            return {
+                original_year: item.original_year,
+                original_month: item.original_month,
+                original_day: item.original_day
+            };
+        }
+
+        return {
+            original_year: date.getFullYear(),
+            original_month: date.getMonth() + 1,
+            original_day: date.getDate()
         };
     }
 }

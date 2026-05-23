@@ -211,8 +211,19 @@ async function fetchReleaseDetails(releaseId: string, retryCount = 0): Promise<M
 async function pickBestRelease(releases: MusicBrainzRelease[], artistId: string): Promise<MusicBrainzRelease | undefined> {
     if (!releases?.length) return undefined;
 
-    const pool = releases.filter(r => r.status === 'Official');
-    const candidates = pool.length ? pool : releases;
+    // Filter by artist if artistId is provided and available
+    let filtered = releases;
+    if (artistId) {
+        const matchingArtist = releases.filter(r =>
+            r['artist-credit']?.some(c => c.artist.id === artistId)
+        );
+        if (matchingArtist.length > 0) {
+            filtered = matchingArtist;
+        }
+    }
+
+    const pool = filtered.filter(r => r.status === 'Official');
+    const candidates = pool.length ? pool : filtered;
 
     // Prefer country-specific releases over worldwide
     // US first (most common in MusicBrainz), then other major markets, then worldwide

@@ -57,19 +57,9 @@ export function getAcoustidFingerprint(filePath: string): Promise<ChromaPrintRes
     return new Promise((resolve, reject) => {
         const { spawn } = require('child_process');
 
-        // Try to find fpcalc in multiple locations
-        let fpcalcPath = 'fpcalc'; // Try global first
-
-        // If __dirname is available and looks valid, use relative path
-        if (typeof __dirname !== 'undefined' && __dirname && !__dirname.includes('/ROOT')) {
-            // Go up from sources/musicbrainz to lib/music/binaries
-            const binDir = path.join(__dirname, '..', '..', '..', 'binaries');
-            fpcalcPath = `${binDir}/chromaprint/fpcalc`;
-        } else {
-            // Fallback to absolute path from project root
-            const projectRoot = process.cwd();
-            fpcalcPath = path.join(projectRoot, 'lib', 'music', 'binaries', 'chromaprint', 'fpcalc');
-        }
+        // Try to find fpcalc - prefer bundled binary from project root
+        const projectRoot = process.cwd();
+        const fpcalcPath = path.join(projectRoot, 'lib', 'music', 'binaries', 'chromaprint', 'fpcalc');
 
         const fpcalc = spawn(fpcalcPath, ['-length', '120', filePath]);
 
