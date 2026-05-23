@@ -368,15 +368,15 @@ export function writeOrUpdateItem(item: Item): { action: 'inserted' | 'updated' 
 }
 
 // Get all item paths from DB (for reconciliation)
-export function getAllItemPaths(): Map<string, number> {
+export function getAllItemPaths(): Map<string, { id: number; album_id: number | null }> {
     try {
-        const stmt = db.prepare('SELECT id, path FROM items')
-        const rows = stmt.all() as Array<{ id: number; path: Buffer }>
+        const stmt = db.prepare('SELECT id, path, album_id FROM items')
+        const rows = stmt.all() as Array<{ id: number; path: Buffer; album_id: number | null }>
 
-        const pathMap = new Map<string, number>()
+        const pathMap = new Map<string, { id: number; album_id: number | null }>()
         for (const row of rows) {
             const path = row.path.toString('utf8')
-            pathMap.set(path, row.id)
+            pathMap.set(path, { id: row.id, album_id: row.album_id })
         }
         return pathMap
     } catch (error) {

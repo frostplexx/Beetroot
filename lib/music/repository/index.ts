@@ -266,14 +266,14 @@ class Repository {
 
         try {
             // Step 1: Load all DB paths into memory, filtered to music_directory scope
-            const allDbPaths = getAllItemPaths(); // Map<path, id>
+            const allDbPaths = getAllItemPaths(); // Map<path, { id, album_id }>
             const musicDir = globalConfig.music_directory.replace('~', process.env.HOME || '');
 
             // Filter to only paths within current music_directory
-            const dbPaths = new Map<string, number>();
-            for (const [path, id] of allDbPaths.entries()) {
+            const dbPaths = new Map<string, { id: number; album_id: number | null }>();
+            for (const [path, data] of allDbPaths.entries()) {
                 if (path.startsWith(musicDir)) {
-                    dbPaths.set(path, id);
+                    dbPaths.set(path, data);
                 }
             }
 
@@ -304,14 +304,20 @@ class Repository {
 
             // Step 3: Detect missing files (in DB but not on disk)
             const missingUpdates: Array<{ id: number; fields: Partial<Item> }> = [];
+            const affectedAlbumIds = new Set<number>();
 
-            for (const [dbPath, itemId] of dbPaths.entries()) {
+            for (const [dbPath, { id, album_id }] of dbPaths.entries()) {
                 if (!seenPaths.has(dbPath)) {
                     missingUpdates.push({
-                        id: itemId,
+                        id,
                         fields: { missing_since: Date.now() }
                     });
                     result.missingFilesDetected++;
+
+                    // Collect album_id directly from the path map (no N+1 query)
+                    if (album_id) {
+                        affectedAlbumIds.add(album_id);
+                    }
                 }
             }
 
@@ -319,20 +325,9 @@ class Repository {
             if (missingUpdates.length > 0) {
                 console.log(`Missing: ${missingUpdates.length} files marked`);
 
-                // Collect unique album IDs that need to be checked
-                const affectedAlbumIds = new Set<number>();
-
                 for (let i = 0; i < missingUpdates.length; i += batchSize) {
                     const batch = missingUpdates.slice(i, i + batchSize);
                     batchUpdateItems(batch);
-
-                    // Get album_id for each updated item
-                    for (const update of batch) {
-                        const item = getItemById(update.id);
-                        if (item?.album_id) {
-                            affectedAlbumIds.add(item.album_id);
-                        }
-                    }
                 }
 
                 // Check and update album missing status for all affected albums
