@@ -73,9 +73,15 @@ class Repository {
                 track: null,
                 year: null,
             } as Item;
-            return await this._resolveItem(tmpItem);
+            const result = await this._resolveItem(tmpItem);
+            // D5: Store sources as a transient property on the item
+            (result.item as any)._sources = result.sources;
+            return result.item;
         } else {
-            return await this._resolveItem(pathOrItem);
+            const result = await this._resolveItem(pathOrItem);
+            // D5: Store sources as a transient property on the item
+            (result.item as any)._sources = result.sources;
+            return result.item;
         }
     }
 
@@ -98,6 +104,9 @@ class Repository {
         let albumId: number | undefined;
         const originalPath = item.path;
 
+        // D5: Extract source provenance if present (transient property from resolveItem)
+        const sources = (item as any)._sources as Partial<Record<keyof Item, string>> | undefined;
+
         try {
             // Phase 1: Write tags (atomic via temp+rename)
             await writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only');
@@ -108,6 +117,31 @@ class Repository {
             // Phase 3: Compute hash at original location (read-only)
             if (globalConfig.compute_file_hash) {
                 item.file_hash = await computeFileHashIfEnabled(originalPath, true) || undefined;
+            }
+
+            // D5: Map source provenance to *_source columns before DB write
+            if (sources) {
+                const sourceMap: Record<string, string> = {
+                    'title': 'title_source',
+                    'artist': 'artist_source',
+                    'artists': 'artists_source',
+                    'album': 'album_source',
+                    'albumartist': 'albumartist_source',
+                    'year': 'year_source',
+                    'month': 'month_source',
+                    'day': 'day_source',
+                    'genres': 'genres_source',
+                    'length': 'length_source',
+                    'mb_trackid': 'mb_trackid_source',
+                    'acoustid_id': 'acoustid_id_source'
+                };
+
+                for (const [field, sourceName] of Object.entries(sources)) {
+                    const sourceColumn = sourceMap[field];
+                    if (sourceColumn && sourceName) {
+                        (item as any)[sourceColumn] = sourceName;
+                    }
+                }
             }
 
             // Phase 4: Atomic DB transaction with TARGET path
@@ -555,7 +589,7 @@ class Repository {
         return results;
     }
 
-    private async _resolveItem(item: Item): Promise<Item> {
+    private async _resolveItem(item: Item): Promise<{ item: Item; sources?: Partial<Record<keyof Item, string>> }> {
         const results = await this.fetchFromAllSources(item)
         const merged = mergeData(results)
 
@@ -563,19 +597,31 @@ class Repository {
             throw new Error('Failed to merge data from sources');
         }
 
-        return merged.data;
+        // D5: Return both the item and source provenance
+        return {
+            item: merged.data,
+            sources: merged.sources
+        };
     }
-    
+
+    // Legacy method - kept for backward compatibility but not currently used
+    // adoptItem() now handles DB writes directly with proper transaction management
     private writeItemToDB(item: Item): number {
-        // Extract album data from item and write/update album first
-        const album = this.itemToAlbum(item)
-        const albumId = writeOrUpdateAlbum(album)
+        // Wrap album write + item write in a transaction (D3)
+        // If item write fails, album should not exist orphaned
+        const transaction = db.transaction(() => {
+            // Extract album data from item and write/update album first
+            const album = this.itemToAlbum(item)
+            const albumId = writeOrUpdateAlbum(album)
 
-        // Set the album_id on the item and write it
-        item.album_id = albumId
-        writeOrUpdateItem(item)
+            // Set the album_id on the item and write it
+            item.album_id = albumId
+            writeOrUpdateItem(item)
 
-        return albumId
+            return albumId
+        })
+
+        return transaction()
     }
 
 

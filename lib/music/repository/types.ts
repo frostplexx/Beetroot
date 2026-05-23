@@ -13,6 +13,11 @@ export interface SourceResult {
     duration?: number;
 }
 
+// D5: Enhanced result that includes source provenance for tracked fields
+export interface MergedResult extends SourceResult {
+    sources?: Partial<Record<keyof Item, string>>; // Maps field name to source name
+}
+
 
 export interface ReconcileResult {
     scannedFiles: number;

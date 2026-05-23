@@ -1,5 +1,5 @@
 import { Item } from "../database";
-import { SourceResult } from "./types";
+import { SourceResult, MergedResult } from "./types";
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
@@ -61,21 +61,37 @@ function getParentMap(): Map<string, Set<string>> {
 }
 
 
-export function mergeData<T extends SourceResult>(items: T[]): T {
+export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
     // Filter out items with no data
     const validItems = items.filter(item => item.data != null);
-    if (validItems.length === 0) return items[0];
+    if (validItems.length === 0) return items[0] as MergedResult;
 
     // Sort by confidence descending to get highest confidence source first
     validItems.sort((a, b) => b.confidence - a.confidence);
 
     // Create a fresh merged result without mutating the input
     // Note: merged.data cannot be null here since validItems is filtered to data != null
-    const merged: T = {
+    const merged: MergedResult = {
         ...validItems[0],
-        data: { ...validItems[0].data! }
-    } as T;
+        data: { ...validItems[0].data! },
+        sources: {} // D5: Track which source provided each field
+    };
 
+    // D5: Helper to record which source provided a field
+    const recordSource = (key: string, sourceName: string) => {
+        // Only track fields that have corresponding *_source columns in the schema
+        const trackedFields = ['title', 'artist', 'artists', 'album', 'albumartist',
+                               'year', 'month', 'day', 'genres', 'length',
+                               'mb_trackid', 'acoustid_id'];
+        if (trackedFields.includes(key)) {
+            merged.sources![key as keyof Item] = sourceName;
+        }
+    };
+
+    // Initialize sources for all fields from the highest confidence source
+    for (const key of Object.keys(merged.data!)) {
+        recordSource(key, merged.sourceName);
+    }
 
     // Collect all unique keys across all sources
     const allKeys = new Set<string>();
@@ -94,13 +110,19 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
 
         // Special handling for genres
         if (key === 'genres') {
-            merged.data[key] = resolveGenres(validItems);
+            const genresResult = resolveGenres(validItems);
+            merged.data[key] = genresResult;
+            // D5: Track source for genres - use the first source that has genres
+            const genresSource = validItems.find(s => s.data?.genres != null);
+            if (genresSource) {
+                recordSource('genres', genresSource.sourceName);
+            }
             continue;
         }
 
         // Collect all non-null values for this key with their sources
         const valuesWithSource = validItems
-            .map(item => ({ value: item.data?.[key], confidence: item.confidence }))
+            .map(item => ({ value: item.data?.[key], confidence: item.confidence, sourceName: item.sourceName }))
             .filter(v => v.value != null);
 
         if (valuesWithSource.length === 0) continue;
@@ -108,6 +130,7 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
         // If only one source has this field, use it
         if (valuesWithSource.length === 1) {
             merged.data[key] = valuesWithSource[0].value;
+            recordSource(key, valuesWithSource[0].sourceName); // D5
             continue;
         }
 
@@ -121,23 +144,28 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
             const audioOnlyFields = ['length', 'bitrate', 'samplerate', 'bitdepth', 'channels'];
             if (audioOnlyFields.includes(key)) {
                 // Find LocalTagsSource value
-                const localTagsValue = validItems.find(s => s.sourceName === 'LocalTagsSource')?.data?.[key];
+                const localTagsSource = validItems.find(s => s.sourceName === 'LocalTagsSource');
+                const localTagsValue = localTagsSource?.data?.[key];
                 if (localTagsValue != null) {
                     merged.data[key] = localTagsValue;
+                    recordSource(key, 'LocalTagsSource'); // D5
                 } else {
                     // Fallback to max confidence if LocalTags doesn't have it
                     // validItems is already sorted by confidence descending, so just take first
                     merged.data[key] = valuesWithSource[0].value;
+                    recordSource(key, valuesWithSource[0].sourceName); // D5
                 }
             } else {
                 // For other numbers: pick by max confidence
                 // validItems is already sorted by confidence descending, so just take first
                 merged.data[key] = valuesWithSource[0].value;
+                recordSource(key, valuesWithSource[0].sourceName); // D5
             }
         } else if (valueType === 'boolean') {
             // For booleans: pick by max confidence
             // validItems is already sorted by confidence descending, so just take first
             merged.data[key] = valuesWithSource[0].value;
+            recordSource(key, valuesWithSource[0].sourceName); // D5
         } else if (valueType === 'array') {
             // Ordered arrays (credits) should preserve order from highest confidence source
             // Unordered arrays (genres, styles) can be unioned
@@ -151,12 +179,17 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
                 // For ordered arrays: pick the whole array from the highest confidence source
                 // validItems is already sorted by confidence descending, so just take first
                 merged.data[key] = valuesWithSource[0].value;
+                recordSource(key, valuesWithSource[0].sourceName); // D5
             } else {
                 // For unordered arrays: union all values from sources with confidence >= 0.65
                 const filteredValues = valuesWithSource.filter(v => v.confidence >= 0.65);
                 const allArrayValues = filteredValues
                     .flatMap(v => Array.isArray(v.value) ? v.value : []);
                 merged.data[key] = [...new Set(allArrayValues)];
+                // D5: For unions, record the first high-confidence source
+                if (filteredValues.length > 0) {
+                    recordSource(key, filteredValues[0].sourceName);
+                }
             }
         } else if (valueType === 'string') {
             // For strings: use the existing conflict detection logic
@@ -167,6 +200,7 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
             if (stringValues.length === 0) continue;
             if (stringValues.length === 1) {
                 merged.data[key] = stringValues[0];
+                recordSource(key, valuesWithSource[0].sourceName); // D5
                 continue;
             }
 
@@ -174,6 +208,7 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
             const uniqueValues = new Set(stringValues);
             if (uniqueValues.size === 1) {
                 merged.data[key] = stringValues[0];
+                recordSource(key, valuesWithSource[0].sourceName); // D5
                 continue;
             }
 
@@ -190,6 +225,7 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
                 );
                 if (firstNonEmpty) {
                     merged.data[key] = firstNonEmpty.value;
+                    recordSource(key, firstNonEmpty.sourceName); // D5
                 }
                 continue;
             }
@@ -220,18 +256,25 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
                 );
                 if (firstNonEmpty) {
                     merged.data[key] = firstNonEmpty.value;
+                    recordSource(key, firstNonEmpty.sourceName); // D5
                 }
             }
         } else {
             // For other types (objects, etc.), pick by max confidence
             // validItems is already sorted by confidence descending, so just take first
             merged.data[key] = valuesWithSource[0].value;
+            recordSource(key, valuesWithSource[0].sourceName); // D5
         }
     }
 
     // Second pass: resolve conflicts once for each conflicted key
     for (const key of conflictKeys) {
-        merged.data[key] = resolveConflict(key, validItems);
+        const result = resolveConflict(key, validItems);
+        merged.data[key] = result.value;
+        // D5: Record source from conflict resolution
+        if (result.sourceName) {
+            recordSource(key, result.sourceName);
+        }
     }
 
     return merged;
@@ -271,7 +314,8 @@ function calculateLevenshteinDistance(a: string, b: string): number {
 }
 
 
-function resolveConflict(key: string, sources: SourceResult[]): any {
+// D5: Enhanced to return both value and source name
+function resolveConflict(key: string, sources: SourceResult[]): { value: any; sourceName: string } {
     if (DEBUG_MERGE) {
         console.log(`[Conflict Resolution] Resolving conflict for key: "${key}"`);
     }
@@ -314,10 +358,11 @@ function resolveConflict(key: string, sources: SourceResult[]): any {
     let bestValue: any = null;
     let bestScore = -1;
     let bestInfo = { normalized: '', avgConfidence: 0, count: 0 };
+    let bestSourceName = '';
 
     // Calculate confidence-weighted score for each normalized value
     for (const normalized in normalizedValues) {
-        const { count, originalValues, confidence } = normalizedValues[normalized];
+        const { count, originalValues, confidence, sources: sourcesInGroup } = normalizedValues[normalized];
 
         const avgConfidence = confidence.reduce((sum, c) => sum + c, 0) / count;
         const maxConfidence = Math.max(...confidence);
@@ -336,14 +381,16 @@ function resolveConflict(key: string, sources: SourceResult[]): any {
             // Pick the highest confidence source from this group
             const index = confidence.indexOf(maxConfidence);
             bestValue = originalValues[index];
+            bestSourceName = sourcesInGroup[index].name; // D5: Track source
             bestInfo = { normalized, avgConfidence, count };
         }
     }
 
     if (bestValue !== null) {
         if (DEBUG_MERGE) {
-            console.log(`  -> Winner: "${bestValue}" (normalized: "${bestInfo.normalized}", avgConf: ${bestInfo.avgConfidence.toFixed(3)}, sources: ${bestInfo.count})`);
+            console.log(`  -> Winner: "${bestValue}" from ${bestSourceName} (normalized: "${bestInfo.normalized}", avgConf: ${bestInfo.avgConfidence.toFixed(3)}, sources: ${bestInfo.count})`);
         }
+        return { value: bestValue, sourceName: bestSourceName }; // D5
     } else {
         // Shouldn't happen, but fallback to highest confidence source
         let maxConfidence = -1;
@@ -359,9 +406,8 @@ function resolveConflict(key: string, sources: SourceResult[]): any {
         if (DEBUG_MERGE) {
             console.log(`  -> Fallback: "${bestValue}" from ${maxSource} (confidence: ${maxConfidence})`);
         }
+        return { value: bestValue, sourceName: maxSource }; // D5
     }
-
-    return bestValue;
 }
 
 
