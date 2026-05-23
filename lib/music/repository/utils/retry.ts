@@ -33,6 +33,33 @@ async function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Extract Retry-After header value from error (if available)
+ * Returns delay in milliseconds, or null if not present
+ */
+function extractRetryAfter(error: Error): number | null {
+    // Check if error has a response object with headers
+    const response = (error as any).response;
+    if (!response || !response.headers) return null;
+
+    const retryAfter = response.headers.get?.('retry-after');
+    if (!retryAfter) return null;
+
+    // Retry-After can be either seconds or an HTTP date
+    const seconds = parseInt(retryAfter, 10);
+    if (!isNaN(seconds)) {
+        return seconds * 1000; // Convert to milliseconds
+    }
+
+    // Try parsing as date
+    const date = new Date(retryAfter);
+    if (!isNaN(date.getTime())) {
+        return Math.max(0, date.getTime() - Date.now());
+    }
+
+    return null;
+}
+
+/**
  * Calculate the delay for a given retry attempt
  */
 function calculateDelay(
@@ -40,8 +67,18 @@ function calculateDelay(
     strategy: BackoffStrategy,
     baseDelay: number,
     maxDelay: number,
-    jitter: boolean
+    jitter: boolean,
+    error?: Error
 ): number {
+    // Check for Retry-After header first (for 429 rate limiting)
+    if (error) {
+        const retryAfter = extractRetryAfter(error);
+        if (retryAfter !== null) {
+            // Respect Retry-After but cap at maxDelay
+            return Math.min(retryAfter, maxDelay);
+        }
+    }
+
     let delay: number;
 
     switch (strategy) {
@@ -169,8 +206,8 @@ export async function withRetry<T>(
                 throw lastError;
             }
 
-            // Calculate delay and wait
-            const delay = calculateDelay(attempt, opts.backoff, opts.baseDelay, opts.maxDelay, opts.jitter);
+            // Calculate delay and wait (passing error for Retry-After header extraction)
+            const delay = calculateDelay(attempt, opts.backoff, opts.baseDelay, opts.maxDelay, opts.jitter, lastError);
 
             // Call retry hook if provided
             opts.onRetry?.(lastError, attempt + 1);

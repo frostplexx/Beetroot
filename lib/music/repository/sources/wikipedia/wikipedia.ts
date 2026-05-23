@@ -5,6 +5,51 @@ import { withRetry, isRetryableHttpError } from "../../utils/retry";
 const WIKIPEDIA_API_URL = 'https://en.wikipedia.org/w/api.php';
 const WIKIDATA_API_URL = 'https://www.wikidata.org/w/api.php';
 
+/**
+ * Simple rate limiter to prevent hitting API rate limits
+ * Ensures minimum delay between requests
+ */
+class RateLimiter {
+    private lastRequestTime = 0;
+    private queue: Array<() => void> = [];
+    private processing = false;
+
+    constructor(private minDelayMs: number) {}
+
+    async acquire(): Promise<void> {
+        return new Promise<void>((resolve) => {
+            this.queue.push(resolve);
+            this.processQueue();
+        });
+    }
+
+    private async processQueue(): Promise<void> {
+        if (this.processing || this.queue.length === 0) return;
+
+        this.processing = true;
+
+        while (this.queue.length > 0) {
+            const now = Date.now();
+            const timeSinceLastRequest = now - this.lastRequestTime;
+            const delay = Math.max(0, this.minDelayMs - timeSinceLastRequest);
+
+            if (delay > 0) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+
+            this.lastRequestTime = Date.now();
+            const resolve = this.queue.shift()!;
+            resolve();
+        }
+
+        this.processing = false;
+    }
+}
+
+// Rate limit: max 1 request per 200ms (5 requests/sec) to stay well under Wikipedia's limits
+const wikipediaRateLimiter = new RateLimiter(200);
+const wikidataRateLimiter = new RateLimiter(200);
+
 interface WikipediaSearchResult {
     pageid: number;
     title: string;
@@ -80,6 +125,9 @@ export class WikipediaSource extends DataSource {
 
     private async findWikidataId(artist: string, album: string): Promise<string | null> {
         return withRetry(async () => {
+            // Rate limit Wikipedia API requests
+            await wikipediaRateLimiter.acquire();
+
             // Search Wikipedia for the album
             const searchQuery = encodeURIComponent(`${album} ${artist} album`);
             const searchUrl = `${WIKIPEDIA_API_URL}?action=query&list=search&srsearch=${searchQuery}&format=json&origin=*`;
@@ -87,7 +135,11 @@ export class WikipediaSource extends DataSource {
             const searchResponse = await fetch(searchUrl);
 
             if (!searchResponse.ok) {
-                throw new Error(`Wikipedia API error ${searchResponse.status}: ${await searchResponse.text()}`);
+                const errorText = await searchResponse.text();
+                const error: any = new Error(`Wikipedia API error ${searchResponse.status}: ${errorText}`);
+                error.response = searchResponse;
+                error.status = searchResponse.status;
+                throw error;
             }
 
             const searchData = await searchResponse.json();
@@ -98,12 +150,19 @@ export class WikipediaSource extends DataSource {
 
             const pageTitle = searchData.query.search[0].title;
 
+            // Rate limit second Wikipedia API request
+            await wikipediaRateLimiter.acquire();
+
             // Get Wikidata ID from Wikipedia page
             const wikidataUrl = `${WIKIPEDIA_API_URL}?action=query&titles=${encodeURIComponent(pageTitle)}&prop=pageprops&format=json&origin=*`;
             const wikidataResponse = await fetch(wikidataUrl);
 
             if (!wikidataResponse.ok) {
-                throw new Error(`Wikipedia API error ${wikidataResponse.status}: ${await wikidataResponse.text()}`);
+                const errorText = await wikidataResponse.text();
+                const error: any = new Error(`Wikipedia API error ${wikidataResponse.status}: ${errorText}`);
+                error.response = wikidataResponse;
+                error.status = wikidataResponse.status;
+                throw error;
             }
 
             const wikidataData = await wikidataResponse.json();
@@ -114,8 +173,9 @@ export class WikipediaSource extends DataSource {
             const page = Object.values(pages)[0] as any;
             return page?.pageprops?.wikibase_item || null;
         }, {
-            maxRetries: 2,
-            baseDelay: 1000,
+            maxRetries: 4,
+            baseDelay: 2000,
+            backoff: 'exponential',
             shouldRetry: isRetryableHttpError,
         }).catch((error) => {
             console.debug('Wikipedia search failed:', error);
@@ -125,19 +185,28 @@ export class WikipediaSource extends DataSource {
 
     private async getWikidataEntity(wikidataId: string): Promise<WikidataEntity | null> {
         return withRetry(async () => {
+            // Rate limit Wikidata API requests
+            await wikidataRateLimiter.acquire();
+
             const url = `${WIKIDATA_API_URL}?action=wbgetentities&ids=${wikidataId}&format=json&origin=*`;
             const response = await fetch(url);
 
             if (!response.ok) {
-                throw new Error(`Wikidata API error ${response.status}: ${await response.text()}`);
+                const errorText = await response.text();
+                const error: any = new Error(`Wikidata API error ${response.status}: ${errorText}`);
+                // Attach response for retry logic to potentially read Retry-After header
+                error.response = response;
+                error.status = response.status;
+                throw error;
             }
 
             const data = await response.json();
 
             return data.entities?.[wikidataId] || null;
         }, {
-            maxRetries: 2,
-            baseDelay: 1000,
+            maxRetries: 4,
+            baseDelay: 2000,
+            backoff: 'exponential',
             shouldRetry: isRetryableHttpError,
         }).catch((error) => {
             console.debug('Wikidata fetch failed:', error);
