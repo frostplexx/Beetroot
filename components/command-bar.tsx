@@ -28,6 +28,7 @@ function AlbumArtwork({ albumId, albumName, added, missingSince }: { albumId: nu
           fill
           className="object-cover"
           sizes="40px"
+          unoptimized
         />
       )}
     </div>

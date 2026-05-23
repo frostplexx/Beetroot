@@ -27,6 +27,7 @@ export default function AlbumCard({ album, className }: { album: Album; classNam
                             width={400}
                             loading="eager"
                             height={400}
+                            unoptimized
                         />
                     </ViewTransition>
                 ) : (

@@ -67,6 +67,7 @@ export default function AlbumArtwork({
                         }}
                         width={800}
                         height={800}
+                        unoptimized
                     />
                 </ViewTransition>
             ) : (
