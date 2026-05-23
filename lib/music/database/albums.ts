@@ -12,6 +12,31 @@ function getValidAlbumsColumns(): Set<string> {
     return validAlbumsColumns;
 }
 
+// Pre-built SQL statements (D2) - initialized on first use
+let albumUpdateStmt: ReturnType<typeof db.prepare> | null = null;
+let albumInsertStmt: ReturnType<typeof db.prepare> | null = null;
+let albumUpdateColumnsList: string[] | null = null;
+let albumInsertColumnsList: string[] | null = null;
+
+function getAlbumStatements() {
+    if (!albumUpdateStmt || !albumInsertStmt) {
+        const validColumns = getValidAlbumsColumns();
+        const allColumns = Array.from(validColumns);
+
+        // UPDATE: exclude 'id' and 'added' to preserve original timestamp
+        albumUpdateColumnsList = allColumns.filter(col => col !== 'id' && col !== 'added');
+        const updateFields = albumUpdateColumnsList.map(col => `${col} = ?`).join(', ');
+        albumUpdateStmt = db.prepare(`UPDATE albums SET ${updateFields} WHERE id = ?`);
+
+        // INSERT: exclude 'id' (auto-increment)
+        albumInsertColumnsList = allColumns.filter(col => col !== 'id');
+        const insertFields = albumInsertColumnsList.join(', ');
+        const insertPlaceholders = albumInsertColumnsList.map(() => '?').join(', ');
+        albumInsertStmt = db.prepare(`INSERT INTO albums (${insertFields}) VALUES (${insertPlaceholders})`);
+    }
+    return { albumUpdateStmt, albumInsertStmt, albumUpdateColumnsList, albumInsertColumnsList };
+}
+
 export interface Album {
     id: number
     album: string
@@ -212,34 +237,20 @@ export function writeOrUpdateAlbum(album: Album): number {
             }
         }
 
-        // Convert artpath to Buffer if present
-        if (typeof dbAlbum.artpath === 'string') {
-            dbAlbum.artpath = Buffer.from(dbAlbum.artpath, 'utf8')
-        }
+        // D4: artpath is now TEXT, no Buffer conversion needed
 
         if (existing) {
-            // Update existing album (exclude 'id' and 'added' - preserve original added timestamp)
-            const fields = Object.keys(dbAlbum)
-                .filter(key => key !== 'id' && key !== 'added')
-                .map(key => `${key} = ?`)
-                .join(', ')
-
-            const values = Object.keys(dbAlbum)
-                .filter(key => key !== 'id' && key !== 'added')
-                .map(key => dbAlbum[key])
-
-            const stmt = db.prepare(`UPDATE albums SET ${fields} WHERE id = ?`)
-            stmt.run(...values, existing.id)
+            // Update existing album using pre-built statement (D2)
+            const { albumUpdateStmt, albumUpdateColumnsList } = getAlbumStatements();
+            const values = albumUpdateColumnsList!.map(col => dbAlbum[col] ?? null);
+            values.push(existing.id); // WHERE id = ?
+            albumUpdateStmt!.run(...values);
             return existing.id
         } else {
-            // Insert new album (exclude id, let it auto-increment)
-            const insertFields = Object.keys(dbAlbum).filter(key => key !== 'id')
-            const fields = insertFields.join(', ')
-            const placeholders = insertFields.map(() => '?').join(', ')
-            const values = insertFields.map(key => dbAlbum[key])
-
-            const stmt = db.prepare(`INSERT INTO albums (${fields}) VALUES (${placeholders})`)
-            const result = stmt.run(...values)
+            // Insert new album using pre-built statement (D2)
+            const { albumInsertStmt, albumInsertColumnsList } = getAlbumStatements();
+            const values = albumInsertColumnsList!.map(col => dbAlbum[col] ?? null);
+            const result = albumInsertStmt!.run(...values);
             return result.lastInsertRowid as number
         }
     } catch (error) {
@@ -336,7 +347,8 @@ export function updateAlbumArtpath(albumId: number, artpath: string): void {
             SET artpath = ?
             WHERE id = ?
         `)
-        stmt.run(Buffer.from(artpath, 'utf8'), albumId)
+        // D4: artpath is now TEXT, no Buffer conversion needed
+        stmt.run(artpath, albumId)
     } catch (error) {
         console.error('Error updating album artpath:', error)
         throw error

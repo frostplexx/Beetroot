@@ -55,7 +55,7 @@ function createSchema(db: Database): void {
             albumstatus TEXT,
             albumtype TEXT,
             albumtypes TEXT,
-            artpath BLOB,
+            artpath TEXT,
             asin TEXT,
             barcode TEXT,
             catalognum TEXT,
@@ -168,7 +168,7 @@ function createSchema(db: Database): void {
             original_day INTEGER,
             original_month INTEGER,
             original_year INTEGER,
-            path BLOB,
+            path TEXT,
             r128_album_gain REAL,
             r128_track_gain REAL,
             releasegroupdisambig TEXT,
@@ -189,7 +189,7 @@ function createSchema(db: Database): void {
             work_disambig TEXT,
             year INTEGER,
             added REAL,
-            artpath BLOB,
+            artpath TEXT,
             file_hash TEXT,
             missing_since REAL,
             marked_for_deletion REAL,
@@ -263,6 +263,10 @@ function createSchema(db: Database): void {
         CREATE INDEX IF NOT EXISTS item_path ON items(path);
         CREATE INDEX IF NOT EXISTS item_mb_trackid ON items(mb_trackid);
         CREATE INDEX IF NOT EXISTS item_file_hash ON items(file_hash);
+
+        -- Partial indices for cleanup queries (D6)
+        CREATE INDEX IF NOT EXISTS idx_marked_for_deletion ON items(marked_for_deletion) WHERE marked_for_deletion IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_missing_since ON items(missing_since) WHERE missing_since IS NOT NULL;
 
         -- Indices for flexible attributes
         CREATE INDEX IF NOT EXISTS album_attributes_by_entity ON album_attributes(entity_id);

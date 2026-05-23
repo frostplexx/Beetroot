@@ -13,6 +13,31 @@ function getValidItemsColumns(): Set<string> {
     return validItemsColumns;
 }
 
+// Pre-built SQL statements (D2) - initialized on first use
+let itemUpdateStmt: ReturnType<typeof db.prepare> | null = null;
+let itemInsertStmt: ReturnType<typeof db.prepare> | null = null;
+let updateColumnsList: string[] | null = null;
+let insertColumnsList: string[] | null = null;
+
+function getItemStatements() {
+    if (!itemUpdateStmt || !itemInsertStmt) {
+        const validColumns = getValidItemsColumns();
+        const allColumns = Array.from(validColumns);
+
+        // UPDATE: exclude 'id' and 'added' to preserve original timestamp
+        updateColumnsList = allColumns.filter(col => col !== 'id' && col !== 'added');
+        const updateFields = updateColumnsList.map(col => `${col} = ?`).join(', ');
+        itemUpdateStmt = db.prepare(`UPDATE items SET ${updateFields} WHERE id = ?`);
+
+        // INSERT: exclude 'id' (auto-increment)
+        insertColumnsList = allColumns.filter(col => col !== 'id');
+        const insertFields = insertColumnsList.join(', ');
+        const insertPlaceholders = insertColumnsList.map(() => '?').join(', ');
+        itemInsertStmt = db.prepare(`INSERT INTO items (${insertFields}) VALUES (${insertPlaceholders})`);
+    }
+    return { itemUpdateStmt, itemInsertStmt, updateColumnsList, insertColumnsList };
+}
+
 export interface Item {
     id: number
     source: string
@@ -288,8 +313,9 @@ function findExistingItem(item: Item): { id: number } | undefined {
     }
 
     // Tier 3: Path (current behavior, least reliable)
+    // D4: path is now TEXT, no Buffer conversion needed
     const pathResult = db.prepare('SELECT id FROM items WHERE path = ?')
-        .get(Buffer.from(item.path, 'utf8')) as { id: number } | undefined
+        .get(item.path) as { id: number } | undefined
 
     if (pathResult) {
         console.log(`Duplicate found by path: ${item.path}`)
@@ -319,15 +345,7 @@ export function writeOrUpdateItem(item: Item): { action: 'inserted' | 'updated' 
             dbItem.genres = dbItem.genres.join(', ')
         }
 
-        // Convert path to Buffer for BLOB storage
-        if (typeof dbItem.path === 'string') {
-            dbItem.path = Buffer.from(dbItem.path, 'utf8')
-        }
-
-        // Convert artpath to Buffer if present
-        if (typeof dbItem.artpath === 'string') {
-            dbItem.artpath = Buffer.from(dbItem.artpath, 'utf8')
-        }
+        // D4: path and artpath are now TEXT, no Buffer conversion needed
 
         if (existing) {
             // Duplicate found - check config for action
@@ -336,29 +354,18 @@ export function writeOrUpdateItem(item: Item): { action: 'inserted' | 'updated' 
                 return { action: 'skipped', id: existing.id }
             }
 
-            // Overwrite mode: update existing item (exclude 'id' and 'added' - preserve original timestamp)
-            const fields = Object.keys(dbItem)
-                .filter(key => key !== 'id' && key !== 'added')
-                .map(key => `${key} = ?`)
-                .join(', ')
-
-            const values = Object.keys(dbItem)
-                .filter(key => key !== 'id' && key !== 'added')
-                .map(key => dbItem[key])
-
-            const stmt = db.prepare(`UPDATE items SET ${fields} WHERE id = ?`)
-            stmt.run(...values, existing.id)
+            // Overwrite mode: update existing item using pre-built statement (D2)
+            const { itemUpdateStmt, updateColumnsList } = getItemStatements();
+            const values = updateColumnsList!.map(col => dbItem[col] ?? null);
+            values.push(existing.id); // WHERE id = ?
+            itemUpdateStmt!.run(...values);
             console.log(`Updated duplicate: ${item.path} (existing id ${existing.id})`)
             return { action: 'updated', id: existing.id }
         } else {
-            // Insert new item (exclude id, let it auto-increment)
-            const insertFields = Object.keys(dbItem).filter(key => key !== 'id')
-            const fields = insertFields.join(', ')
-            const placeholders = insertFields.map(() => '?').join(', ')
-            const values = insertFields.map(key => dbItem[key])
-
-            const stmt = db.prepare(`INSERT INTO items (${fields}) VALUES (${placeholders})`)
-            const result = stmt.run(...values)
+            // Insert new item using pre-built statement (D2)
+            const { itemInsertStmt, insertColumnsList } = getItemStatements();
+            const values = insertColumnsList!.map(col => dbItem[col] ?? null);
+            const result = itemInsertStmt!.run(...values);
             return { action: 'inserted', id: result.lastInsertRowid as number }
         }
     } catch (error) {
@@ -368,32 +375,34 @@ export function writeOrUpdateItem(item: Item): { action: 'inserted' | 'updated' 
 }
 
 // Get all item paths from DB (for reconciliation)
+// Uses iterate() instead of all() to avoid materializing all rows at once (D7)
 export function getAllItemPaths(musicDirectory?: string): Map<string, { id: number; album_id: number | null }> {
     try {
         let sql = 'SELECT id, path, album_id FROM items'
-        let rows: Array<{ id: number; path: Buffer; album_id: number | null }>
+        let stmt: ReturnType<typeof db.prepare>
 
         if (musicDirectory) {
             // Filter in SQL using substr to match path prefix
             // Add trailing '/' to musicDirectory to avoid matching similar paths
             // (e.g., /Music should not match /MusicVideos)
             const musicDirNormalized = musicDirectory.endsWith('/') ? musicDirectory : musicDirectory + '/'
-            const musicDirBuffer = Buffer.from(musicDirNormalized, 'utf8')
 
-            sql = 'SELECT id, path, album_id FROM items WHERE substr(path, 1, ?) = ?'
-            const stmt = db.prepare(sql)
-            rows = stmt.all(musicDirBuffer.length, musicDirBuffer) as Array<{ id: number; path: Buffer; album_id: number | null }>
+            // D4: path is now TEXT, use LIKE for prefix matching
+            sql = 'SELECT id, path, album_id FROM items WHERE path LIKE ? || \'%\''
+            stmt = db.prepare(sql)
+            const pathMap = new Map<string, { id: number; album_id: number | null }>()
+            for (const row of stmt.iterate(musicDirNormalized) as IterableIterator<{ id: number; path: string; album_id: number | null }>) {
+                pathMap.set(row.path, { id: row.id, album_id: row.album_id })
+            }
+            return pathMap
         } else {
-            const stmt = db.prepare(sql)
-            rows = stmt.all() as Array<{ id: number; path: Buffer; album_id: number | null }>
+            stmt = db.prepare(sql)
+            const pathMap = new Map<string, { id: number; album_id: number | null }>()
+            for (const row of stmt.iterate() as IterableIterator<{ id: number; path: string; album_id: number | null }>) {
+                pathMap.set(row.path, { id: row.id, album_id: row.album_id })
+            }
+            return pathMap
         }
-
-        const pathMap = new Map<string, { id: number; album_id: number | null }>()
-        for (const row of rows) {
-            const path = row.path.toString('utf8')
-            pathMap.set(path, { id: row.id, album_id: row.album_id })
-        }
-        return pathMap
     } catch (error) {
         console.error('Error fetching item paths:', error)
         return new Map()
