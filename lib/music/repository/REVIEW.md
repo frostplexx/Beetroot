@@ -42,10 +42,19 @@ The following issues from the review remain and should be addressed in future it
 - ✅ [R12]: getAllItemPaths filter pushed into SQL
 - ✅ [R15]: Singleton pattern simplified
 
+**High Priority (FIXED)**:
+- ✅ [C1]: Per-album locking to prevent cover art races
+- ✅ [C2]: Prefer embedded art over external sources
+- ✅ [C3]: Detect image format and use correct extension
+- ✅ [C4]: Cover fetch timeout (15s)
+- ✅ [C5]: Cover size limit (5MB)
+- ✅ [C6]: Combined parseFile calls (hasEmbedded + extract)
+- ✅ [C7]: URLSearchParams for iTunes URL building
+- ✅ [C8]: Multi-disc album directory support
+
 **High Priority (remaining)**:
 - [B14]: Shared retry helper (deferred - requires larger refactoring)
 - [W3]: Use format-specific tag writers instead of ffmpeg (performance)
-- [C1-C8]: Cover art issues (races, overwrites, etc.)
 - [D2-D7]: Database layer inefficiencies
 
 **Medium/Low Priority (FIXED)**:
