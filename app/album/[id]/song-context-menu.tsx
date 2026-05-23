@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
+import { useRouter, usePathname } from "next/navigation";
 import {
     ContextMenu,
     ContextMenuContent,
@@ -51,7 +52,7 @@ function MoveToAlbumDialog({
     open: boolean;
     onOpenChange: (open: boolean) => void;
     item: Item;
-    onMoved: () => void;
+    onMoved: (result: { previousAlbumId: number | null; previousAlbumDeleted: boolean }) => void;
 }) {
     const [query, setQuery] = React.useState("");
     const [albums, setAlbums] = React.useState<AlbumSummary[]>([]);
@@ -115,7 +116,14 @@ function MoveToAlbumDialog({
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.error || `HTTP ${res.status}`);
             }
-            onMoved();
+            const data = (await res.json().catch(() => ({}))) as {
+                previousAlbumId?: number | null;
+                previousAlbumDeleted?: boolean;
+            };
+            onMoved({
+                previousAlbumId: data.previousAlbumId ?? null,
+                previousAlbumDeleted: !!data.previousAlbumDeleted,
+            });
             onOpenChange(false);
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
@@ -232,7 +240,7 @@ function ConfirmDeleteDialog({
     open: boolean;
     onOpenChange: (open: boolean) => void;
     item: Item;
-    onDeleted: () => void;
+    onDeleted: (result: { previousAlbumId: number | null; previousAlbumDeleted: boolean }) => void;
 }) {
     const [deleteFile, setDeleteFile] = React.useState(false);
     const [pending, setPending] = React.useState(false);
@@ -256,7 +264,14 @@ function ConfirmDeleteDialog({
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.error || `HTTP ${res.status}`);
             }
-            onDeleted();
+            const data = (await res.json().catch(() => ({}))) as {
+                previousAlbumId?: number | null;
+                previousAlbumDeleted?: boolean;
+            };
+            onDeleted({
+                previousAlbumId: data.previousAlbumId ?? null,
+                previousAlbumDeleted: !!data.previousAlbumDeleted,
+            });
             onOpenChange(false);
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
@@ -382,10 +397,26 @@ export function SongContextMenu({
     children: React.ReactNode;
 }) {
     const router = useRouter();
+    const pathname = usePathname();
     const [moveOpen, setMoveOpen] = React.useState(false);
     const [deleteOpen, setDeleteOpen] = React.useState(false);
     const [infoOpen, setInfoOpen] = React.useState(false);
     const [toast, setToast] = React.useState<Toast | null>(null);
+    const [mounted, setMounted] = React.useState(false);
+
+    // createPortal needs the document, only available client-side. Defer
+    // toast rendering until after mount so SSR/hydration output stays clean.
+    React.useEffect(() => setMounted(true), []);
+
+    // If the previous album was emptied (and deleted) by a move/delete and
+    // we're sitting on its page, navigate home so the user doesn't see an
+    // "album not found" stub.
+    const handleSourceAlbumDeleted = (previousAlbumId: number | null) => {
+        if (previousAlbumId == null) return;
+        if (pathname?.startsWith(`/album/${previousAlbumId}`)) {
+            router.push("/");
+        }
+    };
 
     const showToast = (t: Toast) => {
         setToast(t);
@@ -455,40 +486,61 @@ export function SongContextMenu({
                 open={moveOpen}
                 onOpenChange={setMoveOpen}
                 item={item}
-                onMoved={() => {
-                    showToast({ kind: "ok", message: "Song moved" });
-                    router.refresh();
+                onMoved={({ previousAlbumId, previousAlbumDeleted }) => {
+                    showToast({
+                        kind: "ok",
+                        message: previousAlbumDeleted
+                            ? "Song moved (source album was emptied and removed)"
+                            : "Song moved",
+                    });
+                    if (previousAlbumDeleted) {
+                        handleSourceAlbumDeleted(previousAlbumId);
+                    } else {
+                        router.refresh();
+                    }
                 }}
             />
             <ConfirmDeleteDialog
                 open={deleteOpen}
                 onOpenChange={setDeleteOpen}
                 item={item}
-                onDeleted={() => {
-                    showToast({ kind: "ok", message: "Song deleted" });
-                    router.refresh();
+                onDeleted={({ previousAlbumId, previousAlbumDeleted }) => {
+                    showToast({
+                        kind: "ok",
+                        message: previousAlbumDeleted
+                            ? "Song deleted (album was emptied and removed)"
+                            : "Song deleted",
+                    });
+                    if (previousAlbumDeleted) {
+                        handleSourceAlbumDeleted(previousAlbumId);
+                    } else {
+                        router.refresh();
+                    }
                 }}
             />
             <InfoDialog open={infoOpen} onOpenChange={setInfoOpen} item={item} />
 
-            {toast && (
-                <div
-                    className={`fixed bottom-6 right-6 z-50 rounded-md border px-4 py-2 text-sm shadow-lg backdrop-blur-md ${
-                        toast.kind === "ok"
-                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
-                            : "border-red-500/40 bg-red-500/15 text-red-100"
-                    }`}
-                >
-                    <span className="inline-flex items-center gap-2">
-                        {toast.kind === "ok" ? (
-                            <CheckCircle2 className="w-4 h-4" />
-                        ) : (
-                            <AlertTriangle className="w-4 h-4" />
-                        )}
-                        {toast.message}
-                    </span>
-                </div>
-            )}
+            {mounted && toast
+                ? createPortal(
+                      <div
+                          className={`fixed bottom-6 right-6 z-50 rounded-md border px-4 py-2 text-sm shadow-lg backdrop-blur-md ${
+                              toast.kind === "ok"
+                                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                                  : "border-red-500/40 bg-red-500/15 text-red-100"
+                          }`}
+                      >
+                          <span className="inline-flex items-center gap-2">
+                              {toast.kind === "ok" ? (
+                                  <CheckCircle2 className="w-4 h-4" />
+                              ) : (
+                                  <AlertTriangle className="w-4 h-4" />
+                              )}
+                              {toast.message}
+                          </span>
+                      </div>,
+                      document.body
+                  )
+                : null}
         </>
     );
 }

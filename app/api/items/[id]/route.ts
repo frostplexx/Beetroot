@@ -11,6 +11,19 @@ import * as fs from 'fs';
 export const dynamic = 'force-dynamic';
 
 /**
+ * Drop an album row if it has no remaining items. Returns true if deleted.
+ * Used after move/delete to keep the library tidy.
+ */
+function deleteAlbumIfEmpty(albumId: number): boolean {
+    const row = db
+        .prepare('SELECT COUNT(*) AS c FROM items WHERE album_id = ?')
+        .get(albumId) as { c: number };
+    if (row.c > 0) return false;
+    db.prepare('DELETE FROM albums WHERE id = ?').run(albumId);
+    return true;
+}
+
+/**
  * PATCH /api/items/[id]
  * Body: { album_id?: number }
  *
@@ -57,11 +70,15 @@ export async function PATCH(
     }
 
     const previousAlbumId = item.album_id;
+    let previousAlbumDeleted = false;
 
     db.transaction(() => {
         db.prepare('UPDATE items SET album_id = ? WHERE id = ?').run(body.album_id, itemId);
         if (previousAlbumId !== null) {
-            checkAndUpdateAlbumMissingStatus(previousAlbumId);
+            previousAlbumDeleted = deleteAlbumIfEmpty(previousAlbumId);
+            if (!previousAlbumDeleted) {
+                checkAndUpdateAlbumMissingStatus(previousAlbumId);
+            }
         }
         checkAndUpdateAlbumMissingStatus(body.album_id!);
     })();
@@ -69,6 +86,7 @@ export async function PATCH(
     return NextResponse.json({
         item: getItemById(itemId),
         previousAlbumId,
+        previousAlbumDeleted,
         moved: true,
     });
 }
@@ -114,9 +132,18 @@ export async function DELETE(
     }
 
     deleteItemFromDB(itemId);
+    let previousAlbumDeleted = false;
     if (previousAlbumId !== null) {
-        checkAndUpdateAlbumMissingStatus(previousAlbumId);
+        previousAlbumDeleted = deleteAlbumIfEmpty(previousAlbumId);
+        if (!previousAlbumDeleted) {
+            checkAndUpdateAlbumMissingStatus(previousAlbumId);
+        }
     }
 
-    return NextResponse.json({ deleted: true, fileDeleted: deleteFile });
+    return NextResponse.json({
+        deleted: true,
+        fileDeleted: deleteFile,
+        previousAlbumId,
+        previousAlbumDeleted,
+    });
 }
