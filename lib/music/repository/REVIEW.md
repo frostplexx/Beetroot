@@ -29,9 +29,11 @@ The following issues from the review remain and should be addressed in future it
 - ✅ [D1 / NEW-DB1]: Schema introspection cached for items and albums
 - ✅ [R11]: Item `added` timestamp preserved on updates
 
+**High Priority (FIXED)**:
+- ✅ [B2-B13, B15]: Source bugs resolved (rate limiting, retry logic, API keys, date parsing, etc.)
+
 **High Priority (remaining)**:
-- [B2]: Module-level rate limiting is racy (needs p-queue or promise chain)
-- [B3-B15]: Various source bugs (retry logic, API keys, etc.)
+- [B14]: Shared retry helper (deferred - requires larger refactoring)
 - [R3-R15]: Repository issues (N+1 queries, sequential pre-filter, etc.)
 - [W3]: Use format-specific tag writers instead of ffmpeg (performance)
 - [C1-C8]: Cover art issues (races, overwrites, etc.)
