@@ -204,8 +204,11 @@ export function writeOrUpdateAlbum(album: Album): number {
         // Get valid columns from schema (cached)
         const validColumns = getValidAlbumsColumns();
 
-        // Normalize album and artist names for matching
-        const normalizedAlbum = normalizeAlbumString(album.album);
+        // Normalize album and artist names for matching. When the album tag is
+        // missing, use the same canonical 'unknownalbum' value the migration
+        // backfilled with, so a sparse track joins (rather than duplicates) any
+        // existing 'Unknown Album' row by the same artist+year.
+        const normalizedAlbum = normalizeAlbumString(album.album) || 'unknownalbum';
         const normalizedArtist = normalizeAlbumString(album.albumartist);
 
         // Match cascade: mb_albumid → mb_releasegroupid → normalized (album+artist+year).

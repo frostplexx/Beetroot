@@ -52,6 +52,9 @@ function pickCanonical(albums: AlbumRow[]): AlbumRow {
     })[0];
 }
 
+const isUnknown = (r: AlbumRow) =>
+    r.album == null || r.album === '' || r.album === 'Unknown Album';
+
 function findDuplicates(): DuplicateGroup[] {
     const all = db.prepare(`
         SELECT id, album, albumartist, album_normalized, albumartist_normalized,
@@ -59,25 +62,80 @@ function findDuplicates(): DuplicateGroup[] {
         FROM albums
     `).all() as AlbumRow[];
 
+    // Normalize lookup view: treat 'Unknown Album' rows as having
+    // album_normalized='unknownalbum' regardless of what's stored. Older inserts
+    // left it empty; the migration backfill set it to 'unknownalbum'.
+    const viewNorm = (r: AlbumRow) =>
+        isUnknown(r) ? 'unknownalbum' : (r.album_normalized ?? '');
+
     const groups = new Map<string, AlbumRow[]>();
     const seen = new Set<number>();
 
-    // First pass: group by mb_releasegroupid (strongest signal)
+    // Pass 1: group by mb_releasegroupid (strongest signal). Only commit to
+    // `seen` once we know there are 2+ members, so single-row "groups" don't
+    // lock the row away from Pass 3's fold.
+    const rgGroups = new Map<string, AlbumRow[]>();
     for (const row of all) {
         if (!row.mb_releasegroupid) continue;
         const key = `rg:${row.mb_releasegroupid}`;
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key)!.push(row);
-        seen.add(row.id);
+        if (!rgGroups.has(key)) rgGroups.set(key, []);
+        rgGroups.get(key)!.push(row);
+    }
+    for (const [key, rows] of rgGroups) {
+        if (rows.length < 2) continue;
+        groups.set(key, rows);
+        for (const r of rows) seen.add(r.id);
     }
 
-    // Second pass: group remaining albums by normalized (album, artist, year)
+    // Pass 2: group remaining NAMED albums by normalized (album, artist, year).
+    // Unknown rows are deferred to Pass 3 so the "fold into named sibling" logic
+    // gets first shot at them.
+    const normGroups = new Map<string, AlbumRow[]>();
     for (const row of all) {
         if (seen.has(row.id)) continue;
-        if (!row.album_normalized) continue;
-        const key = `nm:${row.album_normalized}|${row.albumartist_normalized ?? ''}|${row.year ?? ''}`;
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key)!.push(row);
+        if (isUnknown(row)) continue;
+        const albNorm = viewNorm(row);
+        if (!albNorm) continue;
+        const key = `nm:${albNorm}|${row.albumartist_normalized ?? ''}|${row.year ?? ''}`;
+        if (!normGroups.has(key)) normGroups.set(key, []);
+        normGroups.get(key)!.push(row);
+    }
+    for (const [key, rows] of normGroups) {
+        if (rows.length < 2) continue;
+        groups.set(key, rows);
+        for (const r of rows) seen.add(r.id);
+    }
+
+    // Pass 3: fold "Unknown Album" rows into a named sibling by the same artist.
+    // - If exactly one named album exists for an artist with unknown rows, merge
+    //   all the unknowns into it.
+    // - If no named sibling exists but multiple unknowns share an artist, collapse
+    //   them into a single canonical unknown row.
+    // - If multiple named siblings exist, the fold is ambiguous and we leave the
+    //   unknown row alone (user can merge manually).
+    const unknownsByArtist = new Map<string, AlbumRow[]>();
+    const namedByArtist = new Map<string, AlbumRow[]>();
+    for (const row of all) {
+        if (seen.has(row.id)) continue;
+        if (!row.albumartist_normalized) continue;
+        const bucket = isUnknown(row) ? unknownsByArtist : namedByArtist;
+        if (!bucket.has(row.albumartist_normalized)) bucket.set(row.albumartist_normalized, []);
+        bucket.get(row.albumartist_normalized)!.push(row);
+    }
+
+    for (const [artist, unknowns] of unknownsByArtist) {
+        const named = namedByArtist.get(artist) ?? [];
+        if (named.length === 1) {
+            const canonical = named[0];
+            const key = `fold:${canonical.id}`;
+            groups.set(key, [canonical, ...unknowns]);
+            seen.add(canonical.id);
+            for (const u of unknowns) seen.add(u.id);
+        } else if (named.length === 0 && unknowns.length >= 2) {
+            const key = `fold:unknowns@${artist}`;
+            groups.set(key, unknowns);
+            for (const u of unknowns) seen.add(u.id);
+        }
     }
 
     // Keep only groups with 2+ members
