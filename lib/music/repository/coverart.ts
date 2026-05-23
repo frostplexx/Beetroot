@@ -447,10 +447,18 @@ export async function handleCoverArt(album: Album): Promise<boolean> {
                 return false;
             }
 
-            const coverPath = saveCoverArt(coverArtData, albumDirs);
-            if (coverPath) {
+            // Save cover to all directories (for multi-disc albums with subdirectories)
+            let firstCoverPath: string | null = null;
+            for (const dir of albumDirs) {
+                const coverPath = saveCoverArt(coverArtData, dir);
+                if (coverPath && !firstCoverPath) {
+                    firstCoverPath = coverPath;
+                }
+            }
+
+            if (firstCoverPath) {
                 // Update only the artpath field (focused update to avoid lost-update bugs)
-                updateAlbumArtpath(album.id, coverPath);
+                updateAlbumArtpath(album.id, firstCoverPath);
 
                 return true;
             }
