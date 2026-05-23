@@ -568,9 +568,6 @@ class Repository {
         const results = await this.fetchFromAllSources(item)
         const merged = mergeData(results)
 
-        if (merged.error) {
-            throw new Error(`Failed to fetch data from sources: ${merged.error.message}`);
-        }
         if (merged.data == null) {
             throw new Error('Failed to merge data from sources');
         }
