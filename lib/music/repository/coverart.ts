@@ -26,6 +26,20 @@ function getFfmpegPath(): string {
     return 'ffmpeg';
 }
 
+// Per-album lock to prevent concurrent cover art operations on same album
+const albumLocks = new Map<number, Promise<void>>();
+
+async function withAlbumLock<T>(albumId: number, fn: () => Promise<T>): Promise<T> {
+    const prev = albumLocks.get(albumId) ?? Promise.resolve();
+    const next = prev.then(fn, fn);
+    albumLocks.set(albumId, next.finally(() => {
+        if (albumLocks.get(albumId) === next) {
+            albumLocks.delete(albumId);
+        }
+    }));
+    return next;
+}
+
 interface CoverArtSource {
     name: string;
     fetch: (album: Album) => Promise<Buffer | null>;
@@ -430,8 +444,10 @@ async function stripEmbeddedCoverArtFromAlbum(album: Album): Promise<Buffer | nu
  * 3. Save to album directory and update database
  */
 export async function handleCoverArt(album: Album): Promise<boolean> {
-    try {
-        let coverArtData: Buffer | null = null;
+    // Serialize cover art operations per album to prevent races
+    return withAlbumLock(album.id, async () => {
+        try {
+            let coverArtData: Buffer | null = null;
 
         // Step 1: Strip embedded cover art from all tracks in album
         const extractedCoverArt = await stripEmbeddedCoverArtFromAlbum(album);
@@ -465,11 +481,12 @@ export async function handleCoverArt(album: Album): Promise<boolean> {
             }
         }
 
-        // If no cover art found or all operations failed - not a critical failure
-        return true;
+            // If no cover art found or all operations failed - not a critical failure
+            return true;
 
-    } catch (error) {
-        console.error(`Artwork failed: ${album.albumartist} - ${album.album} - ${error instanceof Error ? error.message : String(error)}`);
-        return false;
-    }
+        } catch (error) {
+            console.error(`Artwork failed: ${album.albumartist} - ${album.album} - ${error instanceof Error ? error.message : String(error)}`);
+            return false;
+        }
+    });
 }
