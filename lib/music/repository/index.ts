@@ -265,20 +265,11 @@ class Repository {
         console.log(`Reconciling: ${globalConfig.music_directory}`);
 
         try {
-            // Step 1: Load all DB paths into memory, filtered to music_directory scope
-            const allDbPaths = getAllItemPaths(); // Map<path, { id, album_id }>
+            // Step 1: Load DB paths filtered to music_directory scope (filter pushed to SQL)
             const musicDir = globalConfig.music_directory.replace('~', process.env.HOME || '');
-
-            // Filter to only paths within current music_directory
-            const dbPaths = new Map<string, { id: number; album_id: number | null }>();
-            for (const [path, data] of allDbPaths.entries()) {
-                if (path.startsWith(musicDir)) {
-                    dbPaths.set(path, data);
-                }
-            }
-
+            const dbPaths = getAllItemPaths(musicDir); // Map<path, { id, album_id }>
             const dbPathSet = new Set(dbPaths.keys());
-            console.log(`Database: ${dbPaths.size} tracks in scope (${allDbPaths.size} total)`);
+            console.log(`Database: ${dbPaths.size} tracks in scope`);
 
             // Step 2: Stream files and detect missing/new in a single pass
             const newFiles: string[] = [];

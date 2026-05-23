@@ -368,10 +368,25 @@ export function writeOrUpdateItem(item: Item): { action: 'inserted' | 'updated' 
 }
 
 // Get all item paths from DB (for reconciliation)
-export function getAllItemPaths(): Map<string, { id: number; album_id: number | null }> {
+export function getAllItemPaths(musicDirectory?: string): Map<string, { id: number; album_id: number | null }> {
     try {
-        const stmt = db.prepare('SELECT id, path, album_id FROM items')
-        const rows = stmt.all() as Array<{ id: number; path: Buffer; album_id: number | null }>
+        let sql = 'SELECT id, path, album_id FROM items'
+        let rows: Array<{ id: number; path: Buffer; album_id: number | null }>
+
+        if (musicDirectory) {
+            // Filter in SQL using substr to match path prefix
+            // Add trailing '/' to musicDirectory to avoid matching similar paths
+            // (e.g., /Music should not match /MusicVideos)
+            const musicDirNormalized = musicDirectory.endsWith('/') ? musicDirectory : musicDirectory + '/'
+            const musicDirBuffer = Buffer.from(musicDirNormalized, 'utf8')
+
+            sql = 'SELECT id, path, album_id FROM items WHERE substr(path, 1, ?) = ?'
+            const stmt = db.prepare(sql)
+            rows = stmt.all(musicDirBuffer.length, musicDirBuffer) as Array<{ id: number; path: Buffer; album_id: number | null }>
+        } else {
+            const stmt = db.prepare(sql)
+            rows = stmt.all() as Array<{ id: number; path: Buffer; album_id: number | null }>
+        }
 
         const pathMap = new Map<string, { id: number; album_id: number | null }>()
         for (const row of rows) {
