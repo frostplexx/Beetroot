@@ -1,5 +1,7 @@
 import * as fs from 'fs'
 import * as yaml from 'js-yaml'
+import * as path from 'path'
+import * as os from 'os'
 import { config } from 'process';
 
 export type ConflictResolution = 'keep-db' | 'keep-file' | 'keep-mb' | 'manual';
@@ -55,6 +57,29 @@ const DEFAULT_CONFIG: Partial<GlobalConfig> = {
     compute_file_hash: true,
 };
 
+// Normalize directory path: expand ~, resolve to absolute, add trailing /
+function normalizeDirectoryPath(dirPath: string | undefined): string | undefined {
+    if (!dirPath) return undefined;
+
+    // Expand ~ to home directory
+    let normalized = dirPath;
+    if (normalized.startsWith('~/')) {
+        normalized = path.join(os.homedir(), normalized.slice(2));
+    } else if (normalized === '~') {
+        normalized = os.homedir();
+    }
+
+    // Resolve to absolute path
+    normalized = path.resolve(normalized);
+
+    // Ensure trailing slash for consistency
+    if (!normalized.endsWith(path.sep)) {
+        normalized += path.sep;
+    }
+
+    return normalized;
+}
+
 // globalConfig gets loaded from yaml file
 export const globalConfig: GlobalConfig = loadConfig()
 
@@ -82,11 +107,15 @@ function loadConfig(): GlobalConfig {
         writeback_mode: process.env.WRITEBACK_MODE as WriteBackMode,
         path: process.env.PATH_TEMPLATE,
         delete_after: process.env.DELETE_AFTER ? parseInt(process.env.DELETE_AFTER, 10) : undefined,
-        reconcile_on_startup: process.env.RECONCILE_ON_STARTUP === 'true',
+        reconcile_on_startup: process.env.RECONCILE_ON_STARTUP === undefined
+            ? undefined
+            : process.env.RECONCILE_ON_STARTUP === 'true',
         reconcile_interval: process.env.RECONCILE_INTERVAL ? parseInt(process.env.RECONCILE_INTERVAL, 10) : undefined,
         duplicate_detection: process.env.DUPLICATE_DETECTION as DuplicateDetection,
         duplicate_action: process.env.DUPLICATE_ACTION as DuplicateAction,
-        compute_file_hash: process.env.COMPUTE_FILE_HASH === 'true',
+        compute_file_hash: process.env.COMPUTE_FILE_HASH === undefined
+            ? undefined
+            : process.env.COMPUTE_FILE_HASH === 'true',
     }
 
     // Remove undefined values from envConfig
@@ -95,11 +124,19 @@ function loadConfig(): GlobalConfig {
     )
 
     // Merge: defaults < file < env (env vars have highest priority)
-    return {
+    const mergedConfig = {
         ...DEFAULT_CONFIG,
         ...fileConfig,
         ...envConfig,
     } as GlobalConfig;
+
+    // Normalize directory paths once at load time
+    mergedConfig.music_directory = normalizeDirectoryPath(mergedConfig.music_directory) || mergedConfig.music_directory;
+    if (mergedConfig.trash_directory) {
+        mergedConfig.trash_directory = normalizeDirectoryPath(mergedConfig.trash_directory);
+    }
+
+    return mergedConfig;
 }
 
 function hasEnvOverrides(): boolean {
