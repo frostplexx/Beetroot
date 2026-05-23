@@ -1,6 +1,17 @@
 import db from "./db"
 import { decodeRows, decodeRow } from "./utils"
 
+// Cache for schema introspection - loaded once on first use
+let validAlbumsColumns: Set<string> | null = null;
+
+function getValidAlbumsColumns(): Set<string> {
+    if (!validAlbumsColumns) {
+        const columns = db.prepare('PRAGMA table_info(albums)').all() as Array<{ name: string }>;
+        validAlbumsColumns = new Set(columns.map(c => c.name));
+    }
+    return validAlbumsColumns;
+}
+
 export interface Album {
     id: number
     album: string
@@ -165,9 +176,8 @@ export function getAlbumsSearchCount(query: string): number {
 
 export function writeOrUpdateAlbum(album: Album): number {
     try {
-        // Get valid columns from schema
-        const columns = db.prepare('PRAGMA table_info(albums)').all() as Array<{ name: string }>
-        const validColumns = new Set(columns.map(c => c.name))
+        // Get valid columns from schema (cached)
+        const validColumns = getValidAlbumsColumns();
 
         // Check if album exists - prefer mb_albumid, fallback to album+albumartist
         let existing: { id: number } | undefined
@@ -175,7 +185,12 @@ export function writeOrUpdateAlbum(album: Album): number {
             existing = db.prepare('SELECT id FROM albums WHERE mb_albumid = ?').get(album.mb_albumid) as { id: number } | undefined
         }
         if (!existing) {
-            existing = db.prepare('SELECT id FROM albums WHERE album = ? AND albumartist = ?').get(album.album, album.albumartist) as { id: number } | undefined
+            // NULL-safe comparison for album and albumartist
+            existing = db.prepare(`
+                SELECT id FROM albums
+                WHERE (album IS NULL AND ? IS NULL OR album = ?)
+                  AND (albumartist IS NULL AND ? IS NULL OR albumartist = ?)
+            `).get(album.album, album.album, album.albumartist, album.albumartist) as { id: number } | undefined
         }
 
         // Prepare album data for database - only include valid columns
@@ -192,14 +207,14 @@ export function writeOrUpdateAlbum(album: Album): number {
         }
 
         if (existing) {
-            // Update existing album
+            // Update existing album (exclude 'id' and 'added' - preserve original added timestamp)
             const fields = Object.keys(dbAlbum)
-                .filter(key => key !== 'id') // Don't update id
+                .filter(key => key !== 'id' && key !== 'added')
                 .map(key => `${key} = ?`)
                 .join(', ')
 
             const values = Object.keys(dbAlbum)
-                .filter(key => key !== 'id')
+                .filter(key => key !== 'id' && key !== 'added')
                 .map(key => dbAlbum[key])
 
             const stmt = db.prepare(`UPDATE albums SET ${fields} WHERE id = ?`)
@@ -295,6 +310,21 @@ export function checkAndUpdateAlbumMissingStatus(albumId: number): void {
         }
     } catch (error) {
         console.error('Error checking album missing status:', error)
+        throw error
+    }
+}
+
+// Update only the artpath for an album (focused update to avoid lost-update bugs)
+export function updateAlbumArtpath(albumId: number, artpath: string): void {
+    try {
+        const stmt = db.prepare(`
+            UPDATE albums
+            SET artpath = ?
+            WHERE id = ?
+        `)
+        stmt.run(Buffer.from(artpath, 'utf8'), albumId)
+    } catch (error) {
+        console.error('Error updating album artpath:', error)
         throw error
     }
 }

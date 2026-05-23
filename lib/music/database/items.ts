@@ -2,6 +2,17 @@ import db from "./db"
 import { decodeRows, decodeRow } from "./utils"
 import { globalConfig } from "@/lib/config"
 
+// Cache for schema introspection - loaded once on first use
+let validItemsColumns: Set<string> | null = null;
+
+function getValidItemsColumns(): Set<string> {
+    if (!validItemsColumns) {
+        const columns = db.prepare('PRAGMA table_info(items)').all() as Array<{ name: string }>;
+        validItemsColumns = new Set(columns.map(c => c.name));
+    }
+    return validItemsColumns;
+}
+
 export interface Item {
     id: number
     source: string
@@ -289,9 +300,8 @@ function findExistingItem(item: Item): { id: number } | undefined {
 
 export function writeOrUpdateItem(item: Item): { action: 'inserted' | 'updated' | 'skipped'; id: number } {
     try {
-        // Get valid columns from schema
-        const columns = db.prepare('PRAGMA table_info(items)').all() as Array<{ name: string }>
-        const validColumns = new Set(columns.map(c => c.name))
+        // Get valid columns from schema (cached)
+        const validColumns = getValidItemsColumns();
 
         // Multi-tier duplicate detection
         const existing = findExistingItem(item)
@@ -326,14 +336,14 @@ export function writeOrUpdateItem(item: Item): { action: 'inserted' | 'updated' 
                 return { action: 'skipped', id: existing.id }
             }
 
-            // Overwrite mode: update existing item
+            // Overwrite mode: update existing item (exclude 'id' and 'added' - preserve original timestamp)
             const fields = Object.keys(dbItem)
-                .filter(key => key !== 'id') // Don't update id
+                .filter(key => key !== 'id' && key !== 'added')
                 .map(key => `${key} = ?`)
                 .join(', ')
 
             const values = Object.keys(dbItem)
-                .filter(key => key !== 'id')
+                .filter(key => key !== 'id' && key !== 'added')
                 .map(key => dbItem[key])
 
             const stmt = db.prepare(`UPDATE items SET ${fields} WHERE id = ?`)
