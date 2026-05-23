@@ -19,24 +19,24 @@ export default function Library() {
 
     const [albums, setAlbums] = useState<Album[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [currentPage, setCurrentPageState] = useState(initialPage);
+    const [currentPage, setCurrentPage] = useState(initialPage);
     const [totalPages, setTotalPages] = useState(1);
     const pageSize = 30;
+    const previousPageRef = useRef(initialPage);
 
-    const setCurrentPage = (next: number | ((prev: number) => number)) => {
-        setCurrentPageState(prev => {
-            const value = typeof next === "function" ? next(prev) : next;
-            if (value === prev) return prev;
-            const params = new URLSearchParams(searchParams.toString());
-            if (value <= 1) params.delete("page");
-            else params.set("page", String(value));
-            const query = params.toString();
-            router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-            sessionStorage.setItem(SCROLL_STORAGE_KEY, "0");
-            window.scrollTo(0, 0);
-            return value;
-        });
-    };
+    // Sync URL with currentPage state
+    useEffect(() => {
+        if (currentPage === previousPageRef.current) return;
+        previousPageRef.current = currentPage;
+
+        const params = new URLSearchParams(searchParams.toString());
+        if (currentPage <= 1) params.delete("page");
+        else params.set("page", String(currentPage));
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+        sessionStorage.setItem(SCROLL_STORAGE_KEY, "0");
+        window.scrollTo(0, 0);
+    }, [currentPage, pathname, router, searchParams]);
 
     const fetchAlbums = async (page: number) => {
         try {
