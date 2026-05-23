@@ -17,7 +17,6 @@ The following issues from the review remain and should be addressed in future it
 
 **Critical (deferred)**:
 - [R1]: adoptItem atomicity (requires transaction + stage-then-commit file moves)
-- [M9]: sync_conflicts table never populated (requires conflict persistence API)
 
 **Critical (FIXED)**:
 - ✅ [NEW-M14]: length field now prefers LocalTagsSource (audio file) over MusicBrainz
@@ -66,7 +65,6 @@ See individual sections below for full details on remaining issues.
 6. **Reconcile Step 3 does an N+1 query on `getItemById`**. See [R5].
 7. **Duplicate-check pre-filter is sequential, not parallel**. See [R6].
 8. **`getAlbumsWithMissingArtwork()` silently caps at 1000**. See [R7].
-9. **`sync_conflicts` table is never written to** — README promises conflict UI. See [M9].
 
 ---
 
@@ -1272,7 +1270,7 @@ Then `_resolveItem(NewItem | Item)` becomes type-safe and `id: 0` is non-represe
 
 | Severity | First pass | After fixes | New in 2nd pass | Net open |
 |---|---|---|---|---|
-| Critical | 5 | 1 deferred (R1) + 1 deferred (M9) | NEW-M14, NEW-R16 | 4 |
+| Critical | 5 | 1 deferred (R1) | NEW-M14, NEW-R16 | 3 |
 | High | ~20 | unchanged | NEW-M15, NEW-B16, NEW-B17, NEW-A1, NEW-CV1 | ~25 |
 | Medium / Low | rest | unchanged | NEW-M16, NEW-W11, NEW-W12, NEW-CF4, NEW-D8, NEW-D9, NEW-DC2, NEW-S7, NEW-S8, NEW-W13, NEW-T2, NEW-R17, NEW-DB1, NEW-AL1, NEW-FS1, NEW-RG1 | + |
 
