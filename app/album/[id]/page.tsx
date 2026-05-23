@@ -6,6 +6,7 @@ import DynamicBackground from "@/components/dynamic-background"
 import { SongsDataTable } from "./data-table"
 import { columns } from "./columns"
 import { EditDialog } from "./edit-dialog"
+import { DeleteMissingButton } from "./delete-missing-button"
 
 export default async function AlbumPage({
     params,
@@ -55,7 +56,12 @@ export default async function AlbumPage({
                                 <h1 className="font-heading text-4xl md:text-5xl font-black leading-none tracking-tight">
                                     {album.album}
                                 </h1>
-                                <EditDialog album={album} image={artUrl}/>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {album.missing_since != null && (
+                                        <DeleteMissingButton albumId={albumId} albumName={album.album} />
+                                    )}
+                                    <EditDialog album={album} image={artUrl}/>
+                                </div>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-base">
