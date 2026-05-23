@@ -151,13 +151,21 @@ class Repository {
                 const aId = writeOrUpdateAlbum(album);
                 item.album_id = aId;
                 item.path = targetPath; // CRITICAL: Write target path, not current
-                const { id } = writeOrUpdateItem(item);
-                return { albumId: aId, itemId: id };
+                const writeResult = writeOrUpdateItem(item);
+                return { albumId: aId, itemId: writeResult.id, action: writeResult.action };
             })();
 
             dbCommitted = true;
             itemId = result.itemId;
             albumId = result.albumId;
+
+            // Duplicate detection skipped the DB write — don't move the file
+            // either, otherwise we'd plant a second physical copy on disk
+            // pointing at the same album/track row.
+            if (result.action === 'skipped') {
+                console.log(`Skipped duplicate file: ${originalPath} (existing item id ${result.itemId})`);
+                return;
+            }
 
             // Phase 5: Move file (only if target differs from original)
             if (originalPath !== targetPath) {

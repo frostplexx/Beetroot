@@ -319,9 +319,44 @@ function findExistingItem(item: Item): { id: number } | undefined {
 
     if (pathResult) {
         console.log(`Duplicate found by path: ${item.path}`)
+        return pathResult
     }
 
-    return pathResult
+    // Tier 4: Same album + same (track, disc) OR same normalized title.
+    // Catches re-imports of files that have no mb_trackid tag and arrive at
+    // a new path (e.g. the same album re-downloaded into a different folder,
+    // or the cluster matched two physical copies of one track to the same
+    // album row). album_id is set by the caller before writeOrUpdateItem so
+    // this tier is the safety net inside the cluster-resolved album.
+    if (item.album_id != null && globalConfig.duplicate_detection !== 'path') {
+        if (item.track != null) {
+            const trackDiscResult = db.prepare(`
+                SELECT id FROM items
+                WHERE album_id = ? AND track = ?
+                  AND ((disc IS NULL AND ? IS NULL) OR disc = ?)
+            `).get(item.album_id, item.track, item.disc, item.disc) as { id: number } | undefined
+
+            if (trackDiscResult) {
+                console.log(`Duplicate found by (album_id, track, disc): album=${item.album_id} track=${item.track} disc=${item.disc ?? 'null'}`)
+                return trackDiscResult
+            }
+        }
+
+        if (item.title) {
+            const titleResult = db.prepare(`
+                SELECT id FROM items
+                WHERE album_id = ?
+                  AND LOWER(TRIM(title)) = LOWER(TRIM(?))
+            `).get(item.album_id, item.title) as { id: number } | undefined
+
+            if (titleResult) {
+                console.log(`Duplicate found by (album_id, title): album=${item.album_id} title="${item.title}"`)
+                return titleResult
+            }
+        }
+    }
+
+    return undefined
 }
 
 export function writeOrUpdateItem(item: Item): { action: 'inserted' | 'updated' | 'skipped'; id: number } {
