@@ -340,7 +340,28 @@ function getAlbumDirectory(album: Album): string | null {
 }
 
 /**
- * Save cover art to album directory
+ * Detect image format from buffer magic bytes
+ */
+function detectImageFormat(buffer: Buffer): 'jpg' | 'png' | 'webp' {
+    // JPEG: FF D8 FF
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+        return 'jpg';
+    }
+    // PNG: 89 50 4E 47
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+        return 'png';
+    }
+    // WebP: RIFF ... WEBP
+    if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+        buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+        return 'webp';
+    }
+    // Default to jpg if unknown
+    return 'jpg';
+}
+
+/**
+ * Save cover art to album directory with correct extension
  */
 function saveCoverArt(coverArtData: Buffer, albumDir: string): string | null {
     try {
@@ -349,8 +370,11 @@ function saveCoverArt(coverArtData: Buffer, albumDir: string): string | null {
             fs.mkdirSync(albumDir, { recursive: true });
         }
 
-        // Save as cover.jpg in the album directory
-        const coverPath = path.join(albumDir, 'cover.jpg');
+        // Detect format from buffer magic bytes
+        const format = detectImageFormat(coverArtData);
+
+        // Save with correct extension
+        const coverPath = path.join(albumDir, `cover.${format}`);
         fs.writeFileSync(coverPath, coverArtData);
 
         return coverPath;
