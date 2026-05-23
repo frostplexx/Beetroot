@@ -320,22 +320,27 @@ async function fetchCoverArtFromSources(album: Album): Promise<Buffer | null> {
 }
 
 /**
- * Get the album directory from the first track in the album
+ * Get all unique directories for an album (handles multi-disc releases)
  */
-function getAlbumDirectory(album: Album): string | null {
+function getAlbumDirectories(album: Album): string[] {
     try {
-        // Get first item from album to determine directory
+        // Get all items from album
         const items = getItemsByAlbum(album.id);
         if (items.length === 0) {
             console.debug(`No items found for album ${album.id}`);
-            return null;
+            return [];
         }
 
-        // Use the directory of the first track
-        return path.dirname(items[0].path);
+        // Get unique directories (multi-disc albums may have tracks in subdirectories)
+        const directories = new Set<string>();
+        for (const item of items) {
+            directories.add(path.dirname(item.path));
+        }
+
+        return Array.from(directories);
     } catch (error) {
-        console.error(`Error getting album directory: ${error instanceof Error ? error.message : String(error)}`);
-        return null;
+        console.error(`Error getting album directories: ${error instanceof Error ? error.message : String(error)}`);
+        return [];
     }
 }
 
@@ -442,13 +447,13 @@ export async function handleCoverArt(album: Album): Promise<boolean> {
 
         // Step 3: If we have cover art (either extracted or fetched), save it
         if (coverArtData) {
-            const albumDir = getAlbumDirectory(album);
-            if (!albumDir) {
-                console.error(`Artwork failed: could not determine directory for ${album.albumartist} - ${album.album}`);
+            const albumDirs = getAlbumDirectories(album);
+            if (albumDirs.length === 0) {
+                console.error(`Artwork failed: could not determine directories for ${album.albumartist} - ${album.album}`);
                 return false;
             }
 
-            const coverPath = saveCoverArt(coverArtData, albumDir);
+            const coverPath = saveCoverArt(coverArtData, albumDirs);
             if (coverPath) {
                 // Update only the artpath field (focused update to avoid lost-update bugs)
                 updateAlbumArtpath(album.id, coverPath);
