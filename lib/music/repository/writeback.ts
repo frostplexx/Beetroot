@@ -160,8 +160,6 @@ function shouldWriteBack(mode: WriteBackMode, item: Item): boolean {
             // checking if ANY field is null returns true for almost every item.
             // TODO: Implement proper comparison with file tags to only write missing fields
             // For now, document this honestly and default to 'always' behavior
-            // See [W1] in REVIEW.md for full specification
-            console.debug('missing-only mode: currently writes all metadata (equivalent to always mode)');
             return true;
         default:
             throw new Error(`Invalid write back mode: ${mode}`);
