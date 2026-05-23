@@ -2,17 +2,19 @@
 
 import Image from "next/image"
 import { ViewTransition } from "react"
-import { Music2 } from "lucide-react"
+import { Music2, FileQuestion } from "lucide-react"
 import { useState } from "react"
 
 export default function AlbumArtwork({
     artUrl,
     album,
-    albumId
+    albumId,
+    missingSince
 }: {
     artUrl: string | null;
     album: string;
-    albumId: number
+    albumId: number;
+    missingSince?: number | null;
 }) {
     const [tilt, setTilt] = useState({ x: 0, y: 0 })
     const [isHovering, setIsHovering] = useState(false)
@@ -43,7 +45,12 @@ export default function AlbumArtwork({
             onMouseLeave={handleMouseLeave}
             style={{ perspective: "1000px" }}
         >
-            {artUrl ? (
+            {missingSince ? (
+                <div className="w-full h-full flex flex-col items-center justify-center bg-white/5 rounded-xl border-2 border-red-500/30">
+                    <FileQuestion className="w-20 h-20 text-red-400/60" />
+                    <span className="mt-3 text-sm text-red-400/80">Missing</span>
+                </div>
+            ) : artUrl ? (
                 <ViewTransition name={`album-${albumId}`}>
                     <Image
                         src={artUrl}

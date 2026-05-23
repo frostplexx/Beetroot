@@ -1,13 +1,11 @@
 import { Album } from "@/lib/music/database"
 import Link from "next/link"
-import { Music2 } from "lucide-react"
+import { Music2, FileQuestion } from "lucide-react"
 import { cn } from "@/lib/ui/utils"
 import Image from "next/image";
 import { ViewTransition } from "react";
 
 export default function AlbumCard({ album, className }: { album: Album; className?: string }) {
-    const artUrl = `/api/album/${album.id}/art?size=400&t=${album.added}`
-
     return (
         <Link
             href={`/album/${album.id}`}
@@ -15,10 +13,15 @@ export default function AlbumCard({ album, className }: { album: Album; classNam
             className={cn("group block overflow-hidden rounded-xl transition-all duration-200 hover:scale-102", className)}
         >
             <div className="relative aspect-square w-full overflow-hidden bg-white/5">
-                {album.artpath ? (
+                {album.missing_since ? (
+                    <div className="flex h-full w-full flex-col items-center justify-center rounded-xl border-2 border-red-500/30 text-red-400/60">
+                        <FileQuestion className="w-16 h-16" />
+                        <span className="mt-2 text-xs text-red-400/80">Missing</span>
+                    </div>
+                ) : album.artpath ? (
                     <ViewTransition name={`album-${album.id}`} share="morph">
                         <Image
-                            src={artUrl}
+                            src={`/api/album/${album.id}/art?size=400&t=${album.added}`}
                             alt={`${album.album} by ${album.albumartist}`}
                             className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 rounded-xl shadow-2xl ring-1 ring-white/10"
                             width={400}

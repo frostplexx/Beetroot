@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { Album as AlbumIcon, Music, Disc, Upload, FolderOpen, Library } from "lucide-react"
+import { Album as AlbumIcon, Music, Disc, Upload, FolderOpen, Library, FileQuestion } from "lucide-react"
 import {
   CommandDialog,
   Command,
@@ -16,16 +16,20 @@ import {
 } from "@/components/ui/command"
 import { Album } from "@/lib/music/database/albums"
 
-function AlbumArtwork({ albumId, albumName, added }: { albumId: number; albumName: string; added: number }) {
+function AlbumArtwork({ albumId, albumName, added, missingSince }: { albumId: number; albumName: string; added: number; missingSince?: number | null }) {
   return (
-    <div className="relative w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-white/5">
-      <Image
-        src={`/api/album/${albumId}/art?t=${added}`}
-        alt={albumName}
-        fill
-        className="object-cover"
-        sizes="40px"
-      />
+    <div className="relative w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-white/5 flex items-center justify-center">
+      {missingSince ? (
+        <FileQuestion className="w-5 h-5 text-red-400/60" />
+      ) : (
+        <Image
+          src={`/api/album/${albumId}/art?t=${added}`}
+          alt={albumName}
+          fill
+          className="object-cover"
+          sizes="40px"
+        />
+      )}
     </div>
   )
 }
@@ -155,7 +159,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
                         onSelect={() => handleSelectAlbum(album.id)}
                         className="py-3 px-3"
                       >
-                        <AlbumArtwork albumId={album.id} albumName={album.album} added={album.added} />
+                        <AlbumArtwork albumId={album.id} albumName={album.album} added={album.added} missingSince={album.missing_since} />
                         <div className="flex flex-col ml-3 flex-1 min-w-0">
                           <span className="font-medium text-sm truncate">{album.album}</span>
                           <span className="text-xs text-muted-foreground truncate">
@@ -183,7 +187,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
                       onSelect={() => handleSelectAlbum(album.id)}
                       className="py-3 px-3"
                     >
-                      <AlbumArtwork albumId={album.id} albumName={album.album} added={album.added} />
+                      <AlbumArtwork albumId={album.id} albumName={album.album} added={album.added} missingSince={album.missing_since} />
                       <div className="flex flex-col ml-3 flex-1 min-w-0">
                         <span className="font-medium text-sm truncate">{album.album}</span>
                         {album.year && (

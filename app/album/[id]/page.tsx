@@ -24,7 +24,7 @@ export default async function AlbumPage({
         )
     }
 
-    const artUrl = album.artpath ? `/api/album/${albumId}/art?size=800&t=${album.added}` : null
+    const artUrl = album.artpath && !album.missing_since ? `/api/album/${albumId}/art?size=800&t=${album.added}` : null
     const totalMinutes = album.total_time ? Math.round(album.total_time / 60) : 0
     const genres = album.genres?.split(",").map(g => g.trim()).filter(Boolean) || []
 
@@ -47,6 +47,7 @@ export default async function AlbumPage({
                             artUrl={artUrl}
                             album={`${album.album} by ${album.albumartist}`}
                             albumId={albumId}
+                            missingSince={album.missing_since}
                         />
 
                         <div className="flex-1 flex flex-col justify-start gap-4">

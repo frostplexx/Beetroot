@@ -31,6 +31,7 @@ import {
     Search,
     AlertTriangle,
     CheckCircle2,
+    FileQuestion,
 } from "lucide-react";
 import type { Item } from "@/lib/music/database";
 
@@ -40,6 +41,7 @@ type AlbumSummary = {
     albumartist: string;
     year: number | null;
     added: number;
+    missing_since: number | null;
 };
 
 // ---- Move-to-album dialog ----
@@ -183,17 +185,21 @@ function MoveToAlbumDialog({
                                             onClick={() => handleSelect(album.id)}
                                             className="w-full text-left flex items-center gap-3 px-2 py-2 rounded-md hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                                         >
-                                            <div className="w-9 h-9 rounded shrink-0 overflow-hidden bg-white/10">
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img
-                                                    src={`/api/album/${album.id}/art?size=64&t=${album.added}`}
-                                                    alt=""
-                                                    className="w-full h-full object-cover"
-                                                    onError={(e) => {
-                                                        (e.target as HTMLImageElement).style.visibility =
-                                                            "hidden";
-                                                    }}
-                                                />
+                                            <div className="w-9 h-9 rounded shrink-0 overflow-hidden bg-white/10 flex items-center justify-center">
+                                                {album.missing_since ? (
+                                                    <FileQuestion className="w-5 h-5 text-red-400/60" />
+                                                ) : (
+                                                    /* eslint-disable-next-line @next/next/no-img-element */
+                                                    <img
+                                                        src={`/api/album/${album.id}/art?size=64&t=${album.added}`}
+                                                        alt=""
+                                                        className="w-full h-full object-cover"
+                                                        onError={(e) => {
+                                                            (e.target as HTMLImageElement).style.visibility =
+                                                                "hidden";
+                                                        }}
+                                                    />
+                                                )}
                                             </div>
                                             <div className="min-w-0 flex-1">
                                                 <div className="text-sm font-medium truncate">
