@@ -13,21 +13,20 @@ function getValidAlbumsColumns(): Set<string> {
     return validAlbumsColumns;
 }
 
-// Pre-built SQL statements (D2) - initialized on first use
-let albumUpdateStmt: ReturnType<typeof db.prepare> | null = null;
+// Pre-built INSERT statement - initialized on first use.
+// UPDATE is built dynamically per-call because we only update fields that
+// are NULL/empty in the DB ("fill NULLs only" strategy), so the column list varies.
 let albumInsertStmt: ReturnType<typeof db.prepare> | null = null;
 let albumUpdateColumnsList: string[] | null = null;
 let albumInsertColumnsList: string[] | null = null;
 
 function getAlbumStatements() {
-    if (!albumUpdateStmt || !albumInsertStmt) {
+    if (!albumInsertStmt) {
         const validColumns = getValidAlbumsColumns();
         const allColumns = Array.from(validColumns);
 
-        // UPDATE: exclude 'id' and 'added' to preserve original timestamp
+        // Columns eligible for UPDATE: exclude 'id' and 'added' to preserve original timestamp
         albumUpdateColumnsList = allColumns.filter(col => col !== 'id' && col !== 'added');
-        const updateFields = albumUpdateColumnsList.map(col => `${col} = ?`).join(', ');
-        albumUpdateStmt = db.prepare(`UPDATE albums SET ${updateFields} WHERE id = ?`);
 
         // INSERT: exclude 'id' (auto-increment)
         albumInsertColumnsList = allColumns.filter(col => col !== 'id');
@@ -35,7 +34,7 @@ function getAlbumStatements() {
         const insertPlaceholders = albumInsertColumnsList.map(() => '?').join(', ');
         albumInsertStmt = db.prepare(`INSERT INTO albums (${insertFields}) VALUES (${insertPlaceholders})`);
     }
-    return { albumUpdateStmt, albumInsertStmt, albumUpdateColumnsList, albumInsertColumnsList };
+    return { albumInsertStmt, albumUpdateColumnsList, albumInsertColumnsList };
 }
 
 export interface Album {
@@ -209,14 +208,17 @@ export function writeOrUpdateAlbum(album: Album): number {
         const normalizedAlbum = normalizeAlbumString(album.album);
         const normalizedArtist = normalizeAlbumString(album.albumartist);
 
-        // Check if album exists - prefer mb_albumid, fallback to normalized matching
+        // Match cascade: mb_albumid → mb_releasegroupid → normalized (album+artist+year).
+        // mb_releasegroupid groups different editions/regions of the same release, and is
+        // stable across tracks whose albumartist differs (e.g. soundtracks).
         let existing: { id: number; mb_albumid: string | null } | undefined
         if (album.mb_albumid) {
             existing = db.prepare('SELECT id, mb_albumid FROM albums WHERE mb_albumid = ?').get(album.mb_albumid) as { id: number; mb_albumid: string | null } | undefined
         }
+        if (!existing && album.mb_releasegroupid) {
+            existing = db.prepare('SELECT id, mb_albumid FROM albums WHERE mb_releasegroupid = ?').get(album.mb_releasegroupid) as { id: number; mb_albumid: string | null } | undefined
+        }
         if (!existing && normalizedAlbum) {
-            // Use normalized matching to prevent duplicates
-            // Album name is now required, so no NULL check needed for album_normalized
             existing = db.prepare(`
                 SELECT id, mb_albumid FROM albums
                 WHERE album_normalized = ?
@@ -224,15 +226,6 @@ export function writeOrUpdateAlbum(album: Album): number {
                        OR albumartist_normalized = ?)
                   AND (year IS NULL AND ? IS NULL OR year = ?)
             `).get(normalizedAlbum, normalizedArtist, normalizedArtist, album.year, album.year) as { id: number; mb_albumid: string | null } | undefined
-
-            // Warn if we're potentially merging albums with different mb_albumids
-            if (existing && existing.mb_albumid && album.mb_albumid && existing.mb_albumid !== album.mb_albumid) {
-                console.warn(
-                    `Album match by normalized name but mb_albumid differs: ` +
-                    `existing=${existing.mb_albumid}, new=${album.mb_albumid}, ` +
-                    `album="${album.album}", artist="${album.albumartist}", year=${album.year}`
-                );
-            }
         }
 
         // Prepare album data for database - only include valid columns
@@ -252,17 +245,46 @@ export function writeOrUpdateAlbum(album: Album): number {
             dbAlbum.album = 'Unknown Album';
         }
 
-        // D4: artpath is now TEXT, no Buffer conversion needed
-
         if (existing) {
-            // Update existing album using pre-built statement (D2)
-            const { albumUpdateStmt, albumUpdateColumnsList } = getAlbumStatements();
-            const values = albumUpdateColumnsList!.map(col => dbAlbum[col] ?? null);
-            values.push(existing.id); // WHERE id = ?
-            albumUpdateStmt!.run(...values);
-            return existing.id
+            // Fill-NULLs-only update: never overwrite existing non-empty values.
+            // This preserves the DB's view of the album (per user directive: "the album
+            // from the database if it exists should always be preferred") and lets sparse
+            // tracks improve metadata over time without destroying good data.
+            const { albumUpdateColumnsList } = getAlbumStatements();
+            const current = db.prepare('SELECT * FROM albums WHERE id = ?').get(existing.id) as Record<string, any>;
+
+            const updates: Record<string, any> = {};
+            for (const col of albumUpdateColumnsList!) {
+                const currentVal = current[col];
+                const newVal = dbAlbum[col];
+
+                // Treat 'Unknown Album' as empty for the `album` column so a real
+                // name can later replace a placeholder set by a track with missing tags.
+                const currentIsEmpty =
+                    currentVal === null ||
+                    currentVal === '' ||
+                    (col === 'album' && currentVal === 'Unknown Album');
+                const newHasValue =
+                    newVal !== null &&
+                    newVal !== undefined &&
+                    newVal !== '' &&
+                    !(col === 'album' && newVal === 'Unknown Album');
+
+                if (currentIsEmpty && newHasValue) {
+                    updates[col] = newVal;
+                }
+            }
+
+            if (Object.keys(updates).length > 0) {
+                const cols = Object.keys(updates);
+                const fields = cols.map(c => `${c} = ?`).join(', ');
+                const values = cols.map(c => updates[c]);
+                values.push(existing.id);
+                db.prepare(`UPDATE albums SET ${fields} WHERE id = ?`).run(...values);
+            }
+            return existing.id;
         } else {
-            // Insert new album using pre-built statement (D2)
+            // Insert new album using pre-built statement
             const { albumInsertStmt, albumInsertColumnsList } = getAlbumStatements();
             const values = albumInsertColumnsList!.map(col => dbAlbum[col] ?? null);
             const result = albumInsertStmt!.run(...values);

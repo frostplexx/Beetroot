@@ -259,6 +259,7 @@ function createSchema(db: Database): void {
         CREATE INDEX IF NOT EXISTS album_albumartist ON albums(albumartist);
         CREATE INDEX IF NOT EXISTS album_added ON albums(added);
         CREATE INDEX IF NOT EXISTS album_mb_albumid ON albums(mb_albumid);
+        CREATE INDEX IF NOT EXISTS album_mb_releasegroupid ON albums(mb_releasegroupid);
         CREATE INDEX IF NOT EXISTS idx_album_normalized ON albums(album_normalized, albumartist_normalized, year);
 
         -- Indices for items
@@ -336,6 +337,16 @@ function runMigrations(db: Database): void {
         db.run('INSERT INTO migrations (name, table_name) VALUES (?, ?)', migrationName, 'albums');
 
         console.log(`Migration complete: backfilled ${albums.length} albums with normalized values`);
+    }
+
+    // Migration: index on mb_releasegroupid for the new match cascade
+    const rgIndexMigration = 'add_mb_releasegroupid_index';
+    const rgIndexExists = db.prepare(
+        'SELECT 1 FROM migrations WHERE name = ? AND table_name = ?'
+    ).get(rgIndexMigration, 'albums');
+    if (!rgIndexExists) {
+        db.run('CREATE INDEX IF NOT EXISTS album_mb_releasegroupid ON albums(mb_releasegroupid)');
+        db.run('INSERT INTO migrations (name, table_name) VALUES (?, ?)', rgIndexMigration, 'albums');
     }
 }
 
