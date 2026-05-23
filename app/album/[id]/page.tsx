@@ -30,10 +30,9 @@ export default async function AlbumPage({
     const genres = album.genres?.split(",").map(g => g.trim()).filter(Boolean) || []
 
     return (
-        <div className="w-full relative flex flex-col overflow-hidden">
+        <>
             <DynamicBackground artUrl={artUrl} />
-            <div className="relative flex-1">
-                <div className="container mx-auto px-4 py-6">
+            <div className="container mx-auto px-4 py-6">
                     <Link
                         href="/"
                         transitionTypes={['nav-back']}
@@ -124,7 +123,6 @@ export default async function AlbumPage({
                         <SongsDataTable columns={columns} data={getItemsByAlbum(albumId)} totalTracks={album.total_tracks}/>
                     </div>
                 </div>
-            </div>
-        </div>
+        </>
     )
 }

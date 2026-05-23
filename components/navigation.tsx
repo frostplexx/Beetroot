@@ -27,7 +27,7 @@ export default function Navigation() {
     }, [])
 
     return (
-        <header className="sticky top-0 z-50 bg-black/60 backdrop-blur-md border-b border-white/10">
+        <header className="sticky top-0 z-50 w-screen bg-black/60 backdrop-blur-md border-b border-white/10">
             <div className="container mx-auto px-4 py-3">
                 <div className="flex flex-col items-center content-center gap-4 w-full ">
 
