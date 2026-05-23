@@ -196,34 +196,20 @@ const SOURCES: CoverArtSource[] = [
 ];
 
 /**
- * Check if file has embedded cover art using music-metadata
+ * Extract embedded cover art from file (returns null if not present)
+ * Combines check + extract to avoid double parseFile call
  */
-async function hasEmbeddedCoverArt(filePath: string): Promise<boolean> {
-    try {
-        const metadata = await parseFile(filePath);
-        return !!(metadata.common.picture && metadata.common.picture.length > 0);
-    } catch (error) {
-        // Silently handle missing files (ENOENT) - expected for duplicates/moved files
-        if ((error as any)?.code === 'ENOENT') {
-            console.debug(`File not found when checking for embedded cover art: ${filePath}`);
-        } else {
-            console.error(`Error reading metadata from ${filePath}:`, error);
-        }
-        return false;
-    }
-}
-
-/**
- * Extract embedded cover art from file
- */
-async function extractEmbeddedCoverArt(filePath: string): Promise<Buffer | null> {
+async function extractEmbeddedCoverArt(filePath: string): Promise<{ hasArt: boolean; buffer: Buffer | null }> {
     try {
         const metadata = await parseFile(filePath);
         if (metadata.common.picture && metadata.common.picture.length > 0) {
             // Return the first (usually best quality) picture
-            return metadata.common.picture[0].data;
+            return {
+                hasArt: true,
+                buffer: metadata.common.picture[0].data
+            };
         }
-        return null;
+        return { hasArt: false, buffer: null };
     } catch (error) {
         // Silently handle missing files (ENOENT) - expected for duplicates/moved files
         if ((error as any)?.code === 'ENOENT') {
@@ -231,7 +217,7 @@ async function extractEmbeddedCoverArt(filePath: string): Promise<Buffer | null>
         } else {
             console.error(`Error extracting cover art from ${filePath}:`, error);
         }
-        return null;
+        return { hasArt: false, buffer: null };
     }
 }
 
@@ -346,12 +332,13 @@ async function stripEmbeddedCoverArtFromAlbum(album: Album): Promise<Buffer | nu
         const items = getItemsByAlbum(album.id);
 
         for (const item of items) {
-            const hasEmbedded = await hasEmbeddedCoverArt(item.path);
+            // Extract and check in one call (avoids double parseFile)
+            const { hasArt, buffer } = await extractEmbeddedCoverArt(item.path);
 
-            if (hasEmbedded) {
-                // Extract from first file that has it (as fallback)
-                if (!extractedCoverArt) {
-                    extractedCoverArt = await extractEmbeddedCoverArt(item.path);
+            if (hasArt) {
+                // Save from first file that has it (as fallback)
+                if (!extractedCoverArt && buffer) {
+                    extractedCoverArt = buffer;
                 }
 
                 // Strip embedded cover art from file
