@@ -4,6 +4,7 @@ import { MusicBrainzSource } from "./sources/musicbrainz/musicbrainz";
 import { DiscogsSource } from "./sources/discogs/discogs";
 import { WikipediaSource } from "./sources/wikipedia/wikipedia";
 import { LrclibSource } from "./sources/lrclib/lrclib";
+import { ReplayGain } from "./sources/replaygain";
 import { DataSource, ReconcileProgress, ReconcileResult, SourceResult } from "./types";
 import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, deleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById, checkAndUpdateAlbumMissingStatus, getItemById } from "../database";
 import { mergeData } from "./merger";
@@ -26,6 +27,7 @@ class Repository {
         new DiscogsSource(),        // confidence: 0.75
         new LastfmGenreSource(),    // confidence: 0.7
         new WikipediaSource(),      // confidence: 0.65
+        new ReplayGain(),           // confidence: 0.9 (calculated from audio)
     ];
 
     private constructor() {

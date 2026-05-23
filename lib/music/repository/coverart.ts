@@ -1,4 +1,4 @@
-import { Album, writeOrUpdateAlbum, getItemsByAlbum } from "../database";
+import { Album, writeOrUpdateAlbum, getItemsByAlbum, updateAlbumArtpath } from "../database";
 import { parseFile } from 'music-metadata';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
@@ -401,11 +401,8 @@ export async function handleCoverArt(album: Album): Promise<boolean> {
 
             const coverPath = saveCoverArt(coverArtData, albumDir);
             if (coverPath) {
-                // Update album with new artpath
-                album.artpath = coverPath;
-
-                // Write to database
-                writeOrUpdateAlbum(album);
+                // Update only the artpath field (focused update to avoid lost-update bugs)
+                updateAlbumArtpath(album.id, coverPath);
 
                 return true;
             }
