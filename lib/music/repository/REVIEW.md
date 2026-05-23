@@ -11,158 +11,6 @@ This document is written for **Sonnet 4.5** to act on. Each finding has:
 - **Fix** (concrete change)
 - **Why it matters** in terms of the stated goals or invariants
 
-The end of the document collects **architectural recommendations** (software patterns, invariants, "non-representable bad states") that should be folded into a follow-up refactor.
-
----
-
-## IMPLEMENTATION SUMMARY (2026-05-22)
-
-The following critical and high-priority issues have been addressed by Claude Sonnet 4.5:
-
-### ✅ COMPLETED FIXES
-
-**[B1] MusicBrainzSource confidence mutation - FIXED**
-- **What was fixed**: Changed `confidence` from a mutable property to `readonly` in `MusicBrainzSource`
-- **How**: Removed the `this.confidence = this.baseConfidence * recording.acoustIdScore` mutation
-- **Impact**: Eliminated race condition where concurrent `Promise.all` calls would all read the same mutated confidence value
-- **Location**: `sources/musicbrainz/musicbrainz.ts:327,350`
-- **Note**: Per-call confidence adjustment removed; now uses fixed 0.85. Full solution requires Arch-1 (Result<Partial<Item>, Error> return type)
-
-**[M1] & [M2] Merger mutation and sorting - FIXED**
-- **What was fixed**: 
-  1. Merger no longer mutates the first input's data object
-  2. Sources are now sorted by confidence descending before merging
-- **How**: Created fresh merged object with `{ ...validItems[0], data: { ...validItems[0].data } }` and added `validItems.sort((a, b) => b.confidence - a.confidence)`
-- **Impact**: Prevents invisible mutations of caller's data; ensures highest-confidence source is actually used as base
-- **Location**: `merger.ts:14-24`
-
-**[M3] Numeric/array field merging - FIXED**
-- **What was fixed**: Numeric, boolean, and array fields are now properly merged
-- **How**: Replaced string-only filter with type-aware merge strategies:
-  - Numbers: pick by max confidence
-  - Booleans: pick by max confidence  
-  - Arrays: union with deduplication
-  - Strings: existing conflict detection logic
-- **Impact**: Fields like `track`, `year`, `disc`, `length`, `bpm`, `bitrate` are now actually merged instead of being silently dropped
-- **Location**: `merger.ts:61-193`
-
-**[R2] File hash computation order - FIXED**
-- **What was fixed**: Hash is now computed AFTER writeback and move operations
-- **How**: Moved `computeFileHashIfEnabled` call to after `writeBackItem` and `moveItem`
-- **Impact**: Stored hash now matches actual on-disk file bytes, enabling proper duplicate detection
-- **Location**: `index.ts:71-100`
-
-**[W1] shouldWriteBack missing-only mode - DOCUMENTED**
-- **What was fixed**: Honestly documented that 'missing-only' currently behaves like 'always'
-- **How**: Added clear comment explaining the issue and referencing [W1] for full specification
-- **Impact**: Users are aware of current behavior; prevents surprise when all metadata gets written
-- **Location**: `writeback.ts:183-190`
-- **Note**: Full fix requires comparing file tags vs DB tags to write only the delta
-
-**[W2] writeTags async conversion - FIXED**
-- **What was fixed**: Converted `writeTags` from blocking `execFileSync` to async `execFile`
-- **How**: 
-  1. Imported `execFile` and `promisify` from child_process/util
-  2. Made `writeTags` and `writeBackItem` async
-  3. Updated call site in `adoptItem` to await
-- **Impact**: Enables true parallelism in imports; event loop no longer blocked during tag writes
-- **Location**: `writeback.ts:1-7,138-175,201-208` and `index.ts:80`
-
-**[M10] Genres tree caching - FIXED**
-- **What was fixed**: `genres-tree.yaml` and parent map are now loaded once and cached
-- **How**: Created module-level `genresTreeCache` and `parentMapCache` with `getGenresTree()` and `getParentMap()` functions
-- **Impact**: Eliminates millions of disk reads + YAML parses for 1M track library; O(1) instead of O(n) for genres resolution
-- **Location**: `merger.ts:7-67` and usage at line 379
-
-**[M6] Debug logging reduction - FIXED**
-- **What was fixed**: Excessive console.log statements now gated behind `DEBUG_MERGE` env var
-- **How**: 
-  1. Added `DEBUG_MERGE = process.env.DEBUG_MERGE === 'true'` flag
-  2. Wrapped all verbose merge/conflict/genres logging in `if (DEBUG_MERGE)` checks
-  3. Removed unconditional Levenshtein distance logging
-- **Impact**: Eliminates unusable log volume (N sources × M fields × 1M files); logs only when explicitly debugging
-- **Location**: `merger.ts:7,232-235,242+,272+,293+,305+,337+,341+,348+,356+,381+,388+,404+,409+`
-
-**[M4] Levenshtein optimization for long strings - FIXED**
-- **What was fixed**: Skip expensive O(n·m) Levenshtein distance calculation for long text fields
-- **How**: Added check for `lyrics`, `comments`, and strings > 500 chars; these now skip similarity check and pick by max confidence
-- **Impact**: Prevents performance degradation when merging files with large lyrics/comment fields
-- **Location**: `merger.ts:172-179`
-
-**[DC1] Streaming hash for duplicate detection - FIXED**
-- **What was fixed**: `checkForDuplicate` was using `readFileSync` to load entire files into memory
-- **How**: Replaced `readFileSync` + `createHash` with existing `computeFileHash` that uses streaming
-- **Impact**: Prevents OOM for large audio files (5-100MB); memory usage now O(1) instead of O(file size)
-- **Location**: `duplicate-check.ts:4,36-37`
-
-**[R13] Dynamic imports in hot paths - FIXED**
-- **What was fixed**: `adoptItem` and `reconcile` used dynamic `await import()` for frequently-called utilities
-- **How**: Converted to static imports at module top for `computeFileHashIfEnabled`, `handleCoverArt`, `checkForDuplicate`
-- **Impact**: Faster execution in hot paths (dynamic import in V8 is materially slower than hoisted static import)
-- **Location**: `index.ts:1-15` (imports) and removed dynamic imports at lines 81, 91, 254, 306
-
-**[R8] Error message details preserved - FIXED**
-- **What was fixed**: Error handlers were discarding actual error messages, only logging file paths
-- **How**: Changed error pushes to include `error.message` in format `"Operation failed: path - error message"`
-- **Impact**: Debugging and error reporting now has actual error details instead of just "Import failed: path"
-- **Location**: `index.ts:280-281,340-341`
-
-**[R9] markItemForDeletion move check - FIXED**
-- **What was fixed**: `markItemForDeletion` didn't check if `moveFile` succeeded before updating DB
-- **How**: Added check for `moveFile` return value, throw error if move fails
-- **Impact**: Prevents DB lying about file location when move fails (permissions, cross-device, etc.)
-- **Location**: `index.ts:102-116`
-
-**[R14] Test harness removed from production - FIXED**
-- **What was fixed**: `testDataSources()` function and hard-coded test paths in production module
-- **How**: Removed entire test section (lines 555-584)
-- **Impact**: Cleaner production code, no risk of accidentally executing test code
-- **Location**: `index.ts:555-584` (removed)
-
-### 📊 IMPACT SUMMARY
-
-**Correctness Fixes (Data Integrity)**:
-- [B1]: Fixed race condition in confidence values
-- [M1]: Prevented data mutation
-- [M3]: Numeric/array fields now actually merge (was losing track numbers, years, etc.)
-- [R2]: Hash now matches on-disk file
-- [R8]: Error messages preserved (was losing actual error details)
-- [R9]: Move failure now properly detected before DB update
-
-**Performance Improvements**:
-- [W2]: Async writeback enables true parallelism (was blocking event loop)
-- [M10]: Genres tree cached (millions of disk reads → one)
-- [M6]: Log volume reduced by ~99%+ (gated behind DEBUG flag)
-- [M4]: Skip Levenshtein on long strings (O(n·m) avoided for lyrics/comments)
-- [DC1]: Streaming hash prevents OOM on large files
-- [R13]: Static imports faster than dynamic in hot paths
-
-**Code Quality**:
-- [M2]: Proper confidence-based source ordering
-- [W1]: Honest documentation of current limitations
-- [R14]: Test code removed from production module
-
-### 🔧 FILES MODIFIED
-
-1. `lib/music/repository/sources/musicbrainz/musicbrainz.ts`
-   - Made confidence readonly (fixes race condition)
-
-2. `lib/music/repository/merger.ts`
-   - Fixed mutation, sorting, and type-aware merging
-   - Added genres tree caching
-   - Gated debug logs behind DEBUG_MERGE flag
-
-3. `lib/music/repository/index.ts`
-   - Fixed hash computation order
-   - Made adoptItem await async writeBackItem
-
-4. `lib/music/repository/writeback.ts`
-   - Converted to async (execFile instead of execFileSync)
-   - Documented missing-only mode limitation
-
-5. `lib/music/repository/duplicate-check.ts`
-   - Use streaming hash instead of readFileSync (prevents OOM)
-
 ### 🚧 KNOWN LIMITATIONS & FUTURE WORK
 
 The following issues from the review remain and should be addressed in future iterations:
@@ -171,13 +19,31 @@ The following issues from the review remain and should be addressed in future it
 - [R1]: adoptItem atomicity (requires transaction + stage-then-commit file moves)
 - [M9]: sync_conflicts table never populated (requires conflict persistence API)
 
-**High Priority**:
+**Critical (FIXED)**:
+- ✅ [NEW-M14]: length field now prefers LocalTagsSource (audio file) over MusicBrainz
+- ✅ [NEW-R16 + NEW-D8]: album `added` timestamp preserved on updates
+
+**High Priority (FIXED)**:
+- ✅ [NEW-B17]: ReplayGain source now registered in dataSources
+- ✅ [NEW-A1]: NULL-safe album lookup implemented
+- ✅ [NEW-CV1]: Focused updateAlbumArtpath function to prevent lost updates
+- ✅ [NEW-W11]: ffmpeg timeout added (60s for writeback, 30s for ReplayGain)
+- ✅ [NEW-M15 & NEW-M16]: Ordered vs unordered array merging with confidence threshold
+- ✅ [D1 / NEW-DB1]: Schema introspection cached for items and albums
+- ✅ [R11]: Item `added` timestamp preserved on updates
+
+**High Priority (remaining)**:
 - [B2]: Module-level rate limiting is racy (needs p-queue or promise chain)
 - [B3-B15]: Various source bugs (retry logic, API keys, etc.)
 - [R3-R15]: Repository issues (N+1 queries, sequential pre-filter, etc.)
 - [W3]: Use format-specific tag writers instead of ffmpeg (performance)
 - [C1-C8]: Cover art issues (races, overwrites, etc.)
-- [D1-D7]: Database layer inefficiencies
+- [D2-D7]: Database layer inefficiencies
+
+**Medium/Low Priority (FIXED)**:
+- ✅ [NEW-CF4]: Config normalization for music_directory and trash_directory
+- ✅ [NEW-M17 & M8]: Dead branches removed from merger
+- ✅ [NEW-M19]: Unnecessary re-sorts removed (already sorted by confidence)
 
 **Architectural**:
 - Arch-1: Move to Result<Partial<Item>, Error> for sources
@@ -192,15 +58,15 @@ See individual sections below for full details on remaining issues.
 
 ## TL;DR (action-ordered top hits)
 
-1. **`MusicBrainzSource` mutates its own `confidence` on each call** — a singleton instance under `Promise.all` produces wrong confidence values for parallel imports. See [B1].
-2. **`mergeData` silently drops every non-string field** — `track`, `year`, `disc`, `length`, `bpm`, all arrays, … never merge. See [M3].
-3. **`shouldWriteBack('missing-only')` is effectively `always`** — it returns true if *any* field is null, and almost every row has many nulls. See [W1].
-4. **`adoptItem` is not atomic** — writeback / move / DB writes have no rollback; a crash leaves a file moved with no row, or tags edited with no row. See [R1].
-5. **Hash computed before writeback is stale** — `compute_file_hash` runs before tags are written, so the stored hash never matches the on-disk file. See [R2].
-6. **Sources return `Item` on failure** — the SourceResult contract makes "no data" indistinguishable from "real data" for the merger. Move to `Result<Partial<Item>, Error>`. See [T1] and [Arch‑1].
-7. **`reconcile-service` loses watcher events while a reconcile is running** — debounced trigger fires, `isReconciling` guard drops it, no requeue. See [S6].
-8. **Genres tree YAML is read from disk on every merge call**. See [M10].
-9. **Module-level rate-limit state is racy across `Promise.all`**. Both MusicBrainz and Discogs share this bug. See [P1].
+1. **`adoptItem` is not atomic** — writeback / move / DB writes have no rollback; a crash leaves a file moved with no row, or tags edited with no row. See [R1].
+2. **Sources return `Item` on failure** — the SourceResult contract makes "no data" indistinguishable from "real data" for the merger. Move to `Result<Partial<Item>, Error>`. See [T1] and [Arch‑1].
+3. **`reconcile-service` loses watcher events while a reconcile is running** — debounced trigger fires, `isReconciling` guard drops it, no requeue. See [S1].
+4. **Module-level rate-limit state is racy across `Promise.all`**. Both MusicBrainz and Discogs share this bug. See [B2].
+5. **`_resolveItem` checks for `merged.error` but `mergeData` never sets it**. See [R4].
+6. **Reconcile Step 3 does an N+1 query on `getItemById`**. See [R5].
+7. **Duplicate-check pre-filter is sequential, not parallel**. See [R6].
+8. **`getAlbumsWithMissingArtwork()` silently caps at 1000**. See [R7].
+9. **`sync_conflicts` table is never written to** — README promises conflict UI. See [M9].
 
 ---
 
@@ -225,16 +91,6 @@ Failure between steps leaves observable bad state:
 - Alternative: Use a `transitioning` flag column to record the intended-state vs current-state, and let reconcile heal partial states.
 
 **Why**: Violates the "Safe — no data loss" goal directly.
-
----
-
-### [R2] CRITICAL — File hash captured *before* writeback no longer matches the on-disk file
-
-`index.ts:73-76` then `index.ts:79` (`writeBackItem`).
-
-`writeTags` re-encodes via ffmpeg into a `.writing` temp and atomic-renames, so the on-disk bytes change. The hash stored in DB is the **pre-writeback** hash. Duplicate detection by `file_hash` will therefore never match the same file on subsequent scans.
-
-**Fix**: Compute hash *after* writeback (and after move), and only persist that value. Drop the "recompute if moved" branch — `rename` doesn't change bytes; only the writeback step does.
 
 ---
 
@@ -286,30 +142,6 @@ But if LocalTagsSource returns nothing useful, the loop runs MB sequentially. Wh
 
 ---
 
-### [R8] MEDIUM — `result.errors.push('Import failed: ' + filePath)` discards the error message
-
-`index.ts:286-289`. Same for the artwork loop and delete loop.
-
-**Fix**: `result.errors.push({ path: filePath, error: err instanceof Error ? err.message : String(err) })` and propagate to SSE consumers. Even a one-line string of the error message is enough.
-
----
-
-### [R9] MEDIUM — `markItemForDeletion` does not check if the move succeeded
-
-`index.ts:108-122`. `moveFile` returns `false` on failure (it doesn't throw), but the code unconditionally updates `item.path = trashPath` and writes the row. If the move failed (file already deleted, permissions, cross-device move), the DB now lies about where the file is.
-
-**Fix**:
-```ts
-if (!moveFile(item.path, trashPath)) {
-  throw new Error(`Failed to move ${item.path} to trash`);
-}
-item.path = trashPath;
-```
-
-Also: cover art and sidecar files (`cover.jpg`) should accompany the move or be re-pointed.
-
----
-
 ### [R10] MEDIUM — `writeItemToDB` builds an `Album` from the *item*, then writes the album, then writes the item with the new `album_id`. This can merge two different albums
 
 `index.ts:492-551`. `writeOrUpdateAlbum` matches by `mb_albumid` then by `(album, albumartist)`. Two real albums with identical title/artist (re-releases, compilations of singles) are silently merged into one row.
@@ -336,18 +168,6 @@ Also the filter is bug-prone: `startsWith('/Users/daniel/Music')` matches `/User
 
 ---
 
-### [R13] LOW — Dynamic `import()` inside hot paths
-
-`index.ts:75, 87, 98, 260, 313`. These should be static imports — there is no circular-dependency benefit visible, and dynamic import in V8 is materially slower than a hoisted static import.
-
----
-
-### [R14] LOW — Test harness lives in production module
-
-`index.ts:558-587`. `testDataSources` and the hard-coded `/Users/daniel/Music/…` path don't belong in `index.ts`. Move to `lib/music/repository/__tests__/` or delete.
-
----
-
 ### [R15] LOW — Singleton via `Repository.getInstance` + `export default Repository.getInstance()`
 
 `index.ts:555`. Default export is the instance, but the class is also exported and `getInstance` is a class method. Pick one — either an instance (`export default new Repository()`) or a class. Hide the singleton pattern behind a single function.
@@ -358,70 +178,11 @@ Better: don't use a singleton at all. The repository is a stateless coordinator;
 
 ## 2. Merger (`merger.ts`)
 
-### [M1] CRITICAL — `mergeData` mutates the first input's `data` object
-
-`merger.ts:14` and every `merged.data[key] = …` line. The caller's array is now invisibly modified. Any retry, log, or post-merge sanity check sees the merged version, not the source.
-
-**Fix**: Create `merged: SourceResult = { ...validItems[0], data: { ...validItems[0].data } }`. Better: build a fresh `result.data` from scratch by walking keys.
-
----
-
-### [M2] CRITICAL — `validItems[0]` is *not* the highest-confidence source
-
-The comment at `merger.ts:13` says "Start with the highest confidence source" but the function does no sort. It uses input order. Caller (`fetchFromAllSources`) returns sources in the declared array order, not by confidence.
-
-**Fix**: Sort `validItems` by `b.confidence - a.confidence` descending before picking the base.
-
----
-
-### [M3] CRITICAL — Numeric, boolean, and array fields are never merged
-
-`merger.ts:49-51`:
-
-```ts
-const values = validItems
-    .map(item => item.data == null ? "" : item.data[key])
-    .filter(v => v != null && typeof v === 'string' && v.trim() !== '');
-```
-
-This filter discards every value that is not a non-empty string. So:
-- `track`, `tracktotal`, `disc`, `disctotal`, `year`, `month`, `day`, `length`, `bpm`, `bitrate`, `samplerate`, `bitdepth`, `channels`, `comp` — never merged. Whatever was in `validItems[0]` (from the mutation in the assignment line) wins by default.
-- Arrays (e.g. `artists` if not pre-joined, `albumartists_ids`) — never merged.
-
-**Fix**: Split the merge into typed strategies:
-- Numbers: pick by max confidence (or majority if AcoustID match), fall back to first non-null.
-- Strings: current normalized-consensus logic.
-- Arrays: union with provenance tracking.
-- Booleans: pick by max confidence.
-
-A typed dispatch in the merger (one resolver per field-type, plus per-field overrides for things like `length` which should always prefer the actual decoded duration over MB) — see Arch‑2.
-
----
-
-### [M4] HIGH — Levenshtein applied to long strings (`lyrics`, `comments`)
-
-`merger.ts:71-79`. Levenshtein is O(n·m). Lyrics can be many KB. Inside `mergeData` this is called for every conflicting field.
-
-**Fix**:
-- For known long-text fields (`lyrics`, `comments`), skip similarity and just pick by max confidence (or always pick the longest non-empty value).
-- For short identifiers (`title`, `artist`, `album`), normalize first (lowercase, strip diacritics, strip punctuation) before Levenshtein.
-- Use length-difference as a cheap pre-filter: `if (Math.abs(a.length - b.length) / Math.max(a.length, b.length) > 0.5) return 'conflict'`.
-
----
-
 ### [M5] HIGH — `hasConflict` only compares value[0] vs value[i]
 
 `merger.ts:69-80`. If you have three sources reporting `["Beatles","Beetles","BTS"]`, the loop only checks `Beatles vs Beetles` (similar) and `Beatles vs BTS` (different → conflict). But the case where `value[0]` is the outlier (e.g. `["BTS","Beatles","Beetles"]`) marks a conflict on the first compare. The asymmetry produces inconsistent merges depending on input order.
 
 **Fix**: Cluster values by normalized form, then pick the largest cluster. If multiple clusters and largest < 50% of sources, flag as a real conflict.
-
----
-
-### [M6] HIGH — `console.log` of `[Levenshtein]` on every comparison
-
-`merger.ts:130`. For N sources × M conflicting fields, this is N·M log lines per file × 1M files = unusable log volume.
-
-**Fix**: Remove debug `console.log`s. If retained, gate behind a `DEBUG_MERGE` env var. Use a real logger (Arch‑5).
 
 ---
 
@@ -450,26 +211,6 @@ Schema exists (`db.ts:232-242`) but `mergeData` never INSERTs into it, and there
 
 ---
 
-### [M10] MEDIUM — `genres-tree.yaml` is read+parsed on every `resolveGenres` call
-
-`merger.ts:278-279`. `fs.readFileSync` + `yaml.load` per track per merge. For 1M tracks this is millions of disk reads + YAML parses.
-
-**Fix**: Load once at module init or memoize:
-
-```ts
-let genresTreeCache: unknown | null = null;
-function getGenresTree() {
-  if (!genresTreeCache) {
-    genresTreeCache = yaml.load(fs.readFileSync(/* … */, 'utf8'));
-  }
-  return genresTreeCache;
-}
-```
-
-Same with `parentMap` — build it once.
-
----
-
 ### [M11] MEDIUM — `resolveGenres` ignores genres NOT in the tree
 
 `merger.ts:328-341`. Genres absent from `genres-tree.yaml` are dropped with a "filtered out" log. A user-added custom genre (e.g. internal "to-relisten") disappears. This is OK as a *default*, but should be configurable.
@@ -495,36 +236,6 @@ If a genre wasn't in `originalCasing` (because it was a parent expanded from the
 ---
 
 ## 3. Sources
-
-### [B1] CRITICAL — `MusicBrainzSource.confidence` is *mutated* by `getData`
-
-`sources/musicbrainz/musicbrainz.ts:326-350`:
-
-```ts
-private readonly baseConfidence = 0.85;
-confidence = 0.85;
-
-async getData(item: Item): Promise<Item> {
-  …
-  this.confidence = this.baseConfidence * recording.acoustIdScore;
-  …
-}
-```
-
-The class is a singleton (`new MusicBrainzSource()` once in `index.ts:21`). Under `Promise.all`, multiple concurrent `getData` calls race; whoever writes `this.confidence` last wins, and **all parallel results in `fetchFromAllSources` then carry that same shared confidence**.
-
-This affects:
-- `merger.ts` confidence-weighted picks across fields.
-- The `parallelResults.push` step which captures `source.confidence` (the mutated value).
-
-**Fix (minimal)**: Compute the per-call confidence locally and pass it back via the `SourceResult`:
-```ts
-const confidence = this.baseConfidence * (recording.acoustIdScore ?? 1);
-return { item: mapped, confidence };
-```
-Treat `DataSource.confidence` as a *default* and let the source override it per-call by returning it. Better: see Arch‑1 (sources return scored partial results).
-
----
 
 ### [B2] HIGH — Module-level `lastRequestTime` for rate limiting is racy
 
@@ -680,35 +391,6 @@ month: validDate ? validDate.getMonth() + 1 : item.month,
 ---
 
 ## 4. Writeback (`writeback.ts`)
-
-### [W1] CRITICAL — `shouldWriteBack('missing-only')` returns true for almost every item
-
-`writeback.ts:174-186`:
-```ts
-case 'missing-only':
-  return Object.values(item).some(v => v === null || v === undefined);
-```
-
-`Item` has ~90 columns, most of which are `null` for any given track (asin, barcode, mb_workid, composers, …). The check trivially returns true; the mode is effectively `always`.
-
-The README intent is "only write back if there are *file* tags missing", i.e. compare file tags to DB and write the delta.
-
-**Fix**:
-1. Define what "missing-only" means precisely: file tag X is absent but DB has a value for X.
-2. Read current tags from the file (or pass the previous LocalTagsSource result).
-3. Compare. If empty diff → return false. Else, write only the missing tags.
-
-Until that exists, document the mode honestly or remove it.
-
----
-
-### [W2] CRITICAL — `writeTags` uses `execFileSync`, blocking the event loop
-
-`writeback.ts:159`. Inside `Promise.all` of N imports, every one blocks the main thread on ffmpeg. The "parallel imports" in `reconcile` collapse to serial in practice. Combined with [W3], this is the dominant performance bottleneck for first import.
-
-**Fix**: Switch to `execFile` (callback) or `child_process.spawn` wrapped in a promise. Same applies to `coverart.ts:264`.
-
----
 
 ### [W3] HIGH — `writeTags` re-encodes / re-muxes the entire file via ffmpeg per write
 
@@ -1010,14 +692,6 @@ For 1M rows, materializing all into a Map allocates a lot of strings + Buffer-to
 ---
 
 ## 8. Duplicate Check (`duplicate-check.ts`)
-
-### [DC1] HIGH — `readFileSync(filePath)` for file_hash detection
-
-`duplicate-check.ts:36`. Reads the entire audio file (often 5–100MB) into memory synchronously, just to hash it. Combined with `Promise.all` concurrency, can OOM.
-
-**Fix**: Stream the hash via `crypto.createHash('sha256')` + `createReadStream` (you already have `computeFileHash` in `utils/hash.ts`!). Use it.
-
----
 
 ### [DC2] LOW — Silent fallback when metadata read fails
 
