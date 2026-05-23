@@ -32,6 +32,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { SongContextMenu } from "./song-context-menu"
+import type { Item } from "@/lib/music/database"
 
 interface DataTableProps<TData, TValue> {
     columns: ColumnDef<TData, TValue>[]
@@ -126,17 +128,18 @@ export function SongsDataTable<TData, TValue>({
                     <TableBody>
                         {table.getRowModel().rows?.length ? (
                             table.getRowModel().rows.map((row) => (
-                                <TableRow
-                                    key={row.id}
-                                    data-state={row.getIsSelected() && "selected"}
-                                    className="border-white/10 hover:bg-white/5"
-                                >
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                        </TableCell>
-                                    ))}
-                                </TableRow>
+                                <SongContextMenu key={row.id} item={row.original as Item}>
+                                    <TableRow
+                                        data-state={row.getIsSelected() && "selected"}
+                                        className="border-white/10 hover:bg-white/5 data-[state=open]:bg-white/10"
+                                    >
+                                        {row.getVisibleCells().map((cell) => (
+                                            <TableCell key={cell.id}>
+                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                </SongContextMenu>
                             ))
                         ) : (
                             <TableRow>
