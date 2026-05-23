@@ -238,14 +238,17 @@ export function writeOrUpdateAlbum(album: Album): number {
 }
 
 // Get albums with missing artwork (artpath is null or empty)
-export function getAlbumsWithMissingArtwork(): Album[] {
+// Returns all albums, no limit - caller can paginate if needed
+export function getAlbumsWithMissingArtwork(limit?: number): Album[] {
     try {
-        const stmt = db.prepare(`
+        const sql = `
             SELECT *
             FROM albums
             WHERE artpath IS NULL OR artpath = ''
-            LIMIT 1000
-        `)
+            ORDER BY added DESC
+            ${limit ? `LIMIT ${limit}` : ''}
+        `
+        const stmt = db.prepare(sql)
         const rows = stmt.all() as Record<string, any>[]
         return decodeRows(rows) as Album[]
     } catch (error) {
