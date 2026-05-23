@@ -6,6 +6,7 @@ import { globalConfig } from "@/lib/config"
 import { revalidatePath } from "next/cache"
 import * as path from "path"
 import * as fs from "fs/promises"
+import db from "@/lib/music/database/db"
 
 interface UpdateAlbumPayload {
     album: string
@@ -189,6 +190,61 @@ export async function PATCH(
             {
                 error: 'Failed to update album',
                 details: error instanceof Error ? error.message : 'Unknown error'
+            },
+            { status: 500 }
+        )
+    }
+}
+
+// Drop a missing album from the library. Guarded to missing-only so a fat
+// finger can't nuke an album whose files are still on disk; for healthy
+// albums, removal should happen via track-level deletes that already exist.
+export async function DELETE(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const { id } = await params
+        const albumId = parseInt(id, 10)
+
+        if (!Number.isFinite(albumId) || albumId <= 0) {
+            return NextResponse.json({ error: 'Invalid album ID' }, { status: 400 })
+        }
+
+        const album = getAlbumById(albumId)
+        if (!album) {
+            return NextResponse.json({ error: 'Album not found' }, { status: 404 })
+        }
+
+        if (album.missing_since == null) {
+            return NextResponse.json(
+                { error: 'Album is not marked missing — refusing to delete' },
+                { status: 409 }
+            )
+        }
+
+        // items.album_id is ON DELETE SET NULL, so we explicitly remove items
+        // first to avoid leaving orphaned rows pointing at the dropped album.
+        const tx = db.transaction(() => {
+            const itemRes = db.prepare('DELETE FROM items WHERE album_id = ?').run(albumId)
+            const albRes = db.prepare('DELETE FROM albums WHERE id = ?').run(albumId)
+            return {
+                itemsDeleted: Number(itemRes.changes),
+                albumDeleted: Number(albRes.changes) > 0,
+            }
+        })
+        const result = tx()
+
+        revalidatePath(`/album/${albumId}`)
+        revalidatePath('/')
+
+        return NextResponse.json({ deleted: true, albumId, ...result })
+    } catch (error) {
+        console.error('Error deleting album:', error)
+        return NextResponse.json(
+            {
+                error: 'Failed to delete album',
+                details: error instanceof Error ? error.message : 'Unknown error',
             },
             { status: 500 }
         )
