@@ -318,6 +318,52 @@ export async function getMusicBrainzData(
     return null;
 }
 
+// Escape Lucene-style special characters for MusicBrainz text search queries
+function escapeLucene(s: string): string {
+    return s.replace(/[+\-&|!(){}\[\]^"~*?:\\/]/g, '\\$&');
+}
+
+// Text-search fallback for when fpcalc fails (e.g. m4a) or AcoustID returns no
+// results. Queries MusicBrainz directly by (artist, title, optional release).
+// Returns the best matching recording ID or null.
+export async function searchMusicBrainzByText(
+    artist: string,
+    title: string,
+    album?: string | null
+): Promise<string | null> {
+    const parts: string[] = [];
+    if (artist) parts.push(`artist:"${escapeLucene(artist)}"`);
+    if (title) parts.push(`recording:"${escapeLucene(title)}"`);
+    if (album) parts.push(`release:"${escapeLucene(album)}"`);
+    if (parts.length === 0) return null;
+
+    const query = parts.join(' AND ');
+    const url = `${BASE_URL}/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=5`;
+
+    try {
+        return await withRetry(async () => {
+            const response = await rateLimitedFetch(url, { headers: { 'User-Agent': USER_AGENT } });
+            if (!response.ok) {
+                throw new Error(`MusicBrainz text search ${response.status}`);
+            }
+            const data = await response.json();
+            const recordings = data?.recordings as Array<{ id: string; score?: number }> | undefined;
+            if (!recordings?.length) return null;
+            // MusicBrainz returns a `score` 0-100; demand a reasonable match
+            const best = recordings[0];
+            if ((best.score ?? 0) < 80) return null;
+            return best.id;
+        }, {
+            maxRetries: 3,
+            baseDelay: 1000,
+            maxDelay: 30000,
+            shouldRetry: isRetryableHttpError,
+        });
+    } catch {
+        return null;
+    }
+}
+
 import { DataSource } from '../../types';
 import { Item } from '../../../database';
 
@@ -327,20 +373,38 @@ export class MusicBrainzSource extends DataSource {
 
     async getData(item: Item): Promise<Item> {
         try {
-            // Get fingerprint from file
-            const chromaprint = await getAcoustidFingerprint(item.path);
+            let recording: Recording | null = null;
 
-            // Lookup on AcoustID
-            const acoustidResponse = await acoustIDLookup(chromaprint.fingerprint, chromaprint.duration);
-
-            if (acoustidResponse.status !== 'ok' || !acoustidResponse.results?.length) {
-                return item;
+            // Primary path: fingerprint → AcoustID → MusicBrainz. May fail for
+            // formats fpcalc doesn't support (e.g. m4a), or when AcoustID has
+            // no match for the fingerprint.
+            try {
+                const chromaprint = await getAcoustidFingerprint(item.path);
+                const acoustidResponse = await acoustIDLookup(chromaprint.fingerprint, chromaprint.duration);
+                if (acoustidResponse.status === 'ok' && acoustidResponse.results?.length) {
+                    recording = await getMusicBrainzData(acoustidResponse.results, item.path);
+                }
+            } catch (err) {
+                console.debug(`Fingerprint path failed for ${item.path}: ${err instanceof Error ? err.message : String(err)}. Trying text search...`);
             }
 
-            // Get MusicBrainz data
-            const recording = await getMusicBrainzData(acoustidResponse.results, item.path);
+            // Fallback: text search by (artist, title, album) when fingerprinting
+            // gave us nothing. Requires at least artist + title tags from the file.
+            if (!recording && item.artist && item.title) {
+                const recordingId = await searchMusicBrainzByText(item.artist, item.title, item.album);
+                if (recordingId) {
+                    try {
+                        const mb = await fetchMusicBrainz(recordingId);
+                        // No AcoustID context for text-matched results - pass a stub
+                        const fakeAcoustId: AcoustIDResult = { id: '', score: 0, recordings: [] };
+                        recording = await toRecording(mb, fakeAcoustId, item.path);
+                    } catch (err) {
+                        console.debug(`Text-search recording fetch failed for ${item.path}: ${err instanceof Error ? err.message : String(err)}`);
+                    }
+                }
+            }
 
-            // Return original item if no recording found
+            // Return original item if no recording found by either path
             if (!recording) {
                 return item;
             }
