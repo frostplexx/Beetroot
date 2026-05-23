@@ -1,17 +1,41 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+
+const SCROLL_STORAGE_KEY = "library-scroll";
 import AlbumCard from "@/components/album_card";
 import { Album } from "@/lib/music/database/albums";
 import { useLibrarySync } from "@/hooks/use-library-sync";
 import { Disc3, ChevronLeft, ChevronRight } from "lucide-react";
 
 export default function Library() {
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
+    const pageParam = Number(searchParams.get("page"));
+    const initialPage = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+
     const [albums, setAlbums] = useState<Album[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [currentPage, setCurrentPage] = useState(1);
+    const [currentPage, setCurrentPageState] = useState(initialPage);
     const [totalPages, setTotalPages] = useState(1);
     const pageSize = 30;
+
+    const setCurrentPage = (next: number | ((prev: number) => number)) => {
+        setCurrentPageState(prev => {
+            const value = typeof next === "function" ? next(prev) : next;
+            if (value === prev) return prev;
+            const params = new URLSearchParams(searchParams.toString());
+            if (value <= 1) params.delete("page");
+            else params.set("page", String(value));
+            const query = params.toString();
+            router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+            sessionStorage.setItem(SCROLL_STORAGE_KEY, "0");
+            window.scrollTo(0, 0);
+            return value;
+        });
+    };
 
     const fetchAlbums = async (page: number) => {
         try {
@@ -36,6 +60,30 @@ export default function Library() {
     useEffect(() => {
         fetchAlbums(currentPage);
     }, [currentPage]);
+
+    const hasRestoredScrollRef = useRef(false);
+    useEffect(() => {
+        if (isLoading || hasRestoredScrollRef.current) return;
+        hasRestoredScrollRef.current = true;
+        const saved = sessionStorage.getItem(SCROLL_STORAGE_KEY);
+        if (saved) window.scrollTo(0, Number(saved));
+    }, [isLoading]);
+
+    useEffect(() => {
+        let raf: number | null = null;
+        const onScroll = () => {
+            if (raf !== null) return;
+            raf = requestAnimationFrame(() => {
+                sessionStorage.setItem(SCROLL_STORAGE_KEY, String(window.scrollY));
+                raf = null;
+            });
+        };
+        window.addEventListener("scroll", onScroll, { passive: true });
+        return () => {
+            window.removeEventListener("scroll", onScroll);
+            if (raf !== null) cancelAnimationFrame(raf);
+        };
+    }, []);
 
     if (isLoading) {
         return (
