@@ -15,11 +15,17 @@ import Navigation from "@/components/navigation"
 const spaceGroteskHeading = Space_Grotesk({
     subsets: ["latin"],
     variable: "--font-heading",
+    display: "swap",
+    preload: true,
+    fallback: ["system-ui", "sans-serif"],
+    adjustFontFallback: false,
 })
 
 const inter = Inter({
     subsets: ["latin"],
     variable: "--font-sans",
+    display: "swap",
+    preload: true,
 })
 
 const geistSans = Geist({
