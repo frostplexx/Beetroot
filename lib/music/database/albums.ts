@@ -179,18 +179,29 @@ export function writeOrUpdateAlbum(album: Album): number {
         // Get valid columns from schema (cached)
         const validColumns = getValidAlbumsColumns();
 
-        // Check if album exists - prefer mb_albumid, fallback to album+albumartist
-        let existing: { id: number } | undefined
+        // Check if album exists - prefer mb_albumid, fallback to album+albumartist+year
+        let existing: { id: number; mb_albumid: string | null } | undefined
         if (album.mb_albumid) {
-            existing = db.prepare('SELECT id FROM albums WHERE mb_albumid = ?').get(album.mb_albumid) as { id: number } | undefined
+            existing = db.prepare('SELECT id, mb_albumid FROM albums WHERE mb_albumid = ?').get(album.mb_albumid) as { id: number; mb_albumid: string | null } | undefined
         }
         if (!existing) {
-            // NULL-safe comparison for album and albumartist
+            // NULL-safe comparison for album, albumartist, and year to reduce false positives
+            // Year is included to distinguish re-releases and compilations
             existing = db.prepare(`
-                SELECT id FROM albums
+                SELECT id, mb_albumid FROM albums
                 WHERE (album IS NULL AND ? IS NULL OR album = ?)
                   AND (albumartist IS NULL AND ? IS NULL OR albumartist = ?)
-            `).get(album.album, album.album, album.albumartist, album.albumartist) as { id: number } | undefined
+                  AND (year IS NULL AND ? IS NULL OR year = ?)
+            `).get(album.album, album.album, album.albumartist, album.albumartist, album.year, album.year) as { id: number; mb_albumid: string | null } | undefined
+
+            // Warn if we're potentially merging albums with different mb_albumids
+            if (existing && existing.mb_albumid && album.mb_albumid && existing.mb_albumid !== album.mb_albumid) {
+                console.warn(
+                    `Album match by (album, albumartist, year) but mb_albumid differs: ` +
+                    `existing=${existing.mb_albumid}, new=${album.mb_albumid}, ` +
+                    `album="${album.album}", artist="${album.albumartist}", year=${album.year}`
+                );
+            }
         }
 
         // Prepare album data for database - only include valid columns
