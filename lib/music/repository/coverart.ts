@@ -54,10 +54,15 @@ async function fetchImageFromUrl(url: string): Promise<Buffer | null> {
  */
 async function fetchFromItunes(album: Album): Promise<Buffer | null> {
     try {
-        const artist = encodeURIComponent(album.albumartist || '');
-        const albumName = encodeURIComponent(album.album || '');
+        // Use URLSearchParams to properly encode the search term
+        const searchTerm = `${album.albumartist || ''} ${album.album || ''}`.trim();
+        const params = new URLSearchParams({
+            term: searchTerm,
+            entity: 'album',
+            limit: '5'
+        });
 
-        const searchUrl = `https://itunes.apple.com/search?term=${artist}+${albumName}&entity=album&limit=5`;
+        const searchUrl = `https://itunes.apple.com/search?${params.toString()}`;
 
         const response = await fetch(searchUrl);
         if (!response.ok) return null;
