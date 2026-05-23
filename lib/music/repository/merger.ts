@@ -134,7 +134,6 @@ export function mergeData<T extends SourceResult>(items: T[]): T {
                 // validItems is already sorted by confidence descending, so just take first
                 merged.data[key] = valuesWithSource[0].value;
             }
-        }
         } else if (valueType === 'boolean') {
             // For booleans: pick by max confidence
             // validItems is already sorted by confidence descending, so just take first
