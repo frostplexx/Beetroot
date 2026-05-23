@@ -1,5 +1,5 @@
 import * as path from "path";
-import { globalConfig } from "../../../config";
+import { globalConfig } from "../../../../config";
 
 export interface ChromaPrintResult {
     duration: number;
