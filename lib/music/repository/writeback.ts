@@ -159,7 +159,11 @@ async function writeTags(filePath: string, item: Item): Promise<boolean> {
             tempPath                  // Output to temp file
         ];
 
-        await execFileAsync(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 });
+        await execFileAsync(ffmpegPath, args, {
+            maxBuffer: 10 * 1024 * 1024,
+            timeout: 60_000,  // 60s timeout for metadata-only rewrite
+            killSignal: 'SIGKILL'
+        });
 
         // Replace original file with temp file
         fs.renameSync(tempPath, filePath);

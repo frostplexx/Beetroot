@@ -37,6 +37,11 @@ async function analyzeAudioFile(filePath: string): Promise<FFmpegAnalysisResult>
 
         const process = spawn(ffmpeg, args);
 
+        // Set timeout to prevent hung ffmpeg processes
+        const timer = setTimeout(() => {
+            process.kill('SIGKILL');
+        }, 30_000); // 30s timeout for ReplayGain analysis
+
         let stderr = "";
 
         process.stderr.on("data", (data) => {
@@ -44,6 +49,7 @@ async function analyzeAudioFile(filePath: string): Promise<FFmpegAnalysisResult>
         });
 
         process.on("close", (code) => {
+            clearTimeout(timer);
             if (code !== 0 && code !== null) {
                 reject(new Error(`FFmpeg process exited with code ${code}`));
                 return;
