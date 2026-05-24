@@ -348,6 +348,213 @@ function runMigrations(db: Database): void {
         db.run('CREATE INDEX IF NOT EXISTS album_mb_releasegroupid ON albums(mb_releasegroupid)');
         db.run('INSERT INTO migrations (name, table_name) VALUES (?, ?)', rgIndexMigration, 'albums');
     }
+
+    // Migration: Create FTS tables for full-text search
+    const ftsMigration = 'create_fts_tables';
+    const ftsExists = db.prepare(
+        'SELECT 1 FROM migrations WHERE name = ?'
+    ).get(ftsMigration);
+    if (!ftsExists) {
+        console.log('Running migration: create FTS tables...');
+
+        // Create FTS virtual table for albums with unicode61 tokenizer
+        // remove_diacritics=2 removes all diacritics (accents) for fuzzy matching
+        db.run(`
+            CREATE VIRTUAL TABLE IF NOT EXISTS albums_fts USING fts4(
+                album,
+                albumartist,
+                label,
+                genres,
+                content="albums",
+                tokenize=unicode61 "remove_diacritics=2"
+            )
+        `);
+
+        // Create FTS virtual table for items with unicode61 tokenizer
+        db.run(`
+            CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts4(
+                title,
+                artist,
+                album,
+                content="items",
+                tokenize=unicode61 "remove_diacritics=2"
+            )
+        `);
+
+        // Create triggers to keep albums FTS in sync
+        db.run(`
+            CREATE TRIGGER albums_fts_insert AFTER INSERT ON albums BEGIN
+                INSERT INTO albums_fts(docid, album, albumartist, label, genres)
+                VALUES (new.id, new.album, new.albumartist, new.label, new.genres);
+            END
+        `);
+
+        db.run(`
+            CREATE TRIGGER albums_fts_update AFTER UPDATE ON albums BEGIN
+                UPDATE albums_fts SET
+                    album = new.album,
+                    albumartist = new.albumartist,
+                    label = new.label,
+                    genres = new.genres
+                WHERE docid = old.id;
+            END
+        `);
+
+        db.run(`
+            CREATE TRIGGER albums_fts_delete AFTER DELETE ON albums BEGIN
+                DELETE FROM albums_fts WHERE docid = old.id;
+            END
+        `);
+
+        // Create triggers to keep items FTS in sync
+        db.run(`
+            CREATE TRIGGER items_fts_insert AFTER INSERT ON items BEGIN
+                INSERT INTO items_fts(docid, title, artist, album)
+                VALUES (new.id, new.title, new.artist, new.album);
+            END
+        `);
+
+        db.run(`
+            CREATE TRIGGER items_fts_update AFTER UPDATE ON items BEGIN
+                UPDATE items_fts SET
+                    title = new.title,
+                    artist = new.artist,
+                    album = new.album
+                WHERE docid = old.id;
+            END
+        `);
+
+        db.run(`
+            CREATE TRIGGER items_fts_delete AFTER DELETE ON items BEGIN
+                DELETE FROM items_fts WHERE docid = old.id;
+            END
+        `);
+
+        // Populate FTS tables with existing data
+        db.run(`
+            INSERT INTO albums_fts(docid, album, albumartist, label, genres)
+            SELECT id, album, albumartist, label, genres FROM albums
+        `);
+
+        db.run(`
+            INSERT INTO items_fts(docid, title, artist, album)
+            SELECT id, title, artist, album FROM items
+        `);
+
+        // Record migration
+        db.run('INSERT INTO migrations (name, table_name) VALUES (?, ?)', ftsMigration, 'fts');
+
+        console.log('Migration complete: FTS tables created and populated');
+    }
+
+    // Migration: Use FTS5 with porter tokenizer wrapping unicode61 with diacritic removal
+    // FTS5 is better than FTS4 in every way - faster, more efficient, better features
+    const ftsUnicodeMigration = 'fts5_with_porter_unicode61';
+    const ftsUnicodeExists = db.prepare(
+        'SELECT 1 FROM migrations WHERE name = ?'
+    ).get(ftsUnicodeMigration);
+    if (!ftsUnicodeExists) {
+        console.log('Running migration: creating FTS5 tables with porter + unicode61...');
+
+        // Drop existing FTS tables and triggers
+        db.run('DROP TRIGGER IF EXISTS albums_fts_insert');
+        db.run('DROP TRIGGER IF EXISTS albums_fts_update');
+        db.run('DROP TRIGGER IF EXISTS albums_fts_delete');
+        db.run('DROP TRIGGER IF EXISTS items_fts_insert');
+        db.run('DROP TRIGGER IF EXISTS items_fts_update');
+        db.run('DROP TRIGGER IF EXISTS items_fts_delete');
+        db.run('DROP TABLE IF EXISTS albums_fts');
+        db.run('DROP TABLE IF EXISTS items_fts');
+
+        // Create FTS5 tables with porter wrapping unicode61
+        // Porter does stemming (legend→legends), unicode61 removes diacritics (á→a)
+        db.run(`
+            CREATE VIRTUAL TABLE albums_fts USING fts5(
+                album,
+                albumartist,
+                label,
+                genres,
+                content=albums,
+                content_rowid=id,
+                tokenize="porter unicode61 remove_diacritics 2"
+            )
+        `);
+
+        db.run(`
+            CREATE VIRTUAL TABLE items_fts USING fts5(
+                title,
+                artist,
+                album,
+                content=items,
+                content_rowid=id,
+                tokenize="porter unicode61 remove_diacritics 2"
+            )
+        `);
+
+        // Create triggers to keep FTS5 index in sync
+        // FTS5 external content tables use special commands for updates
+        db.run(`
+            CREATE TRIGGER albums_fts_insert AFTER INSERT ON albums BEGIN
+                INSERT INTO albums_fts(rowid, album, albumartist, label, genres)
+                VALUES (new.id, new.album, new.albumartist, new.label, new.genres);
+            END
+        `);
+
+        db.run(`
+            CREATE TRIGGER albums_fts_update AFTER UPDATE ON albums BEGIN
+                INSERT INTO albums_fts(albums_fts, rowid, album, albumartist, label, genres)
+                VALUES('delete', old.id, old.album, old.albumartist, old.label, old.genres);
+                INSERT INTO albums_fts(rowid, album, albumartist, label, genres)
+                VALUES (new.id, new.album, new.albumartist, new.label, new.genres);
+            END
+        `);
+
+        db.run(`
+            CREATE TRIGGER albums_fts_delete AFTER DELETE ON albums BEGIN
+                INSERT INTO albums_fts(albums_fts, rowid, album, albumartist, label, genres)
+                VALUES('delete', old.id, old.album, old.albumartist, old.label, old.genres);
+            END
+        `);
+
+        db.run(`
+            CREATE TRIGGER items_fts_insert AFTER INSERT ON items BEGIN
+                INSERT INTO items_fts(rowid, title, artist, album)
+                VALUES (new.id, new.title, new.artist, new.album);
+            END
+        `);
+
+        db.run(`
+            CREATE TRIGGER items_fts_update AFTER UPDATE ON items BEGIN
+                INSERT INTO items_fts(items_fts, rowid, title, artist, album)
+                VALUES('delete', old.id, old.title, old.artist, old.album);
+                INSERT INTO items_fts(rowid, title, artist, album)
+                VALUES (new.id, new.title, new.artist, new.album);
+            END
+        `);
+
+        db.run(`
+            CREATE TRIGGER items_fts_delete AFTER DELETE ON items BEGIN
+                INSERT INTO items_fts(items_fts, rowid, title, artist, album)
+                VALUES('delete', old.id, old.title, old.artist, old.album);
+            END
+        `);
+
+        // Populate FTS5 tables - the tokenizer handles everything automatically
+        db.run(`
+            INSERT INTO albums_fts(rowid, album, albumartist, label, genres)
+            SELECT id, album, albumartist, label, genres FROM albums
+        `);
+
+        db.run(`
+            INSERT INTO items_fts(rowid, title, artist, album)
+            SELECT id, title, artist, album FROM items
+        `);
+
+        // Record migration
+        db.run('INSERT INTO migrations (name, table_name) VALUES (?, ?)', ftsUnicodeMigration, 'fts');
+
+        console.log('Migration complete: FTS tables rebuilt with unicode61 tokenizer');
+    }
 }
 
 // Ensure the database directory exists

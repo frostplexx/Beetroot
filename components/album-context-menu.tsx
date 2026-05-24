@@ -28,15 +28,52 @@ import {
     Loader2,
     Trash2,
 } from "lucide-react"
-import type { Album } from "@/lib/music/database"
 
-type Toast = { kind: "ok" | "error"; message: string }
+interface AlbumLike {
+    id: number
+    album: string
+    missing_since: number | null
+}
 
 export function AlbumContextMenu({
     album,
     children,
 }: {
-    album: Album
+    album: AlbumLike
+    children: React.ReactNode
+}) {
+    // Defer mounting the Radix ContextMenu + Dialog tree until the user
+    // signals interest (hover, focus, or right-click). On a 30-album grid
+    // this avoids hydrating 30 menus + 30 dialogs up-front.
+    const [primed, setPrimed] = React.useState(false)
+
+    const prime = React.useCallback(() => {
+        if (!primed) setPrimed(true)
+    }, [primed])
+
+    if (!primed) {
+        return (
+            <div
+                onPointerEnter={prime}
+                onFocus={prime}
+                onContextMenu={prime}
+                onTouchStart={prime}
+            >
+                {children}
+            </div>
+        )
+    }
+
+    return <PrimedAlbumContextMenu album={album}>{children}</PrimedAlbumContextMenu>
+}
+
+type Toast = { kind: "ok" | "error"; message: string }
+
+function PrimedAlbumContextMenu({
+    album,
+    children,
+}: {
+    album: AlbumLike
     children: React.ReactNode
 }) {
     const router = useRouter()
@@ -122,16 +159,18 @@ export function AlbumContextMenu({
                 </ContextMenuContent>
             </ContextMenu>
 
-            <ConfirmRemoveDialog
-                open={deleteOpen}
-                onOpenChange={setDeleteOpen}
-                album={album}
-                onRemoved={() => {
-                    showToast({ kind: "ok", message: "Album removed" })
-                    router.refresh()
-                }}
-                onError={(message) => showToast({ kind: "error", message })}
-            />
+            {deleteOpen && (
+                <ConfirmRemoveDialog
+                    open={deleteOpen}
+                    onOpenChange={setDeleteOpen}
+                    album={album}
+                    onRemoved={() => {
+                        showToast({ kind: "ok", message: "Album removed" })
+                        router.refresh()
+                    }}
+                    onError={(message) => showToast({ kind: "error", message })}
+                />
+            )}
 
             {mounted && toast
                 ? createPortal(
@@ -167,7 +206,7 @@ function ConfirmRemoveDialog({
 }: {
     open: boolean
     onOpenChange: (open: boolean) => void
-    album: Album
+    album: AlbumLike
     onRemoved: () => void
     onError: (message: string) => void
 }) {

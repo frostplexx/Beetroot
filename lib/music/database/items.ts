@@ -222,26 +222,20 @@ export function getItemCount(): number {
 export function searchItems(query: string, page: number = 0, pageSize: number = 50): Item[] {
     try {
         const offset = page * pageSize
-        const searchTerms = query.trim().split(/\s+/).map(term => `%${term}%`)
 
-        // Build dynamic WHERE clause for fuzzy matching
-        const whereConditions = searchTerms.map(() =>
-            '(title LIKE ? OR artist LIKE ? OR album LIKE ?)'
-        ).join(' AND ')
-
+        // Use FTS5 for full-text search
+        // Porter tokenizer handles stemming (legend→legends)
+        // Unicode61 handles diacritics (á→a) and case folding
         const stmt = db.prepare(`
-            SELECT *
+            SELECT items.*
             FROM items
-            WHERE ${whereConditions}
-            ORDER BY album_id, track
+            INNER JOIN items_fts ON items.id = items_fts.rowid
+            WHERE items_fts MATCH ?
+            ORDER BY items.album_id, items.track
             LIMIT ? OFFSET ?
         `)
 
-        // Flatten search terms for each condition
-        const params = searchTerms.flatMap(term => [term, term, term])
-        params.push(`${pageSize}`, `${offset}`)
-
-        const rows = stmt.all(...params) as Record<string, any>[]
+        const rows = stmt.all(query.trim(), pageSize, offset) as Record<string, any>[]
         return decodeRows(rows) as Item[]
     } catch (error) {
         console.error("Error searching items:", error)
@@ -251,19 +245,15 @@ export function searchItems(query: string, page: number = 0, pageSize: number = 
 
 export function getItemsSearchCount(query: string): number {
     try {
-        const searchTerms = query.trim().split(/\s+/).map(term => `%${term}%`)
-        const whereConditions = searchTerms.map(() =>
-            '(title LIKE ? OR artist LIKE ? OR album LIKE ?)'
-        ).join(' AND ')
-
+        // Use FTS5 for full-text search
         const stmt = db.prepare(`
             SELECT COUNT(*) as count
             FROM items
-            WHERE ${whereConditions}
+            INNER JOIN items_fts ON items.id = items_fts.rowid
+            WHERE items_fts MATCH ?
         `)
 
-        const params = searchTerms.flatMap(term => [term, term, term])
-        const result = stmt.get(...params) as { count: number }
+        const result = stmt.get(query.trim()) as { count: number }
         return result.count
     } catch (error) {
         console.error("Error counting search results:", error)

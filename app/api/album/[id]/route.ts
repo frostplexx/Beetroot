@@ -3,7 +3,8 @@ import { getAlbumById, updateAlbumFields } from "@/lib/music/database/albums"
 import { getItemsByAlbum, batchUpdateItems } from "@/lib/music/database/items"
 import { writeBackItem } from "@/lib/music/repository/writeback"
 import { globalConfig } from "@/lib/config"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
+import { ALBUMS_CACHE_TAG } from "@/lib/music/database/albums"
 import * as path from "path"
 import * as fs from "fs/promises"
 import db from "@/lib/music/database/db"
@@ -175,6 +176,7 @@ export async function PATCH(
         }
 
         // Revalidate cache
+        revalidateTag(ALBUMS_CACHE_TAG)
         revalidatePath(`/album/${albumId}`)
         revalidatePath('/')
 
@@ -235,6 +237,7 @@ export async function DELETE(
         })
         const result = tx()
 
+        revalidateTag(ALBUMS_CACHE_TAG)
         revalidatePath(`/album/${albumId}`)
         revalidatePath('/')
 

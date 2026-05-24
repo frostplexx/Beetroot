@@ -1,11 +1,27 @@
-import { Album } from "@/lib/music/database"
 import Link from "next/link"
 import { Music2, FileQuestion } from "lucide-react"
 import { cn } from "@/lib/ui/utils"
 import Image from "next/image";
 import { ViewTransition } from "react";
 
-export default function AlbumCard({ album, className }: { album: Album; className?: string }) {
+interface AlbumCardData {
+    id: number;
+    album: string;
+    albumartist: string;
+    artpath: string | null;
+    added: number;
+    missing_since: number | null;
+}
+
+export default function AlbumCard({
+    album,
+    className,
+    priority = false,
+}: {
+    album: AlbumCardData;
+    className?: string;
+    priority?: boolean;
+}) {
     return (
         <Link
             href={`/album/${album.id}`}
@@ -21,13 +37,12 @@ export default function AlbumCard({ album, className }: { album: Album; classNam
                 ) : album.artpath ? (
                     <ViewTransition name={`album-${album.id}`} share="morph">
                         <Image
-                            src={`/api/album/${album.id}/art?size=400&t=${album.added}`}
+                            src={`/api/album/${album.id}/art?size=400`}
                             alt={`${album.album} by ${album.albumartist}`}
                             className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 rounded-xl shadow-2xl ring-1 ring-white/10"
-                            width={400}
-                            loading="eager"
-                            height={400}
-                            unoptimized
+                            fill
+                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 17vw"
+                            priority={priority}
                         />
                     </ViewTransition>
                 ) : (

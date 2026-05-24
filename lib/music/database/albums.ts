@@ -1,6 +1,19 @@
+import { revalidateTag, unstable_cache } from "next/cache"
 import db from "./db"
 import { decodeRows, decodeRow } from "./utils"
 import { normalizeAlbumString } from "./normalize"
+
+export const ALBUMS_CACHE_TAG = "albums"
+
+function invalidateAlbumsCache() {
+    try {
+        revalidateTag(ALBUMS_CACHE_TAG)
+    } catch {
+        // revalidateTag throws if called outside a request context (e.g. during
+        // initial reconcile on server boot). The cache will refresh on its own
+        // via the `revalidate: 60` window in those cases.
+    }
+}
 
 // Cache for schema introspection - loaded once on first use
 let validAlbumsColumns: Set<string> | null = null;
@@ -103,6 +116,48 @@ export function getAllAlbums(): Album[] {
     }
 }
 
+// Slim projection used by the library grid — only the columns AlbumCard reads.
+// Keeps the JSON / RSC payload small (the full Album row carries 45+ fields).
+export interface AlbumCardData {
+    id: number
+    album: string
+    albumartist: string
+    artpath: string | null
+    added: number
+    missing_since: number | null
+}
+
+export function getAlbumsPaginatedSlim(page: number = 0, pageSize: number = 30): AlbumCardData[] {
+    try {
+        const offset = page * pageSize
+        const stmt = db.prepare(`
+            SELECT id, album, albumartist, artpath, added, missing_since
+            FROM albums
+            ORDER BY added DESC
+            LIMIT ? OFFSET ?
+        `)
+        const rows = stmt.all(pageSize, offset) as Record<string, any>[]
+        return decodeRows(rows) as AlbumCardData[]
+    } catch (error) {
+        console.error("Error fetching paginated slim albums:", error)
+        return []
+    }
+}
+
+// Cached wrappers. Invalidated by `revalidateTag(ALBUMS_CACHE_TAG)` in the
+// write paths and on reconcile completion (see reconcile-service.ts).
+export const getCachedAlbumsPaginatedSlim = unstable_cache(
+    async (page: number, pageSize: number) => getAlbumsPaginatedSlim(page, pageSize),
+    ["albums-paginated-slim"],
+    { tags: [ALBUMS_CACHE_TAG], revalidate: 60 }
+)
+
+export const getCachedAlbumCount = unstable_cache(
+    async () => getAlbumCount(),
+    ["albums-count"],
+    { tags: [ALBUMS_CACHE_TAG], revalidate: 60 }
+)
+
 export function getAlbumsPaginated(page: number = 0, pageSize: number = 24): Album[] {
     try {
         const offset = page * pageSize
@@ -150,26 +205,20 @@ export function getAlbumCount(): number {
 export function searchAlbums(query: string, page: number = 0, pageSize: number = 24): Album[] {
     try {
         const offset = page * pageSize
-        const searchTerms = query.trim().split(/\s+/).map(term => `%${term}%`)
 
-        // Build dynamic WHERE clause for fuzzy matching
-        const whereConditions = searchTerms.map(() =>
-            '(album LIKE ? OR albumartist LIKE ? OR label LIKE ? OR genres LIKE ?)'
-        ).join(' AND ')
-
+        // Use FTS5 for full-text search
+        // Porter tokenizer handles stemming (legend→legends)
+        // Unicode61 handles diacritics (á→a) and case folding
         const stmt = db.prepare(`
-            SELECT *
+            SELECT albums.*
             FROM albums
-            WHERE ${whereConditions}
-            ORDER BY added DESC
+            INNER JOIN albums_fts ON albums.id = albums_fts.rowid
+            WHERE albums_fts MATCH ?
+            ORDER BY albums.added DESC
             LIMIT ? OFFSET ?
         `)
 
-        // Flatten search terms for each condition
-        const params = searchTerms.flatMap(term => [term, term, term, term])
-        params.push(`${pageSize}`, `${offset}`)
-
-        const rows = stmt.all(...params) as Record<string, any>[]
+        const rows = stmt.all(query.trim(), pageSize, offset) as Record<string, any>[]
         return decodeRows(rows) as Album[]
     } catch (error) {
         console.error("Error searching albums:", error)
@@ -179,19 +228,15 @@ export function searchAlbums(query: string, page: number = 0, pageSize: number =
 
 export function getAlbumsSearchCount(query: string): number {
     try {
-        const searchTerms = query.trim().split(/\s+/).map(term => `%${term}%`)
-        const whereConditions = searchTerms.map(() =>
-            '(album LIKE ? OR albumartist LIKE ? OR label LIKE ? OR genres LIKE ?)'
-        ).join(' AND ')
-
+        // Use FTS5 for full-text search
         const stmt = db.prepare(`
             SELECT COUNT(*) as count
             FROM albums
-            WHERE ${whereConditions}
+            INNER JOIN albums_fts ON albums.id = albums_fts.rowid
+            WHERE albums_fts MATCH ?
         `)
 
-        const params = searchTerms.flatMap(term => [term, term, term, term])
-        const result = stmt.get(...params) as { count: number }
+        const result = stmt.get(query.trim()) as { count: number }
         return result.count
     } catch (error) {
         console.error("Error counting search results:", error)
@@ -284,6 +329,7 @@ export function writeOrUpdateAlbum(album: Album): number {
                 const values = cols.map(c => updates[c]);
                 values.push(existing.id);
                 db.prepare(`UPDATE albums SET ${fields} WHERE id = ?`).run(...values);
+                invalidateAlbumsCache();
             }
             return existing.id;
         } else {
@@ -291,6 +337,7 @@ export function writeOrUpdateAlbum(album: Album): number {
             const { albumInsertStmt, albumInsertColumnsList } = getAlbumStatements();
             const values = albumInsertColumnsList!.map(col => dbAlbum[col] ?? null);
             const result = albumInsertStmt!.run(...values);
+            invalidateAlbumsCache();
             return result.lastInsertRowid as number
         }
     } catch (error) {
@@ -328,6 +375,7 @@ export function markAlbumMissing(albumId: number): void {
             WHERE id = ?
         `)
         stmt.run(Date.now(), albumId)
+        invalidateAlbumsCache()
     } catch (error) {
         console.error('Error marking album as missing:', error)
         throw error
@@ -343,6 +391,7 @@ export function unmarkAlbumMissing(albumId: number): void {
             WHERE id = ?
         `)
         stmt.run(albumId)
+        invalidateAlbumsCache()
     } catch (error) {
         console.error('Error unmarking album as missing:', error)
         throw error
@@ -389,6 +438,7 @@ export function updateAlbumArtpath(albumId: number, artpath: string): void {
         `)
         // D4: artpath is now TEXT, no Buffer conversion needed
         stmt.run(artpath, albumId)
+        invalidateAlbumsCache()
     } catch (error) {
         console.error('Error updating album artpath:', error)
         throw error
@@ -424,6 +474,7 @@ export function updateAlbumFields(albumId: number, fields: Partial<Album>): void
     try {
         const setClause = cols.map(c => `${c} = ?`).join(', ');
         db.prepare(`UPDATE albums SET ${setClause} WHERE id = ?`).run(...values, albumId);
+        invalidateAlbumsCache();
     } catch (error) {
         console.error('Error updating album fields:', error);
         throw error;
