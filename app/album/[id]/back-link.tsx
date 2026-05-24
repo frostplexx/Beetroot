@@ -16,7 +16,7 @@ export function BackLink() {
     }, []);
 
     const className =
-        "inline-flex items-center gap-1.5 py-2 px-3 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm text-sm text-white hover:bg-white/20 hover:border-white/30 hover:scale-105 transition-all group";
+        "inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full bg-white/[0.08] border border-white/10 backdrop-blur-md text-sm text-white/90 hover:bg-white/[0.14] hover:border-white/20 hover:text-white transition-all duration-200 active:scale-[0.97] group";
 
     if (canGoBack) {
         return (

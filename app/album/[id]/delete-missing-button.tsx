@@ -47,9 +47,9 @@ export function DeleteMissingButton({ albumId, albumName }: DeleteMissingButtonP
         <>
             <button
                 onClick={() => setOpen(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/15 border border-red-500/40 text-red-200 text-sm font-semibold backdrop-blur-sm hover:bg-red-500/25 hover:border-red-400/60 hover:text-white hover:scale-105 active:scale-95 transition-all"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-red-500/[0.12] border border-red-500/30 text-red-200 text-sm font-medium backdrop-blur-md hover:bg-red-500/20 hover:border-red-400/50 hover:text-white transition-all duration-200 active:scale-[0.97] group"
             >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-4 h-4 transition-transform duration-200 group-hover:rotate-6" />
                 Remove from library
             </button>
 

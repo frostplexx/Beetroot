@@ -73,11 +73,11 @@ export function SongsDataTable<TData, TValue>({
                     onChange={(event) =>
                         table.getColumn("title")?.setFilterValue(event.target.value)
                     }
-                    className="max-w-sm bg-white/10 border-white/20 placeholder:text-white/40"
+                    className="max-w-sm bg-white/[0.06] border-white/10 placeholder:text-white/40 rounded-full transition-all duration-200 focus:bg-white/[0.1] focus:border-white/20"
                 />
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="ml-auto shrink-0 bg-white/10 border-white/20 hover:bg-white/20 data-[state=open]:bg-white/20">
+                        <Button variant="outline" className="ml-auto shrink-0 bg-white/[0.06] border-white/10 hover:bg-white/[0.1] hover:border-white/20 rounded-full transition-all duration-200 active:scale-[0.97] data-[state=open]:bg-white/[0.12]">
                             <Settings2 className="mr-2 h-4 w-4" />
                             Columns
                         </Button>
@@ -105,14 +105,14 @@ export function SongsDataTable<TData, TValue>({
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
-            <div className="overflow-hidden rounded-md border border-white/20 bg-black/20 backdrop-blur-sm">
+            <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-md">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow key={headerGroup.id}>
+                            <TableRow key={headerGroup.id} className="border-white/[0.06] hover:bg-transparent">
                                 {headerGroup.headers.map((header) => {
                                     return (
-                                        <TableHead key={header.id}>
+                                        <TableHead key={header.id} className="text-[10px] uppercase tracking-[0.12em] text-white/50 font-semibold">
                                             {header.isPlaceholder
                                                 ? null
                                                 : flexRender(
@@ -134,7 +134,7 @@ export function SongsDataTable<TData, TValue>({
                                     <SongContextMenu key={row.id} item={item}>
                                         <TableRow
                                             data-state={row.getIsSelected() && "selected"}
-                                            className={`border-white/10 hover:bg-white/5 data-[state=open]:bg-white/10 ${missing ? "text-white/40" : ""}`}
+                                            className={`border-white/[0.04] hover:bg-white/[0.04] data-[state=open]:bg-white/[0.06] transition-colors duration-150 ${missing ? "text-white/40" : ""}`}
                                         >
                                             {row.getVisibleCells().map((cell) => (
                                                 <TableCell key={cell.id}>
@@ -155,8 +155,8 @@ export function SongsDataTable<TData, TValue>({
                     </TableBody>
                 </Table>
             </div>
-            <div className="text-sm text-white/60">
-                {table.getFilteredRowModel().rows.length} song(s)
+            <div className="text-xs uppercase tracking-[0.12em] text-white/50 font-medium">
+                {table.getFilteredRowModel().rows.length} song{table.getFilteredRowModel().rows.length === 1 ? '' : 's'}
             </div>
         </div>
     )

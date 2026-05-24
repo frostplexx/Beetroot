@@ -299,7 +299,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
         <ScrollArea className="h-full">
             {error && (
                 <div className="container mx-auto px-4 pt-2 max-w-[1600px]">
-                    <div className="bg-red-500/10 border border-red-500/40 rounded-md p-2.5 flex items-start gap-2">
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-start gap-2.5 backdrop-blur-md">
                         <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
                         <p className="text-sm text-red-200">{error}</p>
                     </div>
@@ -307,24 +307,24 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
             )}
             <form id="album-edit-form" onSubmit={handleSubmit} className="container mx-auto px-4 py-4 max-w-[1600px]">
                 {/* Top: Three columns */}
-                <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr_340px] gap-5">
+                <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr_340px] gap-6">
 
                     {/* === LEFT: Artwork === */}
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                         <SectionHeader>Artwork</SectionHeader>
                         {formData.image ? (
-                            <div className="relative aspect-square w-full rounded-lg overflow-hidden ring-1 ring-border/50 shadow-lg">
+                            <div className="relative aspect-square w-full rounded-2xl overflow-hidden ring-1 ring-white/10 shadow-2xl shadow-black/40 transition-all duration-300 hover:ring-white/20 hover:shadow-black/60">
                                 <Image src={formData.image} alt="Album" fill className="object-cover" priority />
                             </div>
                         ) : (
-                            <Skeleton className="aspect-square w-full rounded-lg" />
+                            <Skeleton className="aspect-square w-full rounded-2xl" />
                         )}
 
                         {/* Always reserve space for alternatives grid (4x3) */}
-                        <div className="grid grid-cols-4 gap-1">
+                        <div className="grid grid-cols-4 gap-1.5">
                             {loadingAlternatives ? (
                                 Array.from({ length: 12 }).map((_, idx) => (
-                                    <Skeleton key={`alt-skel-${idx}`} className="aspect-square rounded" />
+                                    <Skeleton key={`alt-skel-${idx}`} className="aspect-square rounded-lg" />
                                 ))
                             ) : alternatives.length > 0 ? (
                                 alternatives.slice(0, 12).map((alt, idx) => (
@@ -332,18 +332,20 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                         key={idx}
                                         type="button"
                                         className={cn(
-                                            "relative aspect-square rounded overflow-hidden transition-all",
+                                            "relative aspect-square rounded-lg overflow-hidden transition-all duration-200 ease-out",
                                             formData.image === alt.url
-                                                ? 'ring-2 ring-primary'
-                                                : 'ring-1 ring-border/40 hover:ring-primary/60 opacity-70 hover:opacity-100'
+                                                ? 'ring-2 ring-white/80 shadow-lg shadow-black/30 scale-[1.02]'
+                                                : 'ring-1 ring-white/10 hover:ring-white/40 opacity-60 hover:opacity-100 hover:scale-[1.03] active:scale-[0.98]'
                                         )}
                                         onClick={() => setFormData({ ...formData, image: alt.url })}
                                         title={alt.source}
                                     >
                                         <Image src={alt.thumbnail || alt.url} alt={alt.source} fill className="object-cover" unoptimized />
                                         {formData.image === alt.url && (
-                                            <div className="absolute inset-0 bg-primary/30 flex items-center justify-center">
-                                                <Check className="w-3 h-3 text-white" />
+                                            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center">
+                                                <div className="bg-white/90 rounded-full p-0.5">
+                                                    <Check className="w-3 h-3 text-black" strokeWidth={3} />
+                                                </div>
                                             </div>
                                         )}
                                     </button>
@@ -357,7 +359,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                     </div>
 
                     {/* === MIDDLE: Metadata Fields === */}
-                    <div className="space-y-3">
+                    <div className="space-y-3.5">
                         <SectionHeader>Metadata</SectionHeader>
 
                         <FieldWithSuggestion
@@ -440,12 +442,12 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                         </div>
 
                         {/* Search bar */}
-                        <div className="flex gap-1">
+                        <div className="flex gap-1.5">
                             <Input
                                 value={mbSearchQuery}
                                 onChange={(e) => setMbSearchQuery(e.target.value)}
                                 placeholder="Search MusicBrainz..."
-                                className="h-8 text-xs"
+                                className="h-8 text-xs transition-all duration-150"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault()
@@ -453,19 +455,27 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                     }
                                 }}
                             />
-                            <Button type="button" size="sm" onClick={searchMusicBrainz} disabled={loadingMb} className="shrink-0 h-8 w-8 p-0">
-                                <Search className="w-3.5 h-3.5" />
+                            <Button
+                                type="button"
+                                size="sm"
+                                onClick={searchMusicBrainz}
+                                disabled={loadingMb}
+                                className="shrink-0 h-8 w-8 p-0 transition-all duration-150 active:scale-90"
+                            >
+                                <Search className={cn("w-3.5 h-3.5 transition-transform", loadingMb && "animate-pulse")} />
                             </Button>
                         </div>
 
                         {/* Tab toggle */}
-                        <div className="flex gap-0.5 p-0.5 bg-muted/30 rounded">
+                        <div className="flex gap-0.5 p-0.5 bg-white/[0.04] border border-white/5 rounded-lg backdrop-blur-sm">
                             <button
                                 type="button"
                                 onClick={() => setMbView("data")}
                                 className={cn(
-                                    "flex-1 text-[10px] font-semibold uppercase tracking-wider py-1.5 rounded transition-colors",
-                                    mbView === "data" ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
+                                    "flex-1 text-[10px] font-semibold uppercase tracking-wider py-1.5 rounded-md transition-all duration-200",
+                                    mbView === "data"
+                                        ? "bg-white/10 text-foreground shadow-sm"
+                                        : "text-muted-foreground hover:text-foreground"
                                 )}
                             >
                                 Reference
@@ -474,8 +484,10 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                 type="button"
                                 onClick={() => setMbView("results")}
                                 className={cn(
-                                    "flex-1 text-[10px] font-semibold uppercase tracking-wider py-1.5 rounded transition-colors",
-                                    mbView === "results" ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground"
+                                    "flex-1 text-[10px] font-semibold uppercase tracking-wider py-1.5 rounded-md transition-all duration-200",
+                                    mbView === "results"
+                                        ? "bg-white/10 text-foreground shadow-sm"
+                                        : "text-muted-foreground hover:text-foreground"
                                 )}
                             >
                                 Results ({mbReleases.length})
@@ -483,7 +495,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                         </div>
 
                         {/* Content — fixed height container so toggling doesn't shift layout */}
-                        <div className="h-[460px] border border-border/50 rounded-md overflow-hidden">
+                        <div className="h-[460px] border border-white/[0.06] bg-white/[0.02] rounded-xl overflow-hidden backdrop-blur-sm">
                             {mbView === "data" && (
                                 <ScrollArea className="h-full">
                                     <div className="p-2.5 space-y-1.5 text-[11px]">
@@ -525,10 +537,10 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                                         setSelectedMbRelease(release)
                                                     }}
                                                     className={cn(
-                                                        "w-full text-left p-2 rounded text-xs border transition-all",
+                                                        "w-full text-left p-2.5 rounded-lg text-xs border transition-all duration-200 active:scale-[0.99]",
                                                         selectedMbRelease?.id === release.id
-                                                            ? "bg-white/15 border-white/60"
-                                                            : "bg-muted/20 border-border/50 hover:bg-muted/40 hover:border-border"
+                                                            ? "bg-white/10 border-white/40 shadow-sm"
+                                                            : "bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.06] hover:border-white/15"
                                                     )}
                                                 >
                                                     <div className="font-semibold truncate text-foreground">{release.title}</div>
@@ -577,7 +589,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                         </span>
                     </div>
 
-                    <div className="border border-border/50 rounded-md overflow-hidden divide-y divide-border/50 bg-muted/10">
+                    <div className="border border-white/[0.06] rounded-xl overflow-hidden divide-y divide-white/[0.04] bg-white/[0.02] backdrop-blur-sm">
                         {tracksData.map((track, index) => {
                             const isExpanded = expandedTrack === index
                             const suggestion = getTrackSuggestion(index)
@@ -593,16 +605,17 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                         type="button"
                                         onClick={() => setExpandedTrack(isExpanded ? null : index)}
                                         className={cn(
-                                            "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors",
-                                            isExpanded ? "bg-muted/30" : "hover:bg-muted/20"
+                                            "group w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all duration-150",
+                                            isExpanded ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"
                                         )}
                                     >
-                                        {isExpanded ? (
-                                            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                        ) : (
-                                            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                        )}
-                                        <span className="text-xs font-mono text-muted-foreground w-6 shrink-0">
+                                        <ChevronRight
+                                            className={cn(
+                                                "w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform duration-200",
+                                                isExpanded && "rotate-90"
+                                            )}
+                                        />
+                                        <span className="text-xs font-mono text-muted-foreground w-6 shrink-0 tabular-nums">
                                             {String(index + 1).padStart(2, '0')}
                                         </span>
                                         <div className="flex-1 min-w-0 grid grid-cols-[2fr_1fr_60px] gap-3 items-center">
@@ -610,12 +623,12 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                                 {track.title || <span className="text-muted-foreground italic">Untitled</span>}
                                             </span>
                                             <span className="text-xs text-muted-foreground truncate">{track.artist}</span>
-                                            <span className="text-xs text-muted-foreground font-mono text-right">
+                                            <span className="text-xs text-muted-foreground font-mono text-right tabular-nums">
                                                 {formatLength(track.length)}
                                             </span>
                                         </div>
                                         {hasDifference && (
-                                            <span className="text-[10px] text-white font-semibold bg-white/10 border border-white/30 px-1.5 py-0.5 rounded shrink-0 flex items-center gap-0.5">
+                                            <span className="text-[10px] text-white font-semibold bg-white/10 border border-white/20 px-1.5 py-0.5 rounded-md shrink-0 flex items-center gap-0.5 transition-colors group-hover:bg-white/15">
                                                 <Sparkles className="w-2.5 h-2.5" />
                                                 MB
                                             </span>
@@ -624,7 +637,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
 
                                     {/* Expanded Edit Form */}
                                     {isExpanded && (
-                                        <div className="px-4 pb-4 pt-2 bg-muted/10 space-y-3">
+                                        <div className="px-4 pb-4 pt-3 bg-white/[0.02] space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
                                             {/* Row 1: Title (full width) */}
                                             <FieldWithSuggestion
                                                 label="Title"
@@ -772,7 +785,7 @@ function MbResultSkeleton() {
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
     return (
-        <h3 className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+        <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80 flex items-center">
             {children}
         </h3>
     )
@@ -842,13 +855,13 @@ function FieldWithSuggestion({
                     <button
                         type="button"
                         onClick={() => onChange(suggestion!)}
-                        className="flex items-center gap-1 text-[10px] text-white/90 hover:text-white font-semibold transition-colors group shrink-0"
+                        className="flex items-center gap-1 text-[10px] text-white/80 hover:text-white font-semibold transition-all duration-150 group shrink-0 active:scale-95"
                     >
-                        <Sparkles className="w-2.5 h-2.5" />
-                        <span className="max-w-[140px] truncate group-hover:underline">
+                        <Sparkles className="w-2.5 h-2.5 transition-transform group-hover:rotate-12" />
+                        <span className="max-w-[140px] truncate group-hover:underline underline-offset-2">
                             {suggestion}
                         </span>
-                        <Check className="w-2.5 h-2.5" />
+                        <Check className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
                     </button>
                 )}
             </div>
@@ -858,9 +871,10 @@ function FieldWithSuggestion({
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={placeholder}
                 className={cn(
+                    "transition-all duration-150",
                     compact ? "h-8 text-sm" : "h-9",
                     multiline && "min-h-[60px] resize-none",
-                    hasSuggestion && "border-white/40"
+                    hasSuggestion && "border-white/25 focus:border-white/40"
                 )}
             />
         </div>

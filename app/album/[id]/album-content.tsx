@@ -32,12 +32,12 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-screen flex flex-col">
                 {/* Unified Header Bar */}
                 <div className="container mx-auto px-4 pt-6 shrink-0">
-                    <div className="flex items-center justify-between gap-4 mb-4">
+                    <div className="flex items-center justify-between gap-4 mb-4 transition-all duration-200">
                         <div className="flex items-center gap-4 min-w-0">
                             <BackLink />
                             {activeTab === "edit" && (
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <span className="text-sm text-muted-foreground">Editing:</span>
+                                <div className="flex items-center gap-2 min-w-0 animate-in fade-in slide-in-from-left-2 duration-300">
+                                    <span className="text-sm text-muted-foreground">Editing</span>
                                     <span className="text-sm font-semibold truncate">{album.album}</span>
                                 </div>
                             )}
@@ -63,7 +63,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                     form="album-edit-form"
                                     size="sm"
                                     disabled={isSaving}
-                                    className="min-w-[120px] ml-2"
+                                    className="min-w-[120px] ml-2 transition-all duration-200 active:scale-[0.97] animate-in fade-in slide-in-from-right-2 duration-300"
                                 >
                                     {isSaving ? 'Saving...' : 'Save Changes'}
                                 </Button>
@@ -116,31 +116,31 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                     )}
                                 </div>
 
-                                <div className="flex flex-wrap gap-4">
+                                <div className="flex flex-wrap gap-6">
                                     {album.country && (
                                         <div className="flex flex-col gap-1.5">
-                                            <label className="text-[10px] uppercase tracking-wider text-white/60 font-medium">
+                                            <label className="text-[10px] uppercase tracking-[0.12em] text-white/50 font-medium">
                                                 Country
                                             </label>
-                                            <span className="text-xs font-semibold">{album.country}</span>
+                                            <span className="text-xs font-semibold text-white/90">{album.country}</span>
                                         </div>
                                     )}
                                     {album.label && (
                                         <div className="flex flex-col gap-1.5">
-                                            <label className="text-[10px] uppercase tracking-wider text-white/60 font-medium">
+                                            <label className="text-[10px] uppercase tracking-[0.12em] text-white/50 font-medium">
                                                 Label
                                             </label>
-                                            <span className="text-xs font-semibold">{album.label}</span>
+                                            <span className="text-xs font-semibold text-white/90">{album.label}</span>
                                         </div>
                                     )}
                                 </div>
 
                                 {genres.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5">
+                                    <div className="flex flex-wrap gap-1.5 mt-1">
                                         {genres.map((genre) => (
                                             <span
                                                 key={genre}
-                                                className="py-1 px-2.5 bg-white/15 border border-white/20 backdrop-blur-sm rounded-full text-xs font-medium hover:bg-white/25 hover:scale-105 transition-all"
+                                                className="py-1 px-3 bg-white/[0.08] border border-white/10 backdrop-blur-md rounded-full text-xs font-medium text-white/90 hover:bg-white/[0.14] hover:border-white/20 hover:text-white hover:scale-105 active:scale-95 transition-all duration-200 cursor-default"
                                             >
                                                 {genre}
                                             </span>

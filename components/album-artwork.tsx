@@ -46,7 +46,7 @@ export default function AlbumArtwork({
             style={{ perspective: "1000px" }}
         >
             {missingSince ? (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-white/5 rounded-xl border-2 border-red-500/30">
+                <div className="w-full h-full flex flex-col items-center justify-center bg-white/[0.04] rounded-2xl border border-red-500/25">
                     <FileQuestion className="w-20 h-20 text-red-400/60" />
                     <span className="mt-3 text-sm text-red-400/80">Missing</span>
                 </div>
@@ -55,15 +55,15 @@ export default function AlbumArtwork({
                     <Image
                         src={artUrl}
                         alt={album}
-                        className="w-full h-full object-cover rounded-xl shadow-2xl ring-1 ring-white/10 cursor-pointer"
+                        className="w-full h-full object-cover rounded-2xl shadow-2xl shadow-black/40 ring-1 ring-white/10 cursor-pointer"
                         style={{
                             transform: isHovering
-                                ? `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) scale(1.05)`
+                                ? `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) scale(1.04)`
                                 : "rotateX(0deg) rotateY(0deg) scale(1)",
                             transformStyle: "preserve-3d",
                             transition: isHovering
                                 ? "transform 0.1s ease-out"
-                                : "transform 0.3s ease-out",
+                                : "transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
                         }}
                         width={800}
                         height={800}
@@ -71,7 +71,7 @@ export default function AlbumArtwork({
                     />
                 </ViewTransition>
             ) : (
-                <div className="w-full h-full flex items-center justify-center bg-white/5 rounded-xl">
+                <div className="w-full h-full flex items-center justify-center bg-white/[0.04] rounded-2xl border border-white/[0.06]">
                     <Music2 className="w-20 h-20 text-white/40" />
                 </div>
             )}

@@ -125,15 +125,16 @@ export default function Library({ albums, page, totalPages, totalAlbums }: Libra
         <div className="absolute inset-0 overflow-hidden">
             <div className="container mx-auto px-4 py-4 flex flex-col h-full">
                 {syncState.isReconciling && (
-                    <div className="mb-4 p-3 bg-white/10 border border-white/20 backdrop-blur-sm rounded-lg flex-shrink-0">
-                        <p className="text-sm text-white">Scanning for new music...</p>
+                    <div className="mb-4 px-4 py-2.5 bg-white/[0.08] border border-white/10 backdrop-blur-md rounded-full flex-shrink-0 flex items-center gap-2.5 animate-in fade-in slide-in-from-top-2 duration-300 w-fit">
+                        <span className="w-2 h-2 rounded-full bg-white/70 animate-pulse" />
+                        <p className="text-sm text-white/90">Scanning for new music...</p>
                     </div>
                 )}
 
                 <div className="w-full mb-4 flex-shrink-0">
-                    <p className="text-sm text-white/60">
+                    <p className="text-xs uppercase tracking-[0.12em] text-white/50 font-medium">
                         {albums.length} of {totalAlbums.toLocaleString()} albums
-                        {syncState.isReconciling && " (updating...)"}
+                        {syncState.isReconciling && " · updating"}
                     </p>
                 </div>
 
