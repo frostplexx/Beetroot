@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import AlbumCard from "@/components/album_card";
 import { AlbumContextMenu } from "@/components/album-context-menu";
@@ -26,10 +26,58 @@ interface LibraryProps {
 
 export default function Library({ albums, page, totalPages, totalAlbums }: LibraryProps) {
     const router = useRouter();
+    const gridRef = useRef<HTMLDivElement>(null);
 
     const syncState = useLibrarySync(() => {
         router.refresh();
     });
+
+    // Cap the grid to a whole-row boundary so we never show a half-clipped row.
+    // We measure once and on resize, set inline maxHeight; no router.refresh.
+    useLayoutEffect(() => {
+        const grid = gridRef.current;
+        if (!grid) return;
+
+        const GAP = 16;
+        const colsAt = (w: number) => {
+            if (w < 768) return 2;
+            if (w < 1024) return 3;
+            if (w < 1280) return 4;
+            return 6;
+        };
+
+        const apply = () => {
+            const width = grid.clientWidth;
+            if (width <= 0) return;
+            const cols = colsAt(window.innerWidth);
+            const cardSize = (width - (cols - 1) * GAP) / cols;
+            if (cardSize <= 0) return;
+
+            // Read available height with the cap removed, then restore.
+            const prev = grid.style.maxHeight;
+            grid.style.maxHeight = "none";
+            const available = grid.clientHeight;
+            grid.style.maxHeight = prev;
+
+            if (available <= 0) return;
+            const rows = Math.max(1, Math.floor((available + GAP) / (cardSize + GAP)));
+            const target = rows * cardSize + (rows - 1) * GAP;
+            grid.style.maxHeight = `${Math.floor(target)}px`;
+        };
+
+        apply();
+
+        let raf = 0;
+        const onResize = () => {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(apply);
+        };
+        window.addEventListener("resize", onResize);
+        return () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener("resize", onResize);
+        };
+    }, []);
 
     useEffect(() => {
         if (totalPages <= 1) return;
@@ -89,7 +137,10 @@ export default function Library({ albums, page, totalPages, totalAlbums }: Libra
                     </p>
                 </div>
 
-                <div className="grid w-full gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 flex-1 min-h-0 overflow-hidden content-start">
+                <div
+                    ref={gridRef}
+                    className="grid w-full gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 flex-1 min-h-0 overflow-hidden content-start"
+                >
                     {albums.map((album, idx) => (
                         <AlbumContextMenu key={album.id} album={album}>
                             <AlbumCard album={album} priority={idx < FIRST_ROW_COLS_XL} />
@@ -109,7 +160,7 @@ function Pagination({ page, totalPages }: { page: number; totalPages: number }) 
     const next = Math.min(totalPages, page + 1);
 
     return (
-        <ShadcnPagination className="mt-8 flex-shrink-0">
+        <ShadcnPagination className="mt-auto pt-6 flex-shrink-0">
             <PaginationContent>
                 <PaginationItem>
                     <PaginationPrevious href={pageHref(prev)} disabled={page === 1} />
