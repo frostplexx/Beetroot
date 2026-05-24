@@ -1,12 +1,11 @@
 import { getAlbumById, getItemsByAlbum, Item } from "@/lib/music/database"
-import { ChevronLeft } from "lucide-react"
-import Link from "next/link"
 import AlbumArtwork from "@/components/album-artwork"
 import DynamicBackground from "@/components/dynamic-background"
 import { SongsDataTable } from "./data-table"
 import { columns } from "./columns"
 import { EditDialog } from "./edit-dialog"
 import { DeleteMissingButton } from "./delete-missing-button"
+import { BackLink } from "./back-link"
 
 export default async function AlbumPage({
     params,
@@ -33,14 +32,7 @@ export default async function AlbumPage({
         <>
             <DynamicBackground artUrl={artUrl} />
             <div className="container mx-auto px-4 py-6">
-                    <Link
-                        href="/"
-                        transitionTypes={['nav-back']}
-                        className="inline-flex items-center gap-1.5 py-2 px-3 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm text-sm text-white hover:bg-white/20 hover:border-white/30 hover:scale-105 transition-all group"
-                    >
-                        <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-                        Back
-                    </Link>
+                    <BackLink />
 
                     <div className="flex flex-col md:flex-row gap-8 items-start mt-8">
                         <AlbumArtwork
