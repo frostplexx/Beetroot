@@ -56,7 +56,7 @@ class ReconcileService extends EventEmitter {
 
         // Run on startup if configured. Skip in dev so HMR restarts don't
         // kick off a full library scan every time and starve page requests.
-        if (globalConfig.reconcile_on_startup && process.env.NODE_ENV === 'production') {
+        if (globalConfig.reconcile_on_startup) {
             this.runReconciliation();
         }
 
@@ -210,7 +210,7 @@ class ReconcileService extends EventEmitter {
             // before we notify clients to refresh.
             if (hasChanges) {
                 try {
-                    revalidateTag(ALBUMS_CACHE_TAG);
+                    revalidateTag(ALBUMS_CACHE_TAG, { });
                 } catch (e) {
                     // revalidateTag is request-scoped in some contexts; the
                     // 60s revalidate window catches reconciles outside requests.
