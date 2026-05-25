@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 COPY scripts/postinstall.js ./scripts/
 
 # Install dependencies (includes postinstall -> chromaprint download)
