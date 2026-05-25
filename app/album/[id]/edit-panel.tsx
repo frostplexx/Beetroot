@@ -103,134 +103,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
     const [selectedMbRelease, setSelectedMbRelease] = React.useState<MusicBrainzRelease | null>(null)
     const [loadingMb, setLoadingMb] = React.useState(true)
     const [mbView, setMbView] = React.useState<"results" | "data">("data")
-
-    // MOCK DATA — realistic variants based on actual album, sorted oldest first
-    const baseYear = parseInt(String(album.year)) || new Date().getFullYear()
-    const baseCountry = album.country || "US"
-    const baseLabel = album.label || "Unknown Label"
-
-    const mockMbReleases: MusicBrainzRelease[] = [
-        {
-            id: "f3a1b2c3-d4e5-6f78-9012-3456789abcde",
-            title: album.album,
-            artist: album.albumartist || "",
-            date: `${baseYear}-01-15`,
-            country: baseCountry,
-            label: baseLabel,
-            catalog: "ORG-001",
-            barcode: "0190295823559",
-            status: "Official",
-            packaging: "Jewel Case",
-            score: 100,
-            trackCount: songs.length,
-            tracks: songs.map((song, i) => ({
-                position: i + 1,
-                title: song.title || `Track ${i + 1}`,
-                artist: album.albumartist || "",
-                composer: album.albumartist || "",
-                length: 215000,
-                isrc: `USRC1${String(i).padStart(7, '0')}`,
-            })),
-        },
-        {
-            id: "c3d4e5f6-a7b8-9012-3456-789abcdef012",
-            title: album.album,
-            artist: album.albumartist || "",
-            date: `${baseYear}-03-01`,
-            country: "JP",
-            label: baseLabel + " Japan",
-            catalog: "JP-65000",
-            barcode: "4988006704893",
-            status: "Official",
-            packaging: "Jewel Case",
-            score: 88,
-            trackCount: songs.length,
-        },
-        {
-            id: "e5f6a7b8-c9d0-1234-5678-9abcdef01234",
-            title: album.album,
-            artist: album.albumartist || "",
-            date: `${baseYear}-06-20`,
-            country: "GB",
-            label: baseLabel + " UK",
-            catalog: "UK-804",
-            barcode: "5099969404511",
-            status: "Official",
-            packaging: "Jewel Case",
-            score: 82,
-            trackCount: songs.length,
-        },
-        {
-            id: "a1b2c3d4-e5f6-7890-1234-56789abcdef0",
-            title: album.album + " (Deluxe Edition)",
-            artist: album.albumartist || "",
-            date: `${baseYear + 1}-09-22`,
-            country: baseCountry,
-            label: baseLabel,
-            catalog: "DLX-3201",
-            barcode: "886973920128",
-            status: "Official",
-            packaging: "Digipak",
-            score: 92,
-            trackCount: songs.length + 2,
-        },
-        {
-            id: "b2c3d4e5-f6a7-8901-2345-6789abcdef01",
-            title: album.album + " (Anniversary Edition)",
-            artist: album.albumartist || "",
-            date: `${baseYear + 5}-06-14`,
-            country: baseCountry,
-            label: baseLabel,
-            catalog: "ANN-46001",
-            barcode: "077774600125",
-            status: "Official",
-            packaging: "Digipak",
-            score: 85,
-            trackCount: songs.length + 5,
-        },
-        {
-            id: "d4e5f6a7-b8c9-0123-4567-89abcdef0123",
-            title: album.album + " (Vinyl Reissue)",
-            artist: album.albumartist || "",
-            date: `${baseYear + 10}-11-25`,
-            country: baseCountry,
-            label: baseLabel,
-            catalog: "VIN-7160",
-            barcode: "5099969404599",
-            status: "Official",
-            packaging: "Gatefold",
-            score: 78,
-            trackCount: songs.length,
-        },
-        {
-            id: "f6a7b8c9-d0e1-2345-6789-abcdef012345",
-            title: album.album + " (Promo)",
-            artist: album.albumartist || "",
-            date: `${baseYear}-01-01`,
-            country: baseCountry,
-            label: baseLabel,
-            catalog: "PRO-2345",
-            barcode: "",
-            status: "Promotion",
-            packaging: "Cardboard Sleeve",
-            score: 72,
-            trackCount: songs.length - 1,
-        },
-        {
-            id: "a7b8c9d0-e1f2-3456-789a-bcdef0123456",
-            title: album.album + " (Streaming Edition)",
-            artist: album.albumartist || "",
-            date: `${baseYear + 3}-02-10`,
-            country: "XW",
-            label: baseLabel,
-            catalog: "DIG-46001",
-            barcode: "",
-            status: "Official",
-            packaging: "None",
-            score: 68,
-            trackCount: songs.length,
-        },
-    ].sort((a, b) => a.date.localeCompare(b.date))
+    const [mbError, setMbError] = React.useState<string | null>(null)
 
     React.useEffect(() => {
         if (alternatives.length === 0) {
@@ -243,18 +116,36 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
         }
     }, [album.id, alternatives.length])
 
-    const searchMusicBrainz = () => {
+    const searchMusicBrainz = async (useExactLookup = false) => {
         setLoadingMb(true)
         setMbView("results")
-        setTimeout(() => {
-            setMbReleases(mockMbReleases)
-            setSelectedMbRelease(mockMbReleases[0])
+        setMbError(null)
+        try {
+            // If useExactLookup is true (initial load), use cluster lookup for best match
+            // Otherwise, always use search API with the query
+            const url = useExactLookup
+                ? `/api/album/${album.id}/musicbrainz`
+                : `/api/album/${album.id}/musicbrainz?q=${encodeURIComponent(mbSearchQuery.trim() || album.album)}`
+            const response = await fetch(url)
+            if (!response.ok) {
+                const data = await response.json()
+                throw new Error(data.error || 'Failed to search MusicBrainz')
+            }
+            const data = await response.json()
+            setMbReleases(data.releases || [])
+            setSelectedMbRelease(data.selectedRelease || null)
+        } catch (err) {
+            console.error('MusicBrainz search error:', err)
+            setMbError(err instanceof Error ? err.message : 'Failed to search MusicBrainz')
+            setMbReleases([])
+            setSelectedMbRelease(null)
+        } finally {
             setLoadingMb(false)
-        }, 300)
+        }
     }
 
     React.useEffect(() => {
-        searchMusicBrainz()
+        searchMusicBrainz(true) // Use cluster lookup for initial best match
     }, [])
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -493,6 +384,14 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                 Results ({mbReleases.length})
                             </button>
                         </div>
+
+                        {/* Error display */}
+                        {mbError && (
+                            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 flex items-start gap-2">
+                                <AlertCircle className="w-3 h-3 text-red-400 shrink-0 mt-0.5" />
+                                <p className="text-[10px] text-red-200">{mbError}</p>
+                            </div>
+                        )}
 
                         {/* Content — fixed height container so toggling doesn't shift layout */}
                         <div className="h-[460px] border border-white/[0.06] bg-white/[0.02] rounded-xl overflow-hidden backdrop-blur-sm">

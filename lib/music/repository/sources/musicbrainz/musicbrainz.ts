@@ -405,7 +405,7 @@ function totalTrackCount(r: MusicBrainzRelease): number {
     return r.media.reduce((sum, m) => sum + (m['track-count'] ?? 0), 0);
 }
 
-async function searchReleasesByArtistAlbum(
+export async function searchReleasesByArtistAlbum(
     artist: string,
     album: string,
     limit = 25
