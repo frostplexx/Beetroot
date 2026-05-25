@@ -457,6 +457,11 @@ export function batchUpdateItems(updates: Array<{ id: number; fields: Partial<It
     }
 }
 
+// Update a single item's fields
+export function updateItem(id: number, fields: Partial<Item>): void {
+    batchUpdateItems([{ id, fields }])
+}
+
 // Get items marked for deletion that are old enough to delete
 export function getItemsReadyForDeletion(deleteAfterDays: number): Item[] {
     try {

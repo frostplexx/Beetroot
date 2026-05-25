@@ -154,17 +154,66 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
         onSavingChange?.(true)
         setError(null)
         try {
-            const response = await fetch(`/api/album/${album.id}`, {
+            // Step 1: Update album metadata
+            const albumResponse = await fetch(`/api/album/${album.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
             })
-            const data = await response.json()
-            if (!response.ok) throw new Error(data.error || 'Failed to update album')
+            const albumData = await albumResponse.json()
+            if (!albumResponse.ok) throw new Error(albumData.error || 'Failed to update album')
+
+            // Step 2: Update track metadata
+            let trackSuccessCount = 0
+            let trackErrorCount = 0
+
+            for (const track of tracksData) {
+                try {
+                    const trackResponse = await fetch(`/api/items/${track.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title: track.title,
+                            artist: track.artist,
+                            albumartist: track.albumartist,
+                            composers: track.composer,
+                            track: track.track ? parseInt(String(track.track)) : undefined,
+                            disc: track.disc ? parseInt(String(track.disc)) : undefined,
+                            bpm: track.bpm ? parseInt(String(track.bpm)) : undefined,
+                            isrc: track.isrc,
+                            comments: track.comments,
+                            lyrics: track.lyrics,
+                            genre: track.genre,
+                            year: track.year ? parseInt(String(track.year)) : undefined,
+                        }),
+                    })
+                    if (trackResponse.ok) {
+                        trackSuccessCount++
+                    } else {
+                        trackErrorCount++
+                        const trackData = await trackResponse.json()
+                        console.error(`Failed to update track ${track.id}:`, trackData.error)
+                    }
+                } catch (err) {
+                    trackErrorCount++
+                    console.error(`Failed to update track ${track.id}:`, err)
+                }
+            }
+
+            console.log(`Track updates: ${trackSuccessCount} succeeded, ${trackErrorCount} failed`)
+
+            // Show warning if some tracks failed
+            if (trackErrorCount > 0) {
+                setError(`Album updated, but ${trackErrorCount} track(s) failed to update. Check console for details.`)
+                setSaving(false)
+                onSavingChange?.(false)
+                return
+            }
+
+            // Reload to show updated data
             window.location.reload()
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to save changes')
-        } finally {
             setSaving(false)
             onSavingChange?.(false)
         }
