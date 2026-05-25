@@ -14,8 +14,9 @@ lib/bin
 package-lock.json
 
 .direnv
-.db.*
-.db.sqlite3.*
+db.*
+db.sqlite3.*
+db.sqlite3-shm
 
 # testing
 /coverage
