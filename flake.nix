@@ -17,6 +17,33 @@
       nixosModule = { config, lib, pkgs, ... }:
         let
           cfg = config.services.beetroot-v2;
+          # Use the built package from the same flake
+          beetroot-package = self.packages.${pkgs.system}.default or (
+            # Fallback: build it inline if not available
+            pkgs.stdenv.mkDerivation {
+              pname = "beetroot-v2";
+              version = "0.1.0";
+              src = ./.;
+              nativeBuildInputs = [ pkgs.bun ];
+              buildInputs = [ pkgs.chromaprint ];
+              buildPhase = ''
+                export HOME=$TMPDIR
+                export BUN_INSTALL_CACHE_DIR=$TMPDIR/.bun
+                bun install --frozen-lockfile
+                bun run build
+              '';
+              installPhase = ''
+                mkdir -p $out
+                cp -r .next public node_modules app lib components package.json next.config.ts tsconfig.json $out/
+                cat > $out/start.sh <<EOF
+#!/bin/sh
+cd $out
+exec ${pkgs.bun}/bin/bun start "\$@"
+EOF
+                chmod +x $out/start.sh
+              '';
+            }
+          );
         in {
           options.services.beetroot-v2 = {
             enable = lib.mkEnableOption "Beetroot v2 music library service";
@@ -120,7 +147,7 @@
 
               serviceConfig = {
                 Type = "simple";
-                ExecStart = "${pkgs.bun}/bin/bun start";
+                ExecStart = "${beetroot-package}/start.sh";
                 WorkingDirectory = cfg.dataDirectory;
                 User = cfg.user;
                 Group = cfg.group;
@@ -153,11 +180,75 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+
+        # Build the Next.js application
+        beetroot-v2 = pkgs.stdenv.mkDerivation {
+          pname = "beetroot-v2";
+          version = "0.1.0";
+
+          src = ./.;
+
+          nativeBuildInputs = with pkgs; [
+            bun
+          ];
+
+          buildInputs = with pkgs; [
+            chromaprint  # For fpcalc
+          ];
+
+          buildPhase = ''
+            export HOME=$TMPDIR
+            export BUN_INSTALL_CACHE_DIR=$TMPDIR/.bun
+
+            # Install dependencies
+            bun install --frozen-lockfile
+
+            # Build Next.js app
+            bun run build
+          '';
+
+          installPhase = ''
+            mkdir -p $out
+
+            # Copy built Next.js app
+            cp -r .next $out/
+            cp -r public $out/
+            cp -r node_modules $out/
+
+            # Copy source files needed at runtime
+            cp -r app $out/
+            cp -r lib $out/
+            cp -r components $out/
+            cp package.json $out/
+            cp next.config.ts $out/
+            cp tsconfig.json $out/
+
+            # Create start script
+            cat > $out/start.sh <<EOF
+#!/bin/sh
+cd $out
+exec ${pkgs.bun}/bin/bun start "\$@"
+EOF
+            chmod +x $out/start.sh
+          '';
+
+          meta = with pkgs.lib; {
+            description = "Beetroot v2 - Next.js music library manager";
+            license = licenses.mit;
+            platforms = platforms.unix;
+          };
+        };
       in {
+        packages.default = beetroot-v2;
+        packages.beetroot-v2 = beetroot-v2;
+
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             bun
-            sqlit-tui
+            sqlite
+          ] ++ lib.optionals stdenv.isLinux [
+            # Audio fingerprinting tools (optional, only on Linux where they build reliably)
+            chromaprint
           ];
 
           shellHook = ''
@@ -169,6 +260,9 @@
             echo "  bun run dev   - Start development server"
             echo "  bun run build - Build for production"
             echo "  bun start     - Start production server"
+            echo ""
+            echo "Note: Audio fingerprinting requires fpcalc (chromaprint)"
+            echo "      Install separately on macOS: brew install chromaprint"
             echo ""
           '';
         };
