@@ -3,7 +3,6 @@
 
 # dependencies
 /node_modules
-lib/bin
 /.pnp
 .pnp.*
 .yarn/*

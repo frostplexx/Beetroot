@@ -26,7 +26,7 @@ WORKDIR /app
 
 # Copy dependencies from previous stage
 COPY --from=dependencies /app/node_modules ./node_modules
-COPY --from=dependencies /app/lib/bin ./lib/bin
+COPY --from=dependencies /app/lib/music/binaries ./lib/music/binaries
 
 # Copy source code
 COPY . .
@@ -50,9 +50,12 @@ RUN groupadd -r -g 1000 beetroot && \
 
 # Copy production dependencies and built application
 COPY --from=dependencies /app/node_modules ./node_modules
-COPY --from=dependencies /app/lib/bin ./lib/bin
+COPY --from=dependencies /app/lib/music/binaries ./lib/music/binaries
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/components ./components
+COPY --from=builder /app/app ./app
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/bun.lockb ./
 COPY --from=builder /app/next.config.ts ./

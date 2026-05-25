@@ -10,9 +10,6 @@ out
 # Dependencies
 node_modules
 
-# Downloaded binaries
-lib/bin
-
 # Database files
 *.sqlite3
 *.sqlite3-shm

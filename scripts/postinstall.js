@@ -1,26 +1,35 @@
 #!/usr/bin/env bun
 const { exec } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
 const version = '1.6.0';
 const baseURL = `https://github.com/acoustid/chromaprint/releases/download/v${version}`;
-const path = require('path');
-const binDir = path.join(__dirname, '..', 'lib', 'bin');
+const platform = process.platform;
+
+// Canonical path where runtime expects fpcalc binary
+const binDir = path.join(__dirname, '..', 'lib', 'music', 'binaries', 'chromaprint');
 
 function download(downloadUrl) {
     console.log(`Downloading chromaprint from ${downloadUrl}...`);
+
+    // Ensure target directory exists
+    if (!fs.existsSync(binDir)) {
+        fs.mkdirSync(binDir, { recursive: true });
+    }
+
     const cmd = platform === 'win32'
         ? `curl -L -o chromaprint.zip ${downloadUrl} && unzip chromaprint.zip && rm chromaprint.zip`
-        : `curl -L -o chromaprint.tar.gz ${downloadUrl} && tar -xzf chromaprint.tar.gz && mkdir -p ${binDir} && mv chromaprint-fpcalc-${version}-* ${binDir}/chromaprint && rm chromaprint.tar.gz`;
+        : `curl -L -o chromaprint.tar.gz ${downloadUrl} && tar -xzf chromaprint.tar.gz && mkdir -p ${binDir} && mv chromaprint-fpcalc-${version}-*/fpcalc ${binDir}/fpcalc && chmod +x ${binDir}/fpcalc && rm -rf chromaprint-fpcalc-${version}-* chromaprint.tar.gz`;
 
     exec(cmd, (error) => {
         if (error) {
             console.error(`Error downloading chromaprint: ${error}`);
             return;
         }
-        console.log('chromaprint downloaded successfully');
+        console.log('chromaprint downloaded successfully to', binDir);
     });
 }
-
-const platform = process.platform;
 
 exec('which fpcalc', (error) => {
     if (!error) return; // already installed
