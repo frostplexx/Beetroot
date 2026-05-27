@@ -123,6 +123,34 @@ export default function Library({ albums, page, totalPages, totalAlbums, sort }:
         };
     }, []);
 
+    // Prefetch next page images while the user is still on the current page.
+    // Fetching with Image() warms the serve-art LRU on the server and populates
+    // the browser cache so navigating forward feels instant instead of waiting
+    // for 30 cold sharp resizes.
+    useEffect(() => {
+        if (page >= totalPages) return;
+
+        const controller = new AbortController();
+        const params = new URLSearchParams();
+        // API is 0-indexed; next 1-based page N+1 → API page = N
+        params.set("page", String(page));
+        params.set("pageSize", "30");
+        if (sort !== "recently-added") params.set("sort", sort);
+
+        fetch(`/api/albums?${params}`, { signal: controller.signal })
+            .then(r => r.json())
+            .then((data: { albums: AlbumCardData[] }) => {
+                data.albums?.forEach(album => {
+                    if (!album.artpath || album.missing_since) return;
+                    const img = new window.Image();
+                    img.src = `/api/album/${album.id}/art?size=400`;
+                });
+            })
+            .catch(() => {});
+
+        return () => controller.abort();
+    }, [page, totalPages, sort]);
+
     useEffect(() => {
         if (totalPages <= 1) return;
 
@@ -197,12 +225,36 @@ function Pagination({ page, totalPages, sort }: { page: number; totalPages: numb
     const prev = Math.max(1, page - 1);
     const next = Math.min(totalPages, page + 1);
     const href = (n: number) => pageHref(n, sort);
+    const prefetched = useRef(new Set<number>());
+
+    const prefetchPageImages = useCallback((targetPage: number) => {
+        if (prefetched.current.has(targetPage)) return;
+        prefetched.current.add(targetPage);
+        const params = new URLSearchParams();
+        params.set("page", String(targetPage - 1));
+        params.set("pageSize", "30");
+        if (sort !== "recently-added") params.set("sort", sort);
+        fetch(`/api/albums?${params}`)
+            .then(r => r.json())
+            .then((data: { albums: AlbumCardData[] }) => {
+                data.albums?.forEach(album => {
+                    if (!album.artpath || album.missing_since) return;
+                    const img = new window.Image();
+                    img.src = `/api/album/${album.id}/art?size=400`;
+                });
+            })
+            .catch(() => {});
+    }, [sort]);
 
     return (
         <ShadcnPagination className="mt-auto pt-6 flex-shrink-0">
             <PaginationContent>
                 <PaginationItem>
-                    <PaginationPrevious href={href(prev)} disabled={page === 1} />
+                    <PaginationPrevious
+                        href={href(prev)}
+                        disabled={page === 1}
+                        onMouseEnter={() => page > 1 && prefetchPageImages(prev)}
+                    />
                 </PaginationItem>
 
                 {pages.map((n) => (
@@ -214,7 +266,11 @@ function Pagination({ page, totalPages, sort }: { page: number; totalPages: numb
                 ))}
 
                 <PaginationItem>
-                    <PaginationNext href={href(next)} disabled={page === totalPages} />
+                    <PaginationNext
+                        href={href(next)}
+                        disabled={page === totalPages}
+                        onMouseEnter={() => page < totalPages && prefetchPageImages(next)}
+                    />
                 </PaginationItem>
             </PaginationContent>
         </ShadcnPagination>

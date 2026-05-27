@@ -20,22 +20,22 @@ export default function DynamicBackground({ artUrl }: { artUrl: string | null })
                     img.src = artUrl
                 })
 
-                // Extract color using Canvas
+                // Extract color using a tiny Canvas — full-res is wasteful for 5 pixels
                 const canvas = document.createElement("canvas")
                 const ctx = canvas.getContext("2d")
                 if (!ctx) return
 
-                canvas.width = img.width
-                canvas.height = img.height
-                ctx.drawImage(img, 0, 0)
+                canvas.width = 50
+                canvas.height = 50
+                ctx.drawImage(img, 0, 0, 50, 50)
 
                 // Sample colors from the image
                 const samples = 5
                 const colors: number[][] = []
 
                 for (let i = 0; i < samples; i++) {
-                    const x = Math.floor((img.width / samples) * i + img.width / (samples * 2))
-                    const y = Math.floor(img.height / 2)
+                    const x = Math.floor((50 / samples) * i + 50 / (samples * 2))
+                    const y = 25
                     const pixel = ctx.getImageData(x, y, 1, 1).data
                     colors.push([pixel[0], pixel[1], pixel[2]])
                 }

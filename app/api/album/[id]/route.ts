@@ -65,6 +65,9 @@ export async function PATCH(
         album.label = payload.label?.trim() || null
         album.genres = payload.genres?.trim() || null
 
+        // Fetch tracks once — used for both cover art path and metadata propagation
+        const items = getItemsByAlbum(albumId)
+
         // Handle cover art if provided and is external URL
         if (payload.image && payload.image.startsWith('http')) {
             try {
@@ -88,8 +91,6 @@ export async function PATCH(
                     throw new Error('Image too large (max 10MB)')
                 }
 
-                // Get album directory from first track
-                const items = getItemsByAlbum(albumId)
                 if (items.length === 0) {
                     throw new Error('No tracks found for album')
                 }
@@ -122,9 +123,6 @@ export async function PATCH(
             genres: album.genres,
             artpath: album.artpath,
         })
-
-        // Propagate changes to all tracks
-        const items = getItemsByAlbum(albumId)
 
         if (items.length > 0) {
             // Batch update items in database

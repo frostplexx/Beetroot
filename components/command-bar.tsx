@@ -34,7 +34,7 @@ function AlbumArtwork({ albumId, albumName, added, missingSince }: { albumId: nu
         <FileQuestion className="w-5 h-5 text-red-400/60" />
       ) : (
         <Image
-          src={`/api/album/${albumId}/art?t=${added}`}
+          src={`/api/album/${albumId}/art?size=80&t=${added}`}
           alt={albumName}
           fill
           className="object-cover"
@@ -58,21 +58,15 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
   const [trackResults, setTrackResults] = React.useState<Track[]>([])
   const [recentAlbums, setRecentAlbums] = React.useState<Album[]>([])
   const [loading, setLoading] = React.useState(false)
+  const hasFetchedRecent = React.useRef(false)
 
-  // Fetch recent albums on mount
   React.useEffect(() => {
-    const fetchRecent = async () => {
-      try {
-        const response = await fetch("/api/albums?page=0&pageSize=5")
-        const data = await response.json()
-        setRecentAlbums(data.albums || [])
-      } catch (error) {
-        console.error("Failed to fetch recent albums:", error)
-      }
-    }
-    if (open) {
-      fetchRecent()
-    }
+    if (!open || hasFetchedRecent.current) return
+    hasFetchedRecent.current = true
+    fetch("/api/albums?page=0&pageSize=5")
+      .then(r => r.json())
+      .then(data => setRecentAlbums(data.albums || []))
+      .catch(err => console.error("Failed to fetch recent albums:", err))
   }, [open])
 
   React.useEffect(() => {

@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { promises as fsp } from "fs"
 import path from "path"
+import { createHash } from "crypto"
 import sharp from "sharp"
 import { globalConfig } from "../config"
 
 const MAX_SIZE = 2000
 
-// Small LRU for resized output. Multi-MB JPEGs reduced to ~30-100KB webp;
-// 200 entries ≈ 10-20MB worst case, which is fine for a single-process server.
-const CACHE_LIMIT = 200
+// L1 — in-process LRU. Keeps the hottest images in RAM so repeated requests
+// within a session never touch disk.
+const CACHE_LIMIT = 500
 const cache = new Map<string, { buf: Buffer; etag: string; mtimeMs: number }>()
 
 function lruGet(key: string) {
     const v = cache.get(key)
     if (!v) return undefined
-    // Refresh recency
     cache.delete(key)
     cache.set(key, v)
     return v
@@ -28,6 +28,32 @@ function lruSet(key: string, value: { buf: Buffer; etag: string; mtimeMs: number
         if (oldest !== undefined) cache.delete(oldest)
     }
 }
+
+// L2 — persistent disk thumbnail cache. Lives next to the database so it
+// survives server restarts. A thumbnail is a small WebP file (~5-15 KB) keyed
+// by a hash of the source path + mtime + size so stale entries are
+// automatically ignored when the source file changes.
+const ART_CACHE_DIR = (() => {
+    const dbPath = globalConfig.database_path
+    return path.join(path.dirname(path.resolve(dbPath)), ".art-cache")
+})()
+
+let _artCacheDirReady: Promise<void> | null = null
+function ensureArtCacheDir(): Promise<void> {
+    if (!_artCacheDirReady) {
+        _artCacheDirReady = fsp.mkdir(ART_CACHE_DIR, { recursive: true }).then(() => {})
+    }
+    return _artCacheDirReady
+}
+
+function thumbFilePath(fullPath: string, mtimeMs: number, size: number): string {
+    const hash = createHash("sha1").update(fullPath).digest("hex").slice(0, 16)
+    return path.join(ART_CACHE_DIR, `${hash}-${mtimeMs.toString(36)}-${size}.webp`)
+}
+
+// Coalesces concurrent requests for the same (path, size, mtime) triple so
+// only one sharp operation runs per unique image instead of N.
+const inFlight = new Map<string, Promise<{ buf: Buffer; etag: string; mtimeMs: number }>>()
 
 const CONTENT_TYPE_BY_EXT: Record<string, string> = {
     ".jpg": "image/jpeg",
@@ -69,7 +95,8 @@ function isWithinMusicDir(fullPath: string): boolean {
 
 /**
  * Serve an image from disk, optionally resized + converted to webp.
- * Handles ETag/If-None-Match revalidation and caches resized output in-memory.
+ * Three-layer cache: in-memory LRU → persistent disk thumbnails → sharp.
+ * Handles ETag/If-None-Match revalidation.
  */
 export async function serveArtFromPath(
     request: NextRequest,
@@ -104,6 +131,8 @@ export async function serveArtFromPath(
 
     if (size > 0) {
         const cacheKey = `${fullPath}|${size}|${stat.mtimeMs}`
+
+        // L1: in-memory LRU
         const cached = lruGet(cacheKey)
         if (cached) {
             return new NextResponse(cached.buf as unknown as BodyInit, {
@@ -111,15 +140,39 @@ export async function serveArtFromPath(
             })
         }
 
-        const resized = await sharp(fullPath)
-            .resize(size, size, { fit: "inside", withoutEnlargement: true })
-            .webp({ quality: 80 })
-            .toBuffer()
+        // L2 + L3: coalesce concurrent requests, then try disk, then sharp
+        let pending = inFlight.get(cacheKey)
+        if (!pending) {
+            pending = (async (): Promise<{ buf: Buffer; etag: string; mtimeMs: number }> => {
+                await ensureArtCacheDir()
+                const diskPath = thumbFilePath(fullPath, stat.mtimeMs, size)
 
-        lruSet(cacheKey, { buf: resized, etag, mtimeMs: stat.mtimeMs })
+                // L2: persistent disk thumbnail
+                try {
+                    const buf = await fsp.readFile(diskPath)
+                    const entry = { buf, etag, mtimeMs: stat.mtimeMs }
+                    lruSet(cacheKey, entry)
+                    return entry
+                } catch {
+                    // not cached on disk yet
+                }
 
-        return new NextResponse(resized as unknown as BodyInit, {
-            headers: baseHeaders("image/webp", etag, stat.mtimeMs),
+                // L3: generate with sharp, persist to disk for future restarts
+                const buf = await sharp(fullPath)
+                    .resize(size, size, { fit: "inside", withoutEnlargement: true })
+                    .webp({ quality: 80 })
+                    .toBuffer()
+                const entry = { buf, etag, mtimeMs: stat.mtimeMs }
+                lruSet(cacheKey, entry)
+                fsp.writeFile(diskPath, buf).catch(() => {})
+                return entry
+            })().finally(() => inFlight.delete(cacheKey))
+            inFlight.set(cacheKey, pending)
+        }
+
+        const result = await pending
+        return new NextResponse(result.buf as unknown as BodyInit, {
+            headers: baseHeaders("image/webp", result.etag, result.mtimeMs),
         })
     }
 
@@ -138,4 +191,47 @@ export function notFoundArt(): NextResponse {
         status: 404,
         headers: { "Cache-Control": "public, max-age=300" },
     })
+}
+
+/**
+ * Pre-generate thumbnails for all known art paths so the first library page
+ * load hits the disk cache instead of running sharp per-request.
+ * Processes 4 at a time to match the libuv thread pool size.
+ * Safe to call multiple times — already-cached entries are skipped.
+ */
+export async function warmArtCache(artPaths: string[], size = 400): Promise<void> {
+    try {
+        await ensureArtCacheDir()
+        let generated = 0
+        let skipped = 0
+
+        for (let i = 0; i < artPaths.length; i += 4) {
+            await Promise.all(artPaths.slice(i, i + 4).map(async (artpath) => {
+                try {
+                    const stat = await fsp.stat(artpath)
+                    const diskPath = thumbFilePath(artpath, stat.mtimeMs, size)
+                    try {
+                        await fsp.access(diskPath)
+                        skipped++
+                        return
+                    } catch {}
+
+                    const buf = await sharp(artpath)
+                        .resize(size, size, { fit: "inside", withoutEnlargement: true })
+                        .webp({ quality: 80 })
+                        .toBuffer()
+                    const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}-${size}"`
+                    lruSet(`${artpath}|${size}|${stat.mtimeMs}`, { buf, etag, mtimeMs: stat.mtimeMs })
+                    await fsp.writeFile(diskPath, buf)
+                    generated++
+                } catch {
+                    // unreadable / missing file — skip silently
+                }
+            }))
+        }
+
+        if (generated > 0) console.log(`[art-cache] generated ${generated} thumbnails (${skipped} already cached)`)
+    } catch (err) {
+        console.error("[art-cache] warm failed:", err)
+    }
 }
