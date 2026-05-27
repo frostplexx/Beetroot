@@ -613,6 +613,12 @@ export class MusicBrainzSource extends DataSource {
 
     async getData(item: Item): Promise<Item> {
         try {
+            // Cluster pre-seeding already fetched the release and applied it
+            // to every track in the cluster — no MB work left to do here.
+            if ((item as any)._mbClusterApplied) {
+                return item;
+            }
+
             // Album-anchored short-circuit: if the item already carries an
             // mb_albumid (from file tags or a cluster seed), fetch the release
             // and enrich from it. This avoids fingerprint/AcoustID picking a

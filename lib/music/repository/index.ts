@@ -1,6 +1,6 @@
 import { LastfmGenreSource } from "./sources/lastfm_genre/lastfm_genre";
 import { LocalTagsSource } from "./sources/tags";
-import { MusicBrainzSource, lookupReleaseForCluster } from "./sources/musicbrainz/musicbrainz";
+import { MusicBrainzSource, lookupReleaseForCluster, applyClusterReleaseToItem } from "./sources/musicbrainz/musicbrainz";
 import { DiscogsSource } from "./sources/discogs/discogs";
 import { WikipediaSource } from "./sources/wikipedia/wikipedia";
 import { LrclibSource } from "./sources/lrclib/lrclib";
@@ -714,9 +714,14 @@ class Repository {
             return;
         }
 
-        for (const t of cluster.tracks) {
-            t.mb_albumid = hit.mb_albumid;
-            if (hit.mb_releasegroupid) t.mb_releasegroupid = hit.mb_releasegroupid;
+        // Reuse the release we already fetched to enrich every cluster track in
+        // one shot. Without this each track would re-fetch the same release in
+        // MusicBrainzSource (the in-flight cache only dedupes concurrent calls
+        // within a single batch). _mbClusterApplied tells the MB source to skip.
+        for (let i = 0; i < cluster.tracks.length; i++) {
+            const applied = applyClusterReleaseToItem(cluster.tracks[i], hit.release);
+            (applied as any)._mbClusterApplied = true;
+            cluster.tracks[i] = applied;
         }
         console.log(`Cluster → release ${hit.mb_albumid}: "${cluster.seedAlbum}" (${cluster.tracks.length} tracks)`);
     }
