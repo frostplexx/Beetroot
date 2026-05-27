@@ -29,6 +29,7 @@ db.sqlite3-shm
 
 # misc
 .DS_Store
+.art-cache/
 *.pem
 *.sqlite3
 
