@@ -61,12 +61,13 @@ export default function Navigation() {
                             <Library className="w-5 h-5" />
                         </Link>
 
-                        <button
-                            className={`${iconButtonClass} ${iconButtonInactive}`}
-                            aria-label="Upload"
-                        >
-                            <Upload className="w-5 h-5" />
-                        </button>
+                        {/* TODO: Reenable eventually, but the upload flow needs work and it's not a priority right now */}
+                        {/* <button */}
+                        {/*     className={`${iconButtonClass} ${iconButtonInactive}`} */}
+                        {/*     aria-label="Upload" */}
+                        {/* > */}
+                        {/*     <Upload className="w-5 h-5" /> */}
+                        {/* </button> */}
 
                         <div className="flex items-center gap-2 flex-1 max-w-2xl">
                             <div className="relative flex-1">
@@ -87,37 +88,37 @@ export default function Navigation() {
                             </div>
 
                             <div className="flex gap-1">
-                                <div className="relative">
-                                    <button
-                                        onClick={() => setToolsOpen(!toolsOpen)}
-                                        className={`${iconButtonClass} ${toolsOpen ? iconButtonActive : iconButtonInactive}`}
-                                        aria-label="Tools"
-                                    >
-                                        <MoreHorizontal className="w-5 h-5" />
-                                    </button>
-                                    {toolsOpen && (
-                                        <div className="absolute right-0 mt-2 w-52 p-1.5 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl shadow-black/50 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
-                                            <button className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors duration-150">
-                                                Import Library
-                                            </button>
-                                            <button className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors duration-150">
-                                                Export Playlist
-                                            </button>
-                                            <button className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors duration-150">
-                                                Scan Files
-                                            </button>
-                                            <div className="h-px bg-white/[0.06] my-1" />
-                                            <Link
-                                                href="/admin"
-                                                onClick={() => setToolsOpen(false)}
-                                                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors duration-150"
-                                            >
-                                                <Wrench className="w-4 h-4" />
-                                                Maintenance
-                                            </Link>
-                                        </div>
-                                    )}
-                                </div>
+                                {/* TODO: re-enable eventually, but the tools menu needs work and it's not a priority right now */}
+                                {/*     <button */}
+                                {/*         onClick={() => setToolsOpen(!toolsOpen)} */}
+                                {/*         className={`${iconButtonClass} ${toolsOpen ? iconButtonActive : iconButtonInactive}`} */}
+                                {/*         aria-label="Tools" */}
+                                {/*     > */}
+                                {/*         <MoreHorizontal className="w-5 h-5" /> */}
+                                {/*     </button> */}
+                                {/*     {toolsOpen && ( */}
+                                {/*         <div className="absolute right-0 mt-2 w-52 p-1.5 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl shadow-black/50 animate-in fade-in slide-in-from-top-2 duration-200 z-50"> */}
+                                {/*             <button className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors duration-150"> */}
+                                {/*                 Import Library */}
+                                {/*             </button> */}
+                                {/*             <button className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors duration-150"> */}
+                                {/*                 Export Playlist */}
+                                {/*             </button> */}
+                                {/*             <button className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors duration-150"> */}
+                                {/*                 Scan Files */}
+                                {/*             </button> */}
+                                {/*             <div className="h-px bg-white/[0.06] my-1" /> */}
+                                {/*             <Link */}
+                                {/*                 href="/admin" */}
+                                {/*                 onClick={() => setToolsOpen(false)} */}
+                                {/*                 className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors duration-150" */}
+                                {/*             > */}
+                                {/*                 <Wrench className="w-4 h-4" /> */}
+                                {/*                 Maintenance */}
+                                {/*             </Link> */}
+                                {/*         </div> */}
+                                {/*     )} */}
+                                {/* </div> */}
 
                                 <div className="relative" ref={notifRef}>
                                     <button
