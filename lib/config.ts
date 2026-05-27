@@ -29,6 +29,7 @@ interface GlobalConfig {
     path: string
     bucket: BucketConfig;
 
+    watch_directories?: string[];
     trash_directory?: string;
     delete_after: number; // days
     reconcile_on_startup: boolean;
@@ -134,6 +135,11 @@ function loadConfig(): GlobalConfig {
     mergedConfig.music_directory = normalizeDirectoryPath(mergedConfig.music_directory) || mergedConfig.music_directory;
     if (mergedConfig.trash_directory) {
         mergedConfig.trash_directory = normalizeDirectoryPath(mergedConfig.trash_directory);
+    }
+    if (mergedConfig.watch_directories && mergedConfig.watch_directories.length > 0) {
+        mergedConfig.watch_directories = mergedConfig.watch_directories
+            .map(d => normalizeDirectoryPath(d))
+            .filter((d): d is string => !!d);
     }
 
     return mergedConfig;

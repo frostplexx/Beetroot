@@ -70,11 +70,15 @@ class ReconcileService extends EventEmitter {
             }, intervalMs);
         }
 
-        // Watch music directory for file system changes
-        const musicDir = globalConfig.music_directory.replace('~', process.env.HOME || '');
-        console.log(`ReconcileService: watching ${musicDir}`);
+        // Watch configured inbox directories only — never the library itself
+        const dirsToWatch = globalConfig.watch_directories ?? [];
+        if (dirsToWatch.length === 0) {
+            console.log('ReconcileService: no watch_directories configured, file watching disabled');
+        } else {
+            console.log(`ReconcileService: watching ${dirsToWatch.join(', ')}`);
+        }
 
-        this.watcher = chokidar.watch(musicDir, {
+        this.watcher = chokidar.watch(dirsToWatch, {
             ignoreInitial: true,
             ignored: /(^|[\/\\])\../, // Ignore hidden files/directories
             persistent: true,
