@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import {
-    Geist,
     Geist_Mono,
     Inter,
     Space_Grotesk,
@@ -12,6 +11,7 @@ import { cn } from "@/lib/ui/utils"
 import { ThemeProvider } from "@/components/theme-provider"
 import Navigation from "@/components/navigation"
 import SystemBanner from "@/components/ui/system-banner"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 const spaceGroteskHeading = Space_Grotesk({
     subsets: ["latin"],
@@ -27,11 +27,6 @@ const inter = Inter({
     variable: "--font-sans",
     display: "swap",
     preload: true,
-})
-
-const geistSans = Geist({
-    variable: "--font-geist-sans",
-    subsets: ["latin"],
 })
 
 const geistMono = Geist_Mono({
@@ -56,7 +51,6 @@ export default function RootLayout({
             className={cn(
                 "h-full",
                 "antialiased",
-                geistSans.variable,
                 geistMono.variable,
                 "font-sans",
                 inter.variable,
@@ -71,6 +65,7 @@ export default function RootLayout({
                     enableSystem={false}
                     disableTransitionOnChange
                 >
+                    <TooltipProvider>
                     <Navigation />
                     <SystemBanner
                         text="You are in Development Mode"
@@ -79,6 +74,7 @@ export default function RootLayout({
                         show={process.env.NODE_ENV === "development"}
                     />
                     <main className="flex-1 relative">{children}</main>
+                    </TooltipProvider>
                 </ThemeProvider>
             </body>
         </html>

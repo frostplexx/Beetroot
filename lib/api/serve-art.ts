@@ -5,11 +5,17 @@ import { createHash } from "crypto"
 import sharp from "sharp"
 import { globalConfig } from "../config"
 
+// Libvips otherwise grows its operation/file caches and thread pool to fill
+// available cores — for a hot-cache image server that mostly streams cached
+// WebPs from disk, both are wasted RAM.
+sharp.cache({ memory: 50, items: 50, files: 20 })
+sharp.concurrency(2)
+
 const MAX_SIZE = 2000
 
 // L1 — in-process LRU. Keeps the hottest images in RAM so repeated requests
 // within a session never touch disk.
-const CACHE_LIMIT = 500
+const CACHE_LIMIT = 100
 const cache = new Map<string, { buf: Buffer; etag: string; mtimeMs: number }>()
 
 function lruGet(key: string) {
@@ -220,8 +226,8 @@ export async function warmArtCache(artPaths: string[], size = 400): Promise<void
                         .resize(size, size, { fit: "inside", withoutEnlargement: true })
                         .webp({ quality: 80 })
                         .toBuffer()
-                    const etag = `"${stat.mtimeMs.toString(36)}-${stat.size.toString(36)}-${size}"`
-                    lruSet(`${artpath}|${size}|${stat.mtimeMs}`, { buf, etag, mtimeMs: stat.mtimeMs })
+                    // Don't seed L1 here — keep L1 reserved for actual request
+                    // traffic. Disk cache (L2) is the durable warm layer.
                     await fsp.writeFile(diskPath, buf)
                     generated++
                 } catch {

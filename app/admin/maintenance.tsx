@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import Heatmap, { type HeatmapData } from "@/components/ui/heatmap";
 import {
     Layers,
     RefreshCw,
@@ -9,6 +10,7 @@ import {
     AlertTriangle,
     CheckCircle2,
     ChevronRight,
+    Activity,
 } from "lucide-react";
 
 // ---- Dedup types (subset of the API response) ----
@@ -435,6 +437,85 @@ function RefetchCard() {
     );
 }
 
+// ---- Import heatmap card ----
+function ImportHeatmapCard() {
+    const [data, setData] = useState<HeatmapData | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        fetch("/api/admin/import-heatmap")
+            .then((r) => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json() as Promise<HeatmapData>;
+            })
+            .then(setData)
+            .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    }, []);
+
+    const { startDate, endDate } = (() => {
+        if (!data || data.length === 0) {
+            const end = new Date();
+            const start = new Date();
+            start.setFullYear(end.getFullYear() - 1);
+            return { startDate: start, endDate: end };
+        }
+        const dates = data.map((d) => d.date).sort();
+        return {
+            startDate: new Date(dates[0]),
+            endDate: new Date(dates[dates.length - 1]),
+        };
+    })();
+
+    const totalSongs = data?.reduce((s, d) => s + d.value, 0) ?? 0;
+
+    return (
+        <Card>
+            <CardHeader
+                icon={Activity}
+                title="Import History"
+                description="Songs added to your library by day."
+            />
+
+            {error && (
+                <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                    <AlertTriangle className="w-4 h-4 mt-0.5" />
+                    <span>{error}</span>
+                </div>
+            )}
+
+            {!data && !error && (
+                <div className="flex items-center gap-2 text-sm text-white/40">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading…
+                </div>
+            )}
+
+            {data && (
+                <>
+                    <div className="mb-4 flex items-center gap-6">
+                        <Stat label="Total songs" value={totalSongs.toLocaleString()} />
+                        <Stat label="Active days" value={data.filter((d) => d.value > 0).length} />
+                    </div>
+                    <div className="overflow-x-auto">
+                        <Heatmap
+                            data={data}
+                            startDate={startDate}
+                            endDate={endDate}
+                            colorMode="interpolate"
+                            interpolation="sqrt"
+                            cellSize={14}
+                            gap={3}
+                            maxColor="#a78bfa"
+                            minColor="#3b0764"
+                            valueDisplayFunction={(v) => `${v} song${v === 1 ? "" : "s"}`}
+                        />
+                    </div>
+                </>
+            )}
+        </Card>
+    );
+}
+
 export default function Maintenance() {
     return (
         <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -446,6 +527,7 @@ export default function Maintenance() {
             </div>
 
             <div className="space-y-6">
+                <ImportHeatmapCard />
                 <RefetchCard />
                 <DedupCard />
             </div>

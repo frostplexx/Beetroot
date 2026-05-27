@@ -56,7 +56,7 @@ class ReconcileService extends EventEmitter {
 
         // Run on startup if configured. Skip in dev so HMR restarts don't
         // kick off a full library scan every time and starve page requests.
-        if (globalConfig.reconcile_on_startup) {
+        if (globalConfig.reconcile_on_startup && process.env.NODE_ENV === 'production') {
             this.runReconciliation();
         }
 
@@ -74,9 +74,9 @@ class ReconcileService extends EventEmitter {
         const dirsToWatch = globalConfig.watch_directories ?? [];
         if (dirsToWatch.length === 0) {
             console.log('ReconcileService: no watch_directories configured, file watching disabled');
-        } else {
-            console.log(`ReconcileService: watching ${dirsToWatch.join(', ')}`);
+            return;
         }
+        console.log(`ReconcileService: watching ${dirsToWatch.join(', ')}`);
 
         this.watcher = chokidar.watch(dirsToWatch, {
             ignoreInitial: true,
