@@ -11,6 +11,7 @@ import "./globals.css"
 import { cn } from "@/lib/ui/utils"
 import { ThemeProvider } from "@/components/theme-provider"
 import Navigation from "@/components/navigation"
+import SystemBanner from "@/components/ui/system-banner"
 
 const spaceGroteskHeading = Space_Grotesk({
     subsets: ["latin"],
@@ -71,6 +72,12 @@ export default function RootLayout({
                     disableTransitionOnChange
                 >
                     <Navigation />
+                    <SystemBanner
+                        text="You are in Development Mode"
+                        color="bg-orange-500"
+                        size="sm"
+                        show={process.env.NODE_ENV === "development"}
+                    />
                     <main className="flex-1 relative">{children}</main>
                 </ThemeProvider>
             </body>

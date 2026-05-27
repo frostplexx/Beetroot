@@ -210,7 +210,7 @@ class ReconcileService extends EventEmitter {
             // before we notify clients to refresh.
             if (hasChanges) {
                 try {
-                    revalidateTag(ALBUMS_CACHE_TAG, { });
+                    revalidateTag(ALBUMS_CACHE_TAG, "max");
                 } catch (e) {
                     // revalidateTag is request-scoped in some contexts; the
                     // 60s revalidate window catches reconciles outside requests.

@@ -7,7 +7,7 @@ export const ALBUMS_CACHE_TAG = "albums"
 
 function invalidateAlbumsCache() {
     try {
-        revalidateTag(ALBUMS_CACHE_TAG)
+        revalidateTag(ALBUMS_CACHE_TAG, "max")
     } catch {
         // revalidateTag throws if called outside a request context (e.g. during
         // initial reconcile on server boot). The cache will refresh on its own
@@ -127,13 +127,23 @@ export interface AlbumCardData {
     missing_since: number | null
 }
 
-export function getAlbumsPaginatedSlim(page: number = 0, pageSize: number = 30): AlbumCardData[] {
+export type AlbumSort = "recently-added" | "name" | "artist" | "year"
+
+const SORT_CLAUSES: Record<AlbumSort, string> = {
+    "recently-added": "ORDER BY added DESC",
+    "name":           "ORDER BY album ASC",
+    "artist":         "ORDER BY albumartist ASC",
+    "year":           "ORDER BY year DESC, album ASC",
+}
+
+export function getAlbumsPaginatedSlim(page: number = 0, pageSize: number = 30, sort: AlbumSort = "recently-added"): AlbumCardData[] {
     try {
         const offset = page * pageSize
+        const orderClause = SORT_CLAUSES[sort] ?? SORT_CLAUSES["recently-added"]
         const stmt = db.prepare(`
             SELECT id, album, albumartist, artpath, added, missing_since
             FROM albums
-            ORDER BY added DESC
+            ${orderClause}
             LIMIT ? OFFSET ?
         `)
         const rows = stmt.all(pageSize, offset) as Record<string, any>[]
@@ -147,7 +157,7 @@ export function getAlbumsPaginatedSlim(page: number = 0, pageSize: number = 30):
 // Cached wrappers. Invalidated by `revalidateTag(ALBUMS_CACHE_TAG)` in the
 // write paths and on reconcile completion (see reconcile-service.ts).
 export const getCachedAlbumsPaginatedSlim = unstable_cache(
-    async (page: number, pageSize: number) => getAlbumsPaginatedSlim(page, pageSize),
+    async (page: number, pageSize: number, sort: AlbumSort = "recently-added") => getAlbumsPaginatedSlim(page, pageSize, sort),
     ["albums-paginated-slim"],
     { tags: [ALBUMS_CACHE_TAG], revalidate: 60 }
 )

@@ -20,6 +20,7 @@ import Image from "next/image"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { DeleteAlbumButton } from "./delete-missing-button"
 
 interface EditPanelProps {
     album: Album
@@ -693,6 +694,14 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                             )
                         })}
                     </div>
+                </div>
+
+                <div className="mt-8 pt-6 border-t border-white/[0.06] flex justify-end">
+                    <DeleteAlbumButton
+                        albumId={album.id}
+                        albumName={album.album}
+                        isMissing={album.missing_since != null}
+                    />
                 </div>
 
             </form>

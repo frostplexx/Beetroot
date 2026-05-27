@@ -16,6 +16,17 @@ import {
 } from "@/components/ui/command"
 import { Album } from "@/lib/music/database/albums"
 
+interface Track {
+  id: number
+  title: string
+  artist: string
+  album: string
+  album_id: number
+  track: number | null
+  year: number | null
+  added: number
+}
+
 function AlbumArtwork({ albumId, albumName, added, missingSince }: { albumId: number; albumName: string; added: number; missingSince?: number | null }) {
   return (
     <div className="relative w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-white/5 flex items-center justify-center">
@@ -44,6 +55,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = React.useState("")
   const [searchResults, setSearchResults] = React.useState<Album[]>([])
+  const [trackResults, setTrackResults] = React.useState<Track[]>([])
   const [recentAlbums, setRecentAlbums] = React.useState<Album[]>([])
   const [loading, setLoading] = React.useState(false)
 
@@ -77,9 +89,11 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
         )
         const data = await response.json()
         setSearchResults(data.albums || [])
+        setTrackResults(data.tracks || [])
       } catch (error) {
         console.error("Search failed:", error)
         setSearchResults([])
+        setTrackResults([])
       } finally {
         setLoading(false)
       }
@@ -91,6 +105,12 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
 
   const handleSelectAlbum = (albumId: number) => {
     router.push(`/album/${albumId}`)
+    onOpenChange(false)
+    setSearchQuery("")
+  }
+
+  const handleSelectTrack = (track: Track) => {
+    router.push(`/album/${track.album_id}`)
     onOpenChange(false)
     setSearchQuery("")
   }
@@ -201,6 +221,29 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
                   ))}
                 </CommandGroup>
               ))}
+              {trackResults.length > 0 && (
+                <>
+                  {searchResults.length > 0 && <CommandSeparator />}
+                  <CommandGroup heading="Songs">
+                    {trackResults.map((track) => (
+                      <CommandItem
+                        key={`track-${track.id}`}
+                        value={`track-${track.id}`}
+                        onSelect={() => handleSelectTrack(track)}
+                        className="py-3 px-3"
+                      >
+                        <AlbumArtwork albumId={track.album_id} albumName={track.album} added={track.added} />
+                        <div className="flex flex-col ml-3 flex-1 min-w-0">
+                          <span className="font-medium text-sm truncate">{track.title}</span>
+                          <span className="text-xs text-muted-foreground truncate">
+                            {track.artist} · {track.album}
+                          </span>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
             </>
           )}
         </CommandList>

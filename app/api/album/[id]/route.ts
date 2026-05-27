@@ -176,7 +176,7 @@ export async function PATCH(
         }
 
         // Revalidate cache
-        revalidateTag(ALBUMS_CACHE_TAG)
+        revalidateTag(ALBUMS_CACHE_TAG, "max")
         revalidatePath(`/album/${albumId}`)
         revalidatePath('/')
 
@@ -198,9 +198,9 @@ export async function PATCH(
     }
 }
 
-// Drop a missing album from the library. Guarded to missing-only so a fat
-// finger can't nuke an album whose files are still on disk; for healthy
-// albums, removal should happen via track-level deletes that already exist.
+// Delete an album from the library. Pass ?files=true to also delete the
+// audio files from disk (irreversible). Without that flag only DB rows are
+// removed — the album will reappear on the next reconcile if files remain.
 export async function DELETE(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -218,11 +218,21 @@ export async function DELETE(
             return NextResponse.json({ error: 'Album not found' }, { status: 404 })
         }
 
-        if (album.missing_since == null) {
-            return NextResponse.json(
-                { error: 'Album is not marked missing — refusing to delete' },
-                { status: 409 }
-            )
+        const deleteFiles = request.nextUrl.searchParams.get('files') === 'true'
+
+        // Delete files before removing DB rows so we still have item paths.
+        let filesDeleted = 0
+        if (deleteFiles && album.missing_since == null) {
+            const items = getItemsByAlbum(albumId)
+            const dirs = new Set(items.map(item => path.dirname(item.path)))
+            for (const dir of dirs) {
+                try {
+                    await fs.rm(dir, { recursive: true, force: true })
+                    filesDeleted++
+                } catch (err) {
+                    console.error(`Failed to delete directory ${dir}:`, err)
+                }
+            }
         }
 
         // items.album_id is ON DELETE SET NULL, so we explicitly remove items
@@ -237,11 +247,11 @@ export async function DELETE(
         })
         const result = tx()
 
-        revalidateTag(ALBUMS_CACHE_TAG)
+        revalidateTag(ALBUMS_CACHE_TAG, "max")
         revalidatePath(`/album/${albumId}`)
         revalidatePath('/')
 
-        return NextResponse.json({ deleted: true, albumId, ...result })
+        return NextResponse.json({ deleted: true, albumId, filesDeleted, ...result })
     } catch (error) {
         console.error('Error deleting album:', error)
         return NextResponse.json(

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDownIcon } from "lucide-react";
 import AlbumCard from "@/components/album_card";
 import { AlbumContextMenu } from "@/components/album-context-menu";
-import type { AlbumCardData } from "@/lib/music/database/albums";
+import type { AlbumCardData, AlbumSort } from "@/lib/music/database/albums";
 import { useLibrarySync } from "@/hooks/use-library-sync";
 import {
     Pagination as ShadcnPagination,
@@ -14,22 +15,65 @@ import {
     PaginationNext,
     PaginationPrevious,
 } from "@/components/ui/pagination";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const FIRST_ROW_COLS_XL = 6;
+
+const SORT_LABELS: Record<AlbumSort, string> = {
+    "recently-added": "Recently Added",
+    "name":           "Name",
+    "artist":         "Artist",
+    "year":           "Year",
+};
 
 interface LibraryProps {
     albums: AlbumCardData[];
     page: number;
     totalPages: number;
     totalAlbums: number;
+    sort: AlbumSort;
 }
 
-export default function Library({ albums, page, totalPages, totalAlbums }: LibraryProps) {
+export default function Library({ albums, page, totalPages, totalAlbums, sort }: LibraryProps) {
     const router = useRouter();
-    const gridRef = useRef<HTMLDivElement>(null);
 
-    const syncState = useLibrarySync(() => {
+    const setSort = useCallback((next: AlbumSort) => {
+        const params = new URLSearchParams();
+        if (next !== "recently-added") params.set("sort", next);
+        const qs = params.toString();
+        // Use pushState + refresh to skip the view transition that would otherwise
+        // animate every album card to its new sorted position.
+        window.history.pushState(null, "", qs ? `/?${qs}` : "/");
         router.refresh();
+    }, [router]);
+    const gridRef = useRef<HTMLDivElement>(null);
+    const pendingRefresh = useRef(false);
+
+    // Defer refresh until the tab is visible to avoid "Skipped ViewTransition
+    // due to document being hidden" errors when reconcile fires in the background.
+    useEffect(() => {
+        const onVisible = () => {
+            if (pendingRefresh.current) {
+                pendingRefresh.current = false;
+                router.refresh();
+            }
+        };
+        document.addEventListener("visibilitychange", onVisible);
+        return () => document.removeEventListener("visibilitychange", onVisible);
+    }, [router]);
+
+    useLibrarySync(() => {
+        if (document.visibilityState === "visible") {
+            router.refresh();
+        } else {
+            pendingRefresh.current = true;
+        }
     });
 
     // Cap the grid to a whole-row boundary so we never show a half-clipped row.
@@ -106,12 +150,12 @@ export default function Library({ albums, page, totalPages, totalAlbums }: Libra
 
             if (target == null) return;
             e.preventDefault();
-            router.push(target <= 1 ? "/" : `/?page=${target}`);
+            router.push(pageHref(target, sort));
         };
 
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
-    }, [page, totalPages, router]);
+    }, [page, totalPages, sort, router]);
 
     if (albums.length === 0) {
         return (
@@ -124,18 +168,11 @@ export default function Library({ albums, page, totalPages, totalAlbums }: Libra
     return (
         <div className="absolute inset-0 overflow-hidden">
             <div className="container mx-auto px-4 py-4 flex flex-col h-full">
-                {syncState.isReconciling && (
-                    <div className="mb-4 px-4 py-2.5 bg-white/[0.08] border border-white/10 backdrop-blur-md rounded-full flex-shrink-0 flex items-center gap-2.5 animate-in fade-in slide-in-from-top-2 duration-300 w-fit">
-                        <span className="w-2 h-2 rounded-full bg-white/70 animate-pulse" />
-                        <p className="text-sm text-white/90">Scanning for new music...</p>
-                    </div>
-                )}
-
-                <div className="w-full mb-4 flex-shrink-0">
+                <div className="w-full mb-4 flex-shrink-0 flex items-center justify-between gap-4">
                     <p className="text-xs uppercase tracking-[0.12em] text-white/50 font-medium">
                         {albums.length} of {totalAlbums.toLocaleString()} albums
-                        {syncState.isReconciling && " · updating"}
                     </p>
+                    <SortSelector sort={sort} onChange={setSort} />
                 </div>
 
                 <div
@@ -149,42 +186,68 @@ export default function Library({ albums, page, totalPages, totalAlbums }: Libra
                     ))}
                 </div>
 
-                {totalPages > 1 && <Pagination page={page} totalPages={totalPages} />}
+                {totalPages > 1 && <Pagination page={page} totalPages={totalPages} sort={sort} />}
             </div>
         </div>
     );
 }
 
-function Pagination({ page, totalPages }: { page: number; totalPages: number }) {
+function Pagination({ page, totalPages, sort }: { page: number; totalPages: number; sort: AlbumSort }) {
     const pages = getPageNumbers(page, totalPages);
     const prev = Math.max(1, page - 1);
     const next = Math.min(totalPages, page + 1);
+    const href = (n: number) => pageHref(n, sort);
 
     return (
         <ShadcnPagination className="mt-auto pt-6 flex-shrink-0">
             <PaginationContent>
                 <PaginationItem>
-                    <PaginationPrevious href={pageHref(prev)} disabled={page === 1} />
+                    <PaginationPrevious href={href(prev)} disabled={page === 1} />
                 </PaginationItem>
 
                 {pages.map((n) => (
                     <PaginationItem key={n}>
-                        <PaginationLink href={pageHref(n)} isActive={page === n}>
+                        <PaginationLink href={href(n)} isActive={page === n}>
                             {n}
                         </PaginationLink>
                     </PaginationItem>
                 ))}
 
                 <PaginationItem>
-                    <PaginationNext href={pageHref(next)} disabled={page === totalPages} />
+                    <PaginationNext href={href(next)} disabled={page === totalPages} />
                 </PaginationItem>
             </PaginationContent>
         </ShadcnPagination>
     );
 }
 
-function pageHref(n: number): string {
-    return n <= 1 ? "/" : `/?page=${n}`;
+function pageHref(n: number, sort: AlbumSort): string {
+    const params = new URLSearchParams();
+    if (n > 1) params.set("page", String(n));
+    if (sort !== "recently-added") params.set("sort", sort);
+    const qs = params.toString();
+    return qs ? `/?${qs}` : "/";
+}
+
+function SortSelector({ sort, onChange }: { sort: AlbumSort; onChange: (s: AlbumSort) => void }) {
+    const options = Object.keys(SORT_LABELS) as AlbumSort[];
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger className="flex items-center gap-1.5 text-xs uppercase tracking-[0.12em] font-medium text-white/50 hover:text-white/80 transition-colors outline-none">
+                {SORT_LABELS[sort]}
+                <ChevronDownIcon className="size-3 opacity-60" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-40">
+                <DropdownMenuRadioGroup value={sort} onValueChange={(v) => onChange(v as AlbumSort)}>
+                    {options.map((option) => (
+                        <DropdownMenuRadioItem key={option} value={option}>
+                            {SORT_LABELS[option]}
+                        </DropdownMenuRadioItem>
+                    ))}
+                </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {

@@ -6,7 +6,6 @@ import AlbumArtwork from "@/components/album-artwork"
 import DynamicBackground from "@/components/dynamic-background"
 import { SongsDataTable } from "./data-table"
 import { columns } from "./columns"
-import { DeleteMissingButton } from "./delete-missing-button"
 import { BackLink } from "./back-link"
 import { Pencil, Eye } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -87,12 +86,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                     <h1 className="font-heading text-4xl md:text-5xl font-black leading-none tracking-tight">
                                         {album.album}
                                     </h1>
-                                    {album.missing_since != null && (
-                                        <div className="shrink-0">
-                                            <DeleteMissingButton albumId={album.id} albumName={album.album} />
-                                        </div>
-                                    )}
-                                </div>
+                                    </div>
 
                                 <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-base">
                                     <span>{album.albumartist}</span>

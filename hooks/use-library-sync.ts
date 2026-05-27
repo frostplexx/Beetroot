@@ -2,36 +2,50 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-export interface LibrarySyncEvent {
-    type: 'connected' | 'status' | 'started' | 'progress' | 'completed' | 'error';
-    data?: any;
-    timestamp?: number;
+export interface SyncLogEntry {
+    id: number;
+    timestamp: number;
+    type: 'started' | 'progress' | 'completed' | 'error';
+    message: string;
+    isActive: boolean;
 }
 
 export interface LibrarySyncState {
     isConnected: boolean;
     isReconciling: boolean;
-    lastUpdate: number | null;
-    lastEvent: LibrarySyncEvent | null;
+    log: SyncLogEntry[];
 }
 
-/**
- * Hook to sync with library changes via SSE
- * Automatically reconnects on disconnect
- */
-export function useLibrarySync(onUpdate?: () => void) {
+let logIdCounter = 0;
+
+function mkEntry(type: SyncLogEntry['type'], message: string, isActive = false): SyncLogEntry {
+    return { id: logIdCounter++, timestamp: Date.now(), type, message, isActive };
+}
+
+function progressMessage(data: any): string {
+    const phase = data?.phase ?? 'scanning';
+    const scanned = data?.scannedFiles ?? 0;
+    const imported = data?.newFilesImported ?? 0;
+    switch (phase) {
+        case 'scanning':  return `Scanning… ${scanned.toLocaleString()} files found`;
+        case 'importing': return `Importing… ${imported.toLocaleString()} albums added`;
+        case 'fixing-artwork': return `Fixing artwork… ${(data?.artworkFixed ?? 0).toLocaleString()} fixed`;
+        case 'cleanup':   return 'Cleaning up…';
+        default:          return 'Processing…';
+    }
+}
+
+export function useLibrarySync(onUpdate?: () => void): LibrarySyncState {
     const [state, setState] = useState<LibrarySyncState>({
         isConnected: false,
         isReconciling: false,
-        lastUpdate: null,
-        lastEvent: null
+        log: [],
     });
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const onUpdateRef = useRef(onUpdate);
 
-    // Keep onUpdate callback ref fresh
     useEffect(() => {
         onUpdateRef.current = onUpdate;
     }, [onUpdate]);
@@ -48,7 +62,6 @@ export function useLibrarySync(onUpdate?: () => void) {
 
                 eventSource.onopen = () => {
                     if (!mounted) return;
-                    console.log('[LibrarySync] Connected to event stream');
                     setState(prev => ({ ...prev, isConnected: true }));
                 };
 
@@ -56,19 +69,58 @@ export function useLibrarySync(onUpdate?: () => void) {
                     if (!mounted) return;
 
                     try {
-                        const data: LibrarySyncEvent = JSON.parse(event.data);
-                        console.log('[LibrarySync] Received event:', data.type, data);
+                        const data: { type: string; data?: any } = JSON.parse(event.data);
 
-                        setState(prev => ({
-                            ...prev,
-                            lastEvent: data,
-                            isReconciling: data.type === 'started' || data.type === 'progress',
-                        }));
+                        setState(prev => {
+                            let log = prev.log;
+                            let isReconciling = prev.isReconciling;
 
-                        // Trigger update callback when reconciliation completes with changes
+                            if (data.type === 'started') {
+                                isReconciling = true;
+                                log = [
+                                    ...log.map(e => ({ ...e, isActive: false })),
+                                    mkEntry('started', 'Scan started'),
+                                    mkEntry('progress', 'Initializing…', true),
+                                ].slice(-50);
+                            } else if (data.type === 'progress') {
+                                isReconciling = true;
+                                const msg = progressMessage(data.data);
+                                if (log.some(e => e.isActive)) {
+                                    log = log.map(e => e.isActive ? { ...e, message: msg, timestamp: Date.now() } : e);
+                                } else {
+                                    log = [...log, mkEntry('progress', msg, true)].slice(-50);
+                                }
+                            } else if (data.type === 'completed') {
+                                isReconciling = false;
+                                const d = data.data ?? {};
+                                const parts: string[] = [];
+                                if (d.newFilesImported > 0) parts.push(`${d.newFilesImported} imported`);
+                                if (d.deletedItems > 0) parts.push(`${d.deletedItems} removed`);
+                                if (d.artworkFixed > 0) parts.push(`${d.artworkFixed} artwork fixed`);
+                                if (d.errors > 0) parts.push(`${d.errors} errors`);
+                                const summary = parts.length > 0 ? parts.join(', ') : 'No changes';
+                                log = [
+                                    ...log.filter(e => !e.isActive),
+                                    mkEntry('completed', `Scan complete — ${summary}`),
+                                ].slice(-50);
+                            } else if (data.type === 'error') {
+                                isReconciling = false;
+                                const msg = data.data?.error ?? 'Unknown error';
+                                log = [
+                                    ...log.filter(e => !e.isActive),
+                                    mkEntry('error', msg),
+                                ].slice(-50);
+                            } else if (data.type === 'status') {
+                                isReconciling = data.data?.isReconciling ?? prev.isReconciling;
+                                if (isReconciling && !log.some(e => e.isActive)) {
+                                    log = [...log, mkEntry('progress', 'Scan in progress…', true)].slice(-50);
+                                }
+                            }
+
+                            return { ...prev, isReconciling, log };
+                        });
+
                         if (data.type === 'completed' && data.data?.hasChanges) {
-                            console.log('[LibrarySync] Triggering refresh due to library changes');
-                            setState(prev => ({ ...prev, lastUpdate: Date.now() }));
                             onUpdateRef.current?.();
                         }
                     } catch (error) {
@@ -78,17 +130,10 @@ export function useLibrarySync(onUpdate?: () => void) {
 
                 eventSource.onerror = () => {
                     if (!mounted) return;
-
-                    console.error('[LibrarySync] Connection error, reconnecting in 5s...');
                     setState(prev => ({ ...prev, isConnected: false }));
-
                     eventSource.close();
-
-                    // Reconnect after 5 seconds
                     reconnectTimeoutRef.current = setTimeout(() => {
-                        if (mounted) {
-                            connect();
-                        }
+                        if (mounted) connect();
                     }, 5000);
                 };
             } catch (error) {
@@ -100,12 +145,10 @@ export function useLibrarySync(onUpdate?: () => void) {
 
         return () => {
             mounted = false;
-
             if (eventSourceRef.current) {
                 eventSourceRef.current.close();
                 eventSourceRef.current = null;
             }
-
             if (reconnectTimeoutRef.current) {
                 clearTimeout(reconnectTimeoutRef.current);
                 reconnectTimeoutRef.current = null;

@@ -3,16 +3,22 @@
 import { Library, Search, Upload, MoreHorizontal, Bell, Wrench } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "./ui/button"
 import { Kbd, KbdGroup } from "./ui/kbd"
 import { CommandBar } from "./command-bar"
+import { useLibrarySync } from "@/hooks/use-library-sync"
+import type { SyncLogEntry } from "@/hooks/use-library-sync"
 
 export default function Navigation() {
     const pathname = usePathname()
     const [toolsOpen, setToolsOpen] = useState(false)
     const [commandOpen, setCommandOpen] = useState(false)
+    const [notifOpen, setNotifOpen] = useState(false)
     const isLibraryActive = pathname === "/" || pathname.startsWith("/library") || pathname.startsWith("/album")
+
+    const syncState = useLibrarySync()
+    const notifRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -25,6 +31,17 @@ export default function Navigation() {
         document.addEventListener("keydown", handleKeyDown)
         return () => document.removeEventListener("keydown", handleKeyDown)
     }, [])
+
+    useEffect(() => {
+        if (!notifOpen) return
+        const handleClick = (e: MouseEvent) => {
+            if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+                setNotifOpen(false)
+            }
+        }
+        document.addEventListener("mousedown", handleClick)
+        return () => document.removeEventListener("mousedown", handleClick)
+    }, [notifOpen])
 
     const iconButtonClass = "p-2 rounded-full transition-all duration-200 active:scale-90"
     const iconButtonActive = "text-white bg-white/15"
@@ -102,12 +119,42 @@ export default function Navigation() {
                                     )}
                                 </div>
 
-                                <button
-                                    className={`${iconButtonClass} ${iconButtonInactive}`}
-                                    aria-label="Notifications"
-                                >
-                                    <Bell className="w-5 h-5" />
-                                </button>
+                                <div className="relative" ref={notifRef}>
+                                    <button
+                                        onClick={() => setNotifOpen(!notifOpen)}
+                                        className={`${iconButtonClass} ${notifOpen ? iconButtonActive : iconButtonInactive} relative`}
+                                        aria-label="Notifications"
+                                    >
+                                        <Bell className="w-5 h-5" />
+                                        {syncState.isReconciling && (
+                                            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-white/80 animate-pulse" />
+                                        )}
+                                    </button>
+
+                                    {notifOpen && (
+                                        <div className="absolute right-0 mt-2 w-80 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl shadow-black/50 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
+                                            <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
+                                                <p className="text-xs uppercase tracking-[0.12em] text-white/40 font-medium">Activity</p>
+                                                {syncState.isReconciling && (
+                                                    <span className="flex items-center gap-1.5 text-xs text-white/50">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse" />
+                                                        Scanning
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="max-h-72 overflow-y-auto py-1">
+                                                {syncState.log.length === 0 ? (
+                                                    <p className="text-sm text-white/30 px-4 py-5 text-center">No recent activity</p>
+                                                ) : (
+                                                    [...syncState.log].reverse().map(entry => (
+                                                        <LogRow key={entry.id} entry={entry} />
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -115,5 +162,27 @@ export default function Navigation() {
             </div>
             <CommandBar open={commandOpen} onOpenChange={setCommandOpen} />
         </header>
+    )
+}
+
+function LogRow({ entry }: { entry: SyncLogEntry }) {
+    const dotColor =
+        entry.isActive         ? "bg-white/70 animate-pulse" :
+        entry.type === "error" ? "bg-red-400" :
+        entry.type === "completed" ? "bg-emerald-400/70" :
+        "bg-white/20"
+
+    const textColor = entry.type === "error" ? "text-red-400" : "text-white/80"
+
+    return (
+        <div className="flex items-start gap-3 px-4 py-2.5">
+            <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${dotColor}`} />
+            <div className="flex-1 min-w-0">
+                <p className={`text-sm leading-snug ${textColor}`}>{entry.message}</p>
+                <p className="text-xs text-white/25 mt-0.5">
+                    {new Date(entry.timestamp).toLocaleTimeString()}
+                </p>
+            </div>
+        </div>
     )
 }
