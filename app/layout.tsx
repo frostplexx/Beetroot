@@ -58,7 +58,16 @@ export default function RootLayout({
                 "dark"
             )}
         >
-            <body className="min-h-full flex flex-col bg-black text-white">
+            <body className="min-h-full flex flex-col bg-[#0a0a0a] text-white noise">
+                {/* Global ambient glow — Raycast-style background blobs */}
+                <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden" aria-hidden>
+                    <div className="absolute -top-[200px] left-1/2 -translate-x-1/2 w-[900px] h-[700px] rounded-full opacity-[0.055] blur-[140px]"
+                        style={{ background: "radial-gradient(ellipse, #e84140 0%, #c0392b 40%, transparent 70%)" }} />
+                    <div className="absolute top-[40%] -right-[200px] w-[500px] h-[500px] rounded-full opacity-[0.025] blur-[100px]"
+                        style={{ background: "radial-gradient(ellipse, #e84140 0%, transparent 70%)" }} />
+                    <div className="absolute bottom-0 left-[10%] w-[400px] h-[400px] rounded-full opacity-[0.02] blur-[120px]"
+                        style={{ background: "radial-gradient(ellipse, #e84140 0%, transparent 70%)" }} />
+                </div>
                 <ThemeProvider
                     attribute="class"
                     defaultTheme="dark"
@@ -66,14 +75,14 @@ export default function RootLayout({
                     disableTransitionOnChange
                 >
                     <TooltipProvider>
-                    <Navigation />
                     <SystemBanner
                         text="You are in Development Mode"
                         color="bg-orange-500"
                         size="sm"
                         show={process.env.NODE_ENV === "development"}
                     />
-                    <main className="flex-1 relative">{children}</main>
+                    <Navigation />
+                    <main className="flex-1 relative mt-[75px]">{children}</main>
                     </TooltipProvider>
                 </ThemeProvider>
             </body>

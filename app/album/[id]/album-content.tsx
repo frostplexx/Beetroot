@@ -113,7 +113,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                 <div className="flex flex-wrap gap-6">
                                     {album.country && (
                                         <div className="flex flex-col gap-1.5">
-                                            <label className="text-[10px] uppercase tracking-[0.12em] text-white/50 font-medium">
+                                            <label className="text-[10px] uppercase tracking-[0.14em] text-white/30 font-medium">
                                                 Country
                                             </label>
                                             <span className="text-xs font-semibold text-white/90">{album.country}</span>
@@ -121,7 +121,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                     )}
                                     {album.label && (
                                         <div className="flex flex-col gap-1.5">
-                                            <label className="text-[10px] uppercase tracking-[0.12em] text-white/50 font-medium">
+                                            <label className="text-[10px] uppercase tracking-[0.14em] text-white/30 font-medium">
                                                 Label
                                             </label>
                                             <span className="text-xs font-semibold text-white/90">{album.label}</span>
@@ -134,7 +134,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                         {genres.map((genre) => (
                                             <span
                                                 key={genre}
-                                                className="py-1 px-3 bg-white/[0.08] border border-white/10 backdrop-blur-md rounded-full text-xs font-medium text-white/90 hover:bg-white/[0.14] hover:border-white/20 hover:text-white hover:scale-105 active:scale-95 transition-all duration-200 cursor-default"
+                                                className="py-1 px-3 bg-white/[0.05] border border-white/[0.08] backdrop-blur-md rounded-full text-xs font-medium text-white/70 hover:bg-white/[0.10] hover:border-white/[0.15] hover:text-white hover:scale-105 active:scale-95 transition-all duration-200 cursor-default"
                                             >
                                                 {genre}
                                             </span>

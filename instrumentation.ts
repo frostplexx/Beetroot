@@ -12,11 +12,14 @@ export async function register() {
 
         // Pre-generate all album thumbnails in the background so the first
         // library page load hits disk cache instead of the sharp queue.
-        const { default: db } = await import('@/lib/music/database/db');
-        const { warmArtCache } = await import('@/lib/api/serve-art');
-        const rows = db.prepare(
-            "SELECT artpath FROM albums WHERE artpath IS NOT NULL AND missing_since IS NULL"
-        ).all() as { artpath: string }[];
-        warmArtCache(rows.map(r => r.artpath)).catch(() => {});
+        // Skip in dev so HMR restarts don't re-spawn sharp on every save.
+        if (process.env.NODE_ENV === 'production') {
+            const { default: db } = await import('@/lib/music/database/db');
+            const { warmArtCache } = await import('@/lib/api/serve-art');
+            const rows = db.prepare(
+                "SELECT artpath FROM albums WHERE artpath IS NOT NULL AND missing_since IS NULL"
+            ).all() as { artpath: string }[];
+            warmArtCache(rows.map(r => r.artpath)).catch(() => {});
+        }
     }
 }

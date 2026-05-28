@@ -197,7 +197,7 @@ export default function Library({ albums, page, totalPages, totalAlbums, sort }:
         <div className="absolute inset-0 overflow-hidden">
             <div className="container mx-auto px-4 py-4 flex flex-col h-full">
                 <div className="w-full mb-4 flex-shrink-0 flex items-center justify-between gap-4">
-                    <p className="text-xs uppercase tracking-[0.12em] text-white/50 font-medium">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-white/30 font-medium">
                         {albums.length} of {totalAlbums.toLocaleString()} albums
                     </p>
                     <SortSelector sort={sort} onChange={setSort} />
@@ -289,7 +289,7 @@ function SortSelector({ sort, onChange }: { sort: AlbumSort; onChange: (s: Album
     const options = Object.keys(SORT_LABELS) as AlbumSort[];
     return (
         <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-1.5 text-xs uppercase tracking-[0.12em] font-medium text-white/50 hover:text-white/80 transition-colors outline-none">
+            <DropdownMenuTrigger className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em] font-medium text-white/30 hover:text-white/60 transition-colors outline-none">
                 {SORT_LABELS[sort]}
                 <ChevronDownIcon className="size-3 opacity-60" />
             </DropdownMenuTrigger>
