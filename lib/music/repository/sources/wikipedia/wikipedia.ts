@@ -46,9 +46,12 @@ class RateLimiter {
     }
 }
 
-// Rate limit: max 1 request per 200ms (5 requests/sec) to stay well under Wikipedia's limits
-const wikipediaRateLimiter = new RateLimiter(200);
-const wikidataRateLimiter = new RateLimiter(200);
+// 400ms between requests = ~150 req/min, safely under Wikimedia's 200 req/min User-Agent tier
+const wikipediaRateLimiter = new RateLimiter(400);
+const wikidataRateLimiter = new RateLimiter(400);
+
+// Compliant User-Agent required for the 200 req/min tier (vs 10 req/min for unidentified)
+const USER_AGENT = 'Beetroot/2.0 (https://github.com/danielinama/beetroot; daniel.inama02@gmail.com) node-fetch/1.0';
 
 interface WikipediaSearchResult {
     pageid: number;
@@ -83,8 +86,19 @@ interface WikidataEntity {
     };
 }
 
+interface WikipediaAlbumData {
+    genres: string[];
+    year: number | null;
+}
+
 export class WikipediaSource extends DataSource {
     readonly confidence = 0.65;
+    // Stores Promises so concurrent requests for the same album await one in-flight fetch
+    private albumCache = new Map<string, Promise<WikipediaAlbumData | null>>();
+
+    private cacheKey(artist: string, album: string): string {
+        return `${artist.toLowerCase().trim()}|${album.toLowerCase().trim()}`;
+    }
 
     async getData(item: Item): Promise<Item> {
         try {
@@ -92,35 +106,41 @@ export class WikipediaSource extends DataSource {
                 return item;
             }
 
-            // Search for album page
-            const wikidataId = await this.findWikidataId(item.artist, item.album);
+            const artist = item.albumartist || item.artist;
+            const key = this.cacheKey(artist, item.album);
 
-            if (!wikidataId) {
-                return item;
+            if (!this.albumCache.has(key)) {
+                this.albumCache.set(key, this.fetchAlbumData(artist, item.album));
             }
 
-            // Get Wikidata entity
-            const entity = await this.getWikidataEntity(wikidataId);
+            const albumData = await this.albumCache.get(key)!;
 
-            if (!entity) {
+            if (!albumData) {
                 return item;
             }
-
-            // Extract genres
-            const genres = await this.extractGenres(entity);
-
-            // Extract year
-            const year = this.extractYear(entity);
 
             return {
                 ...item,
-                genres: this.mergeGenres(item.genres, genres),
-                year: year || item.year,
+                genres: this.mergeGenres(item.genres, albumData.genres),
+                year: albumData.year || item.year,
             };
         } catch (error) {
             console.debug(`Wikipedia lookup failed for ${item.path}:`, error);
             return item;
         }
+    }
+
+    private async fetchAlbumData(artist: string, album: string): Promise<WikipediaAlbumData | null> {
+        const wikidataId = await this.findWikidataId(artist, album);
+        if (!wikidataId) return null;
+
+        const entity = await this.getWikidataEntity(wikidataId);
+        if (!entity) return null;
+
+        return {
+            genres: await this.extractGenres(entity),
+            year: this.extractYear(entity),
+        };
     }
 
     private async findWikidataId(artist: string, album: string): Promise<string | null> {
@@ -132,7 +152,7 @@ export class WikipediaSource extends DataSource {
             const searchQuery = encodeURIComponent(`${album} ${artist} album`);
             const searchUrl = `${WIKIPEDIA_API_URL}?action=query&list=search&srsearch=${searchQuery}&format=json&origin=*`;
 
-            const searchResponse = await fetch(searchUrl);
+            const searchResponse = await fetch(searchUrl, { headers: { 'User-Agent': USER_AGENT } });
 
             if (!searchResponse.ok) {
                 const errorText = await searchResponse.text();
@@ -155,7 +175,7 @@ export class WikipediaSource extends DataSource {
 
             // Get Wikidata ID from Wikipedia page
             const wikidataUrl = `${WIKIPEDIA_API_URL}?action=query&titles=${encodeURIComponent(pageTitle)}&prop=pageprops&format=json&origin=*`;
-            const wikidataResponse = await fetch(wikidataUrl);
+            const wikidataResponse = await fetch(wikidataUrl, { headers: { 'User-Agent': USER_AGENT } });
 
             if (!wikidataResponse.ok) {
                 const errorText = await wikidataResponse.text();
@@ -189,7 +209,7 @@ export class WikipediaSource extends DataSource {
             await wikidataRateLimiter.acquire();
 
             const url = `${WIKIDATA_API_URL}?action=wbgetentities&ids=${wikidataId}&format=json&origin=*`;
-            const response = await fetch(url);
+            const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -232,11 +252,17 @@ export class WikipediaSource extends DataSource {
 
         // Batch fetch all genre labels in one request (Wikidata supports up to 50 IDs)
         return withRetry(async () => {
+            await wikidataRateLimiter.acquire();
+
             const url = `${WIKIDATA_API_URL}?action=wbgetentities&ids=${genreIds.join('|')}&format=json&origin=*`;
-            const response = await fetch(url);
+            const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
 
             if (!response.ok) {
-                throw new Error(`Wikidata API error ${response.status}: ${await response.text()}`);
+                const errorText = await response.text();
+                const error: any = new Error(`Wikidata API error ${response.status}: ${errorText}`);
+                error.response = response;
+                error.status = response.status;
+                throw error;
             }
 
             const data = await response.json();

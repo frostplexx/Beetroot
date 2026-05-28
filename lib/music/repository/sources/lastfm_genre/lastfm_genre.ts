@@ -12,6 +12,12 @@ const LASTFM_BASE_URL = 'https://ws.audioscrobbler.com/2.0';
 export class LastfmGenreSource extends DataSource {
     readonly confidence = 0.7;
     private validGenres: string[] | null = null;
+    // Stores Promises so concurrent requests for the same album await one in-flight fetch
+    private albumCache = new Map<string, Promise<string[]>>();
+
+    private cacheKey(artist: string, album: string): string {
+        return `${artist.toLowerCase().trim()}|${album.toLowerCase().trim()}`;
+    }
 
     async getData(item: Item): Promise<Item> {
         // If API key not configured, skip this source silently
@@ -20,7 +26,14 @@ export class LastfmGenreSource extends DataSource {
             return item;
         }
 
-        const genres = await this.fetchGenres(item.albumartist || item.artist, item.album);
+        const artist = item.albumartist || item.artist;
+        const key = this.cacheKey(artist, item.album);
+
+        if (!this.albumCache.has(key)) {
+            this.albumCache.set(key, this.fetchGenres(artist, item.album));
+        }
+
+        const genres = await this.albumCache.get(key)!;
         return { ...item, genres };
     }
 

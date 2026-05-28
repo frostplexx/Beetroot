@@ -49,7 +49,8 @@ export async function enumerateMusicFiles(
 
 // Generator version for streaming - ideal for huge libraries
 export async function* enumerateMusicFilesStream(
-  extensions: string[] = ['.mp3', '.flac', '.wav', '.aac', '.m4a', '.ogg']
+  extensions: string[] = ['.mp3', '.flac', '.wav', '.aac', '.m4a', '.ogg'],
+  extraDirs: string[] = []
 ): AsyncGenerator<string, void, undefined> {
   const musicDirectory = globalConfig.music_directory
     .replace(/\/?$/, '/')
@@ -76,4 +77,8 @@ export async function* enumerateMusicFilesStream(
   }
 
   yield* walkDir(musicDirectory)
+
+  for (const dir of extraDirs) {
+    yield* walkDir(dir)
+  }
 }

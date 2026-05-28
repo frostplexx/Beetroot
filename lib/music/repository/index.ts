@@ -104,21 +104,26 @@ class Repository {
         let itemId: number | undefined;
         let albumId: number | undefined;
         const originalPath = item.path;
+        const adoptTimings: Record<string, number> = {};
 
         // D5: Extract source provenance if present (transient property from resolveItem)
         const sources = (item as any)._sources as Partial<Record<keyof Item, string>> | undefined;
 
         try {
             // Phase 1: Write tags (atomic via temp+rename)
+            let t = Date.now();
             await writeBackItem(item, globalConfig.writeback_mode ?? 'missing-only');
+            adoptTimings.writeback = Date.now() - t;
 
             // Phase 2: Compute target path (pure function, cannot fail)
             const targetPath = computeTargetPath(item);
 
             // Phase 3: Compute hash at original location (read-only)
+            t = Date.now();
             if (globalConfig.compute_file_hash) {
                 item.file_hash = await computeFileHashIfEnabled(originalPath, true) || undefined;
             }
+            adoptTimings.hash = Date.now() - t;
 
             // D5: Map source provenance to *_source columns before DB write
             if (sources) {
@@ -146,6 +151,7 @@ class Repository {
             }
 
             // Phase 4: Atomic DB transaction with TARGET path
+            t = Date.now();
             const album = this.itemToAlbum(item);
             const result = db.transaction(() => {
                 const aId = writeOrUpdateAlbum(album);
@@ -154,6 +160,7 @@ class Repository {
                 const writeResult = writeOrUpdateItem(item);
                 return { albumId: aId, itemId: writeResult.id, action: writeResult.action };
             })();
+            adoptTimings.db = Date.now() - t;
 
             dbCommitted = true;
             itemId = result.itemId;
@@ -168,6 +175,7 @@ class Repository {
             }
 
             // Phase 5: Move file (only if target differs from original)
+            t = Date.now();
             if (originalPath !== targetPath) {
                 const moved = moveFile(originalPath, targetPath);
                 if (!moved) {
@@ -179,11 +187,13 @@ class Repository {
                     );
                 }
             }
+            adoptTimings.move = Date.now() - t;
 
             // Update in-memory path to match DB
             item.path = targetPath;
 
             // Phase 6: Cover art (best effort, non-blocking)
+            t = Date.now();
             if (albumId) {
                 const albumRecord = getAlbumById(albumId);
                 if (albumRecord && !albumRecord.artpath) {
@@ -192,6 +202,9 @@ class Repository {
                     });
                 }
             }
+            adoptTimings.cover = Date.now() - t;
+
+            (item as any)._adoptTimings = adoptTimings;
 
         } catch (error) {
             // Rollback DB if file move failed after DB commit
@@ -308,7 +321,7 @@ class Repository {
             const newFiles: string[] = [];
             const seenPaths = new Set<string>();
 
-            for await (const filePath of enumerateMusicFilesStream()) {
+            for await (const filePath of enumerateMusicFilesStream(undefined, globalConfig.watch_directories ?? [])) {
                 result.scannedFiles++;
                 seenPaths.add(filePath);
 
@@ -426,12 +439,39 @@ class Repository {
                 for (const cluster of clusters) {
                     await this.seedClusterFromMusicBrainz(cluster);
 
+                    // After MB seed, filter duplicates before hitting any source APIs.
+                    // Catches: (a) intra-cluster tracks with the same mb_trackid,
+                    //          (b) tracks whose mb_trackid is already in the DB.
+                    const mbIdInDb = db.prepare(
+                        'SELECT id FROM items WHERE mb_trackid = ? AND mb_trackid IS NOT NULL'
+                    );
+                    const seenMbIds = new Set<string>();
+                    cluster.tracks = cluster.tracks.filter(track => {
+                        if (!track.mb_trackid) return true; // no id to check — let adoptItem decide
+                        if (seenMbIds.has(track.mb_trackid)) {
+                            console.log(`Skipping intra-cluster duplicate: ${track.path}`);
+                            return false;
+                        }
+                        seenMbIds.add(track.mb_trackid);
+                        const existing = mbIdInDb.get(track.mb_trackid) as { id: number } | undefined;
+                        if (existing) {
+                            console.log(`Skipping known duplicate: ${track.path} (existing id ${existing.id})`);
+                            return false;
+                        }
+                        return true;
+                    });
+
                     for (let i = 0; i < cluster.tracks.length; i += concurrency) {
                         const batch = cluster.tracks.slice(i, i + concurrency);
                         const promises = batch.map(async (seeded) => {
                             try {
+                                const t0 = Date.now();
                                 const item = await this.resolveItem(seeded);
+                                const resolveMs = Date.now() - t0;
+                                const t1 = Date.now();
                                 await this.adoptItem(item);
+                                const adoptMs = Date.now() - t1;
+                                logImportPerf(item, resolveMs, adoptMs);
                                 result.newFilesImported++;
                             } catch (error) {
                                 const errorMsg = `Import failed: ${seeded.path} - ${error instanceof Error ? error.message : String(error)}`;
@@ -452,8 +492,13 @@ class Repository {
                     const batch = tagFailed.slice(i, i + concurrency);
                     const promises = batch.map(async (filePath) => {
                         try {
+                            const t0 = Date.now();
                             const item = await this.resolveItem(filePath);
+                            const resolveMs = Date.now() - t0;
+                            const t1 = Date.now();
                             await this.adoptItem(item);
+                            const adoptMs = Date.now() - t1;
+                            logImportPerf(item, resolveMs, adoptMs);
                             result.newFilesImported++;
                         } catch (error) {
                             const errorMsg = `Import failed: ${filePath} - ${error instanceof Error ? error.message : String(error)}`;
@@ -658,7 +703,12 @@ class Repository {
             throw new Error('Failed to merge data from sources');
         }
 
-        // D5: Return both the item and source provenance
+        (merged.data as any)._sourceTimings = results.map(r => ({
+            name: r.sourceName,
+            ms: r.duration ?? 0,
+            error: !!r.error,
+        }));
+
         return {
             item: merged.data,
             sources: merged.sources
@@ -788,6 +838,32 @@ export function itemToAlbum(item: Item): Album {
         year: item.year || null,
         added: item.added,
     }
+}
+
+function logImportPerf(item: Item, resolveMs: number, adoptMs: number): void {
+    const label = `${item.artist || '?'} - ${item.title || '?'}`;
+    const total = resolveMs + adoptMs;
+
+    const sourceTimings: Array<{ name: string; ms: number; error: boolean }> =
+        (item as any)._sourceTimings ?? [];
+    const adoptTimings: Record<string, number> = (item as any)._adoptTimings ?? {};
+
+    const sourceParts = sourceTimings
+        .slice()
+        .sort((a, b) => b.ms - a.ms)
+        .map(s => `${s.name.replace('Source', '')}=${s.ms}ms${s.error ? '!' : ''}`)
+        .join(' ');
+
+    const adoptParts = Object.entries(adoptTimings)
+        .sort(([, a], [, b]) => b - a)
+        .map(([k, v]) => `${k}=${v}ms`)
+        .join(' ');
+
+    console.log(
+        `[perf] ${label} | total=${total}ms` +
+        ` resolve=${resolveMs}ms(${sourceParts})` +
+        ` adopt=${adoptMs}ms(${adoptParts})`
+    );
 }
 
 // Export a single instance (singleton)

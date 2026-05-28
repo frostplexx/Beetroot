@@ -23,3 +23,6 @@ duplicate_action: skip
 #   - true: Enable hash-based duplicate detection (adds ~10ms per file)
 #   - false: Disable hashing for faster imports (falls back to mb_trackid/path)
 compute_file_hash: true
+
+watch_directories:
+  - /Users/daniel/Music/Download

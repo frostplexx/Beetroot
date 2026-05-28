@@ -4,26 +4,32 @@ import { Item } from "../../../database";
 import { withRetry, isRetryableHttpError } from "../../utils/retry";
 
 const DISCOGS_BASE_URL = 'https://api.discogs.com';
-const USER_AGENT = 'Beetroot/0.1.0';
+const USER_AGENT = 'Beetroot/2.0 +https://github.com/danielinama/beetroot daniel.inama02@gmail.com';
 
-// Rate limiting: Discogs allows 60 requests per minute for authenticated requests
-const MIN_REQUEST_INTERVAL = 1000; // 1 second to be safe
+// 1200ms = 50 req/min, safely under Discogs' 60 req/min authenticated limit
+const MIN_REQUEST_INTERVAL = 2200;
 
 async function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Promise chain for rate limiting - ensures sequential execution
-let rateLimitChain: Promise<void> = Promise.resolve();
+// Stored on global so HMR module reloads don't reset it and cause request bursts
+function getRateLimitChain(): Promise<void> {
+    const g = global as any;
+    if (!g.__discogsRateLimitChain) {
+        g.__discogsRateLimitChain = Promise.resolve();
+    }
+    return g.__discogsRateLimitChain;
+}
+function setRateLimitChain(p: Promise<void>): void {
+    (global as any).__discogsRateLimitChain = p;
+}
 
 async function rateLimitedFetch(url: string): Promise<Response> {
-    // Chain this request after the previous one
-    const mySlot = rateLimitChain.then(async () => {
+    const mySlot = getRateLimitChain().then(async () => {
         await sleep(MIN_REQUEST_INTERVAL);
     });
-
-    // Update chain for next request
-    rateLimitChain = mySlot;
+    setRateLimitChain(mySlot);
 
     const headers: Record<string, string> = {
         'User-Agent': USER_AGENT,
@@ -33,7 +39,6 @@ async function rateLimitedFetch(url: string): Promise<Response> {
         headers['Authorization'] = `Discogs token=${globalConfig.discogs_token}`;
     }
 
-    // Wait for our slot, then execute
     await mySlot;
     return fetch(url, { headers });
 }
@@ -63,6 +68,12 @@ interface DiscogsRelease {
 
 export class DiscogsSource extends DataSource {
     readonly confidence = 0.75;
+    // Stores Promises so concurrent requests for the same album await one in-flight fetch
+    private releaseCache = new Map<string, Promise<DiscogsRelease | null>>();
+
+    private cacheKey(artist: string, album: string): string {
+        return `${artist.toLowerCase().trim()}|${album.toLowerCase().trim()}`;
+    }
 
     async getData(item: Item): Promise<Item> {
         try {
@@ -70,15 +81,17 @@ export class DiscogsSource extends DataSource {
                 return item;
             }
 
-            // Search for release
-            const release = await this.searchRelease(item.artist, item.album);
+            const artist = item.albumartist || item.artist;
+            const key = this.cacheKey(artist, item.album);
 
-            if (!release) {
-                return item;
+            if (!this.releaseCache.has(key)) {
+                this.releaseCache.set(key,
+                    this.searchRelease(artist, item.album)
+                        .then(r => r ? this.getReleaseDetails(r.id, r.type) : null)
+                );
             }
 
-            // Get detailed release info (use type to determine endpoint)
-            const details = await this.getReleaseDetails(release.id, release.type);
+            const details = await this.releaseCache.get(key)!;
 
             if (!details) {
                 return item;
@@ -107,7 +120,11 @@ export class DiscogsSource extends DataSource {
             const response = await rateLimitedFetch(url);
 
             if (!response.ok) {
-                throw new Error(`Discogs API error ${response.status}: ${await response.text()}`);
+                const errorText = await response.text();
+                const error: any = new Error(`Discogs API error ${response.status}: ${errorText}`);
+                error.response = response;
+                error.status = response.status;
+                throw error;
             }
 
             const data = await response.json();
@@ -133,7 +150,11 @@ export class DiscogsSource extends DataSource {
             const response = await rateLimitedFetch(url);
 
             if (!response.ok) {
-                throw new Error(`Discogs API error ${response.status}: ${await response.text()}`);
+                const errorText = await response.text();
+                const error: any = new Error(`Discogs API error ${response.status}: ${errorText}`);
+                error.response = response;
+                error.status = response.status;
+                throw error;
             }
 
             return await response.json();
