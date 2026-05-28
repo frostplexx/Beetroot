@@ -1,5 +1,6 @@
 import { globalConfig } from "../../../../config";
 import { DataSource } from "../../types";
+import { Cluster } from "../../cluster";
 import { Item } from "../../../database";
 import { withRetry, isRetryableHttpError } from "../../utils/retry";
 
@@ -73,6 +74,19 @@ export class DiscogsSource extends DataSource {
 
     private cacheKey(artist: string, album: string): string {
         return `${artist.toLowerCase().trim()}|${album.toLowerCase().trim()}`;
+    }
+
+    async seedCluster(cluster: Cluster): Promise<void> {
+        const { seedAlbumArtist, seedAlbum } = cluster;
+        if (!seedAlbumArtist || !seedAlbum) return;
+        const key = this.cacheKey(seedAlbumArtist, seedAlbum);
+        if (!this.releaseCache.has(key)) {
+            this.releaseCache.set(key,
+                this.searchRelease(seedAlbumArtist, seedAlbum)
+                    .then(r => r ? this.getReleaseDetails(r.id, r.type) : null)
+            );
+        }
+        await this.releaseCache.get(key);
     }
 
     async getData(item: Item): Promise<Item> {

@@ -1,4 +1,5 @@
 import { DataSource } from "../../types";
+import { Cluster } from "../../cluster";
 import { Item } from "../../../database";
 import { withRetry, isRetryableHttpError } from "../../utils/retry";
 
@@ -98,6 +99,16 @@ export class WikipediaSource extends DataSource {
 
     private cacheKey(artist: string, album: string): string {
         return `${artist.toLowerCase().trim()}|${album.toLowerCase().trim()}`;
+    }
+
+    async seedCluster(cluster: Cluster): Promise<void> {
+        const { seedAlbumArtist, seedAlbum } = cluster;
+        if (!seedAlbumArtist || !seedAlbum) return;
+        const key = this.cacheKey(seedAlbumArtist, seedAlbum);
+        if (!this.albumCache.has(key)) {
+            this.albumCache.set(key, this.fetchAlbumData(seedAlbumArtist, seedAlbum));
+        }
+        await this.albumCache.get(key);
     }
 
     async getData(item: Item): Promise<Item> {

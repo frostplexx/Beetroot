@@ -1,5 +1,6 @@
 import { globalConfig } from "../../../../config";
 import { DataSource } from "../../types";
+import { Cluster } from "../../cluster";
 import { Item } from "../../../database";
 import { withRetry, isRetryableHttpError } from "../../utils/retry";
 import * as fs from 'fs';
@@ -17,6 +18,16 @@ export class LastfmGenreSource extends DataSource {
 
     private cacheKey(artist: string, album: string): string {
         return `${artist.toLowerCase().trim()}|${album.toLowerCase().trim()}`;
+    }
+
+    async seedCluster(cluster: Cluster): Promise<void> {
+        const { seedAlbumArtist, seedAlbum } = cluster;
+        if (!globalConfig.lastfm_api_key || !seedAlbumArtist || !seedAlbum) return;
+        const key = this.cacheKey(seedAlbumArtist, seedAlbum);
+        if (!this.albumCache.has(key)) {
+            this.albumCache.set(key, this.fetchGenres(seedAlbumArtist, seedAlbum));
+        }
+        await this.albumCache.get(key);
     }
 
     async getData(item: Item): Promise<Item> {

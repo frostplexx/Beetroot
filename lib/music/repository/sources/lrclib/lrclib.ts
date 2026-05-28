@@ -1,4 +1,5 @@
 import { DataSource } from '../../types';
+import { Cluster } from '../../cluster';
 import { Item } from '../../../database';
 import { withRetry, isRetryableHttpError } from '../../utils/retry';
 
@@ -58,33 +59,53 @@ async function fetchLyrics(track: string, artist: string, album?: string, durati
 }
 
 export class LrclibSource extends DataSource {
-    readonly confidence = 0.8; // High confidence for lyrics
+    readonly confidence = 0.8;
+    // Stores Promises so concurrent getData calls and seedCluster share one in-flight fetch per track
+    private lyricsCache = new Map<string, Promise<LrclibResponse | null>>();
+
+    private cacheKey(title: string, artist: string): string {
+        return `${artist.toLowerCase().trim()}|${title.toLowerCase().trim()}`;
+    }
+
+    async seedCluster(cluster: Cluster): Promise<void> {
+        // Fire all track lyrics requests in parallel — collapses n sequential
+        // batches into one parallel burst for the whole cluster.
+        await Promise.all(
+            cluster.tracks
+                .filter(t => t.title && t.artist)
+                .map(t => {
+                    const key = this.cacheKey(t.title!, t.artist!);
+                    if (!this.lyricsCache.has(key)) {
+                        this.lyricsCache.set(key, fetchLyrics(
+                            t.title!, t.artist!, t.album || undefined, t.length || undefined
+                        ));
+                    }
+                    return this.lyricsCache.get(key);
+                })
+        );
+    }
 
     async getData(item: Item): Promise<Item> {
         try {
-            // Need at least title and artist
             if (!item.title || !item.artist) {
                 return item;
             }
 
-            const result = await fetchLyrics(
-                item.title,
-                item.artist,
-                item.album || undefined,
-                item.length || undefined
-            );
+            const key = this.cacheKey(item.title, item.artist);
+            if (!this.lyricsCache.has(key)) {
+                this.lyricsCache.set(key, fetchLyrics(
+                    item.title, item.artist, item.album || undefined, item.length || undefined
+                ));
+            }
+
+            const result = await this.lyricsCache.get(key)!;
 
             if (!result) {
                 return item;
             }
 
-            // Prefer synced lyrics (LRC format) over plain lyrics
             const lyrics = result.syncedLyrics || result.plainLyrics || null;
-
-            return {
-                ...item,
-                lyrics: lyrics || item.lyrics,
-            };
+            return { ...item, lyrics: lyrics || item.lyrics };
         } catch (error) {
             console.debug(`Lrclib lookup failed for ${item.path}:`, error);
             return item;

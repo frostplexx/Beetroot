@@ -121,7 +121,7 @@ class Repository {
             // Phase 3: Compute hash at original location (read-only)
             t = Date.now();
             if (globalConfig.compute_file_hash) {
-                item.file_hash = await computeFileHashIfEnabled(originalPath, true) || undefined;
+                item.file_hash = await computeFileHashIfEnabled(originalPath, true) || null;
             }
             adoptTimings.hash = Date.now() - t;
 
@@ -230,7 +230,7 @@ class Repository {
                 ? error
                 : new AdoptionError(
                       error instanceof Error ? error.message : String(error),
-                      'unknown',
+                      'rollback',
                       false,
                       originalPath
                   );
@@ -438,6 +438,15 @@ class Repository {
 
                 for (const cluster of clusters) {
                     await this.seedClusterFromMusicBrainz(cluster);
+
+                    // Pre-fetch data from all sources in parallel before any per-track
+                    // resolution starts. Album-level sources fire one request; Lrclib
+                    // fires all track requests simultaneously. getData calls find cache warm.
+                    await Promise.all(
+                        this.dataSources.map(s =>
+                            s.seedCluster(cluster).catch(() => {})
+                        )
+                    );
 
                     // After MB seed, filter duplicates before hitting any source APIs.
                     // Catches: (a) intra-cluster tracks with the same mb_trackid,
@@ -837,6 +846,7 @@ export function itemToAlbum(item: Item): Album {
         style: item.style || null,
         year: item.year || null,
         added: item.added,
+        missing_since: null,
     }
 }
 
