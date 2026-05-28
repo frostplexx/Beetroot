@@ -75,14 +75,16 @@ export default function RootLayout({
                     disableTransitionOnChange
                 >
                     <TooltipProvider>
-                    <SystemBanner
-                        text="You are in Development Mode"
-                        color="bg-orange-500"
-                        size="sm"
-                        show={process.env.NODE_ENV === "development"}
-                    />
-                    <Navigation />
-                    <main className="flex-1 relative mt-[75px]">{children}</main>
+                        <div className="z-1000">
+                            <SystemBanner
+                                text="You are in Development Mode"
+                                color="bg-orange-500"
+                                size="sm"
+                                show={process.env.NODE_ENV === "development"}
+                            />
+                        </div>
+                        <Navigation />
+                        <main className="flex-1 relative mt-[75px]">{children}</main>
                     </TooltipProvider>
                 </ThemeProvider>
             </body>
