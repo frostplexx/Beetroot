@@ -4,14 +4,11 @@ import {
     Inter,
     Space_Grotesk,
 } from "next/font/google"
-
 import "./globals.css"
-
 import { cn } from "@/lib/ui/utils"
-import { ThemeProvider } from "@/components/theme-provider"
 import Navigation from "@/components/navigation"
 import SystemBanner from "@/components/ui/system-banner"
-import { TooltipProvider } from "@/components/ui/tooltip"
+import { Providers } from "./providers"
 
 const spaceGroteskHeading = Space_Grotesk({
     subsets: ["latin"],
@@ -21,14 +18,12 @@ const spaceGroteskHeading = Space_Grotesk({
     fallback: ["system-ui", "sans-serif"],
     adjustFontFallback: false,
 })
-
 const inter = Inter({
     subsets: ["latin"],
     variable: "--font-sans",
     display: "swap",
     preload: true,
 })
-
 const geistMono = Geist_Mono({
     variable: "--font-geist-mono",
     subsets: ["latin"],
@@ -68,25 +63,18 @@ export default function RootLayout({
                     <div className="absolute bottom-0 left-[10%] w-[400px] h-[400px] rounded-full opacity-[0.02] blur-[120px]"
                         style={{ background: "radial-gradient(ellipse, #e84140 0%, transparent 70%)" }} />
                 </div>
-                <ThemeProvider
-                    attribute="class"
-                    defaultTheme="dark"
-                    enableSystem={false}
-                    disableTransitionOnChange
-                >
-                    <TooltipProvider>
-                        <div className="z-1000">
-                            <SystemBanner
-                                text="You are in Development Mode"
-                                color="bg-orange-500"
-                                size="sm"
-                                show={process.env.NODE_ENV === "development"}
-                            />
-                        </div>
-                        <Navigation />
-                        <main className="flex-1 relative mt-[75px]">{children}</main>
-                    </TooltipProvider>
-                </ThemeProvider>
+                <Providers>
+                    <div className="z-1000">
+                        <SystemBanner
+                            text="You are in Development Mode"
+                            color="bg-orange-500"
+                            size="sm"
+                            show={process.env.NODE_ENV === "development"}
+                        />
+                    </div>
+                    <Navigation />
+                    <main className="flex-1 relative mt-[75px]">{children}</main>
+                </Providers>
             </body>
         </html>
     )

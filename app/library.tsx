@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useResizeObserver } from "usehooks-ts";
 import AlbumCard from "@/components/album_card";
 import { AlbumContextMenu } from "@/components/album-context-menu";
 import type { AlbumCardData, AlbumSort } from "@/lib/music/database/albums";
@@ -23,7 +24,10 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const FIRST_ROW_COLS_XL = 6;
+const GAP = 16;          // gap-4
+const TARGET_CARD = 180; // px — desired card width; cols derived from this
+const MIN_COLS = 2;
+const MAX_COLS = 8;
 
 const SORT_LABELS: Record<AlbumSort, string> = {
     "recently-added": "Recently Added",
@@ -32,234 +36,210 @@ const SORT_LABELS: Record<AlbumSort, string> = {
     "year":           "Year",
 };
 
-interface LibraryProps {
-    albums: AlbumCardData[];
-    page: number;
-    totalPages: number;
-    totalAlbums: number;
-    sort: AlbumSort;
+type AlbumsResponse = { albums: AlbumCardData[]; total: number };
+
+async function fetchAlbums(uiPage: number, pageSize: number, sort: AlbumSort): Promise<AlbumsResponse> {
+    const params = new URLSearchParams();
+    params.set("page", String(uiPage - 1)); // API is 0-indexed
+    params.set("pageSize", String(pageSize));
+    if (sort !== "recently-added") params.set("sort", sort);
+
+    const res = await fetch(`/api/albums?${params}`);
+    if (!res.ok) throw new Error(`albums fetch failed: ${res.status}`);
+    return res.json();
 }
 
-export default function Library({ albums, page, totalPages, totalAlbums, sort }: LibraryProps) {
-    const router = useRouter();
+function warmImages(albums: AlbumCardData[] | undefined) {
+    albums?.forEach((album) => {
+        if (!album.artpath || album.missing_since) return;
+        const img = new window.Image();
+        img.src = `/api/album/${album.id}/art?size=400`;
+    });
+}
 
-    const setSort = useCallback((next: AlbumSort) => {
-        const params = new URLSearchParams();
-        if (next !== "recently-added") params.set("sort", next);
-        const qs = params.toString();
-        // Use pushState + refresh to skip the view transition that would otherwise
-        // animate every album card to its new sorted position.
-        window.history.pushState(null, "", qs ? `/?${qs}` : "/");
-        router.refresh();
-    }, [router]);
+export default function Library() {
+    const queryClient = useQueryClient();
     const gridRef = useRef<HTMLDivElement>(null);
-    const pendingRefresh = useRef(false);
+    const [page, setPage] = useState(1);
+    const [sort, setSort] = useState<AlbumSort>("recently-added");
 
-    // Defer refresh until the tab is visible to avoid "Skipped ViewTransition
-    // due to document being hidden" errors when reconcile fires in the background.
+    // ── Concern 1: how many cards fit ────────────────────────────────────────
+    const { width = 0, height = 0 } = useResizeObserver({ ref: gridRef, box: "border-box" });
+
+    const { cols, pageSize } = useMemo(() => {
+        if (width <= 0 || height <= 0) return { cols: 0, pageSize: 0 };
+        const cols = Math.max(MIN_COLS, Math.min(MAX_COLS, Math.floor((width + GAP) / (TARGET_CARD + GAP))));
+        const cardSize = (width - (cols - 1) * GAP) / cols; // square cards → height ≈ width
+        const rows = Math.max(1, Math.floor((height + GAP) / (cardSize + GAP)));
+        return { cols, pageSize: cols * rows };
+    }, [width, height]);
+
+    // ── Concern 2: fetch + paginate exactly that many ────────────────────────
+    const { data, isLoading } = useQuery({
+        queryKey: ["albums", page, pageSize, sort],
+        queryFn: () => fetchAlbums(page, pageSize, sort),
+        enabled: pageSize > 0,
+        placeholderData: keepPreviousData, // no blank flash on page/size change
+    });
+
+    const albums = data?.albums ?? [];
+    const total = data?.total ?? 0;
+    const totalPages = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+
+    // Reset to page 1 on sort change.
+    useEffect(() => { setPage(1); }, [sort]);
+
+    // Clamp page if a resize shrank the page count.
+    useEffect(() => {
+        if (page > totalPages) setPage(totalPages);
+    }, [page, totalPages]);
+
+    // Prefetch next page (data + images) so forward nav feels instant.
+    useEffect(() => {
+        if (pageSize <= 0 || page >= totalPages) return;
+        const next = page + 1;
+        queryClient
+            .fetchQuery({
+                queryKey: ["albums", next, pageSize, sort],
+                queryFn: () => fetchAlbums(next, pageSize, sort),
+            })
+            .then((d) => warmImages(d.albums))
+            .catch(() => {});
+    }, [page, totalPages, pageSize, sort, queryClient]);
+
+    // Library sync → invalidate instead of full refresh. Defer while hidden.
+    const pendingInvalidate = useRef(false);
     useEffect(() => {
         const onVisible = () => {
-            if (pendingRefresh.current) {
-                pendingRefresh.current = false;
-                router.refresh();
+            if (document.visibilityState === "visible" && pendingInvalidate.current) {
+                pendingInvalidate.current = false;
+                queryClient.invalidateQueries({ queryKey: ["albums"] });
             }
         };
         document.addEventListener("visibilitychange", onVisible);
         return () => document.removeEventListener("visibilitychange", onVisible);
-    }, [router]);
+    }, [queryClient]);
 
     useLibrarySync(() => {
         if (document.visibilityState === "visible") {
-            router.refresh();
+            queryClient.invalidateQueries({ queryKey: ["albums"] });
         } else {
-            pendingRefresh.current = true;
+            pendingInvalidate.current = true;
         }
     });
 
-    // Cap the grid to a whole-row boundary so we never show a half-clipped row.
-    // We measure once and on resize, set inline maxHeight; no router.refresh.
-    useLayoutEffect(() => {
-        const grid = gridRef.current;
-        if (!grid) return;
-
-        const GAP = 16;
-        const colsAt = (w: number) => {
-            if (w < 768) return 2;
-            if (w < 1024) return 3;
-            if (w < 1280) return 4;
-            return 6;
-        };
-
-        const apply = () => {
-            const width = grid.clientWidth;
-            if (width <= 0) return;
-            const cols = colsAt(window.innerWidth);
-            const cardSize = (width - (cols - 1) * GAP) / cols;
-            if (cardSize <= 0) return;
-
-            // Read available height with the cap removed, then restore.
-            const prev = grid.style.maxHeight;
-            grid.style.maxHeight = "none";
-            const available = grid.clientHeight;
-            grid.style.maxHeight = prev;
-
-            if (available <= 0) return;
-            const rows = Math.max(1, Math.floor((available + GAP) / (cardSize + GAP)));
-            const target = rows * cardSize + (rows - 1) * GAP;
-            grid.style.maxHeight = `${Math.floor(target)}px`;
-        };
-
-        apply();
-
-        let raf = 0;
-        const onResize = () => {
-            cancelAnimationFrame(raf);
-            raf = requestAnimationFrame(apply);
-        };
-        window.addEventListener("resize", onResize);
-        return () => {
-            cancelAnimationFrame(raf);
-            window.removeEventListener("resize", onResize);
-        };
-    }, []);
-
-    // Prefetch next page images while the user is still on the current page.
-    // Fetching with Image() warms the serve-art LRU on the server and populates
-    // the browser cache so navigating forward feels instant instead of waiting
-    // for 30 cold sharp resizes.
-    useEffect(() => {
-        if (page >= totalPages) return;
-
-        const controller = new AbortController();
-        const params = new URLSearchParams();
-        // API is 0-indexed; next 1-based page N+1 → API page = N
-        params.set("page", String(page));
-        params.set("pageSize", "30");
-        if (sort !== "recently-added") params.set("sort", sort);
-
-        fetch(`/api/albums?${params}`, { signal: controller.signal })
-            .then(r => r.json())
-            .then((data: { albums: AlbumCardData[] }) => {
-                data.albums?.forEach(album => {
-                    if (!album.artpath || album.missing_since) return;
-                    const img = new window.Image();
-                    img.src = `/api/album/${album.id}/art?size=400`;
-                });
-            })
-            .catch(() => {});
-
-        return () => controller.abort();
-    }, [page, totalPages, sort]);
-
+    // Keyboard nav.
     useEffect(() => {
         if (totalPages <= 1) return;
-
         const handler = (e: KeyboardEvent) => {
             if (e.metaKey || e.ctrlKey || e.altKey) return;
             if (isTypingTarget(e.target)) return;
-
             let target: number | null = null;
             switch (e.key) {
-                case "ArrowLeft":
-                    if (page > 1) target = page - 1;
-                    break;
-                case "ArrowRight":
-                    if (page < totalPages) target = page + 1;
-                    break;
-                case "Home":
-                    if (page !== 1) target = 1;
-                    break;
-                case "End":
-                    if (page !== totalPages) target = totalPages;
-                    break;
-                default:
-                    return;
+                case "ArrowLeft":  if (page > 1)            target = page - 1;     break;
+                case "ArrowRight": if (page < totalPages)   target = page + 1;     break;
+                case "Home":       if (page !== 1)          target = 1;            break;
+                case "End":        if (page !== totalPages) target = totalPages;   break;
+                default: return;
             }
-
             if (target == null) return;
             e.preventDefault();
-            router.push(pageHref(target, sort));
+            setPage(target);
         };
-
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
-    }, [page, totalPages, sort, router]);
+    }, [page, totalPages]);
 
-    if (albums.length === 0) {
-        return (
-            <div className="absolute inset-0 flex items-center justify-center">
-                <p className="text-white/60">No albums in library</p>
-            </div>
-        );
-    }
+    const gridStyle = cols > 0 ? { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` } : undefined;
 
     return (
         <div className="absolute inset-0 overflow-hidden">
             <div className="container mx-auto px-4 py-4 flex flex-col h-full">
                 <div className="w-full mb-4 flex-shrink-0 flex items-center justify-between gap-4">
                     <p className="text-[11px] uppercase tracking-[0.14em] text-white/30 font-medium">
-                        {albums.length} of {totalAlbums.toLocaleString()} albums
+                        {total > 0 ? `${albums.length} of ${total.toLocaleString()} albums` : "\u00A0"}
                     </p>
                     <SortSelector sort={sort} onChange={setSort} />
                 </div>
 
                 <div
                     ref={gridRef}
-                    className="grid w-full gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 flex-1 min-h-0 overflow-hidden content-start"
+                    style={gridStyle}
+                    // auto-fill is the pre-measure fallback; inline cols take over once measured.
+                    className="grid w-full gap-4 [grid-template-columns:repeat(auto-fill,minmax(150px,1fr))] flex-1 min-h-0 overflow-hidden content-start"
                 >
                     {albums.map((album, idx) => (
                         <AlbumContextMenu key={album.id} album={album}>
-                            <AlbumCard album={album} priority={idx < FIRST_ROW_COLS_XL} />
+                            <AlbumCard album={album} priority={idx < cols} />
                         </AlbumContextMenu>
                     ))}
                 </div>
 
-                {totalPages > 1 && <Pagination page={page} totalPages={totalPages} sort={sort} />}
+                {!isLoading && total === 0 && (
+                    <div className="flex-1 flex items-center justify-center">
+                        <p className="text-white/60">No albums in library</p>
+                    </div>
+                )}
+
+                <div className="mt-auto pt-6 flex-shrink-0 min-h-[60px]">
+                    {totalPages > 1 && (
+                        <Pagination
+                            page={page}
+                            totalPages={totalPages}
+                            onPage={setPage}
+                            onHoverPage={(n) =>
+                                queryClient
+                                    .fetchQuery({
+                                        queryKey: ["albums", n, pageSize, sort],
+                                        queryFn: () => fetchAlbums(n, pageSize, sort),
+                                    })
+                                    .then((d) => warmImages(d.albums))
+                                    .catch(() => {})
+                            }
+                        />
+                    )}
+                </div>
             </div>
         </div>
     );
 }
 
-function Pagination({ page, totalPages, sort }: { page: number; totalPages: number; sort: AlbumSort }) {
+function Pagination({
+    page,
+    totalPages,
+    onPage,
+    onHoverPage,
+}: {
+    page: number;
+    totalPages: number;
+    onPage: (n: number) => void;
+    onHoverPage: (n: number) => void;
+}) {
     const pages = getPageNumbers(page, totalPages);
     const prev = Math.max(1, page - 1);
     const next = Math.min(totalPages, page + 1);
-    const href = (n: number) => pageHref(n, sort);
-    const prefetched = useRef(new Set<number>());
-
-    const prefetchPageImages = useCallback((targetPage: number) => {
-        if (prefetched.current.has(targetPage)) return;
-        prefetched.current.add(targetPage);
-        const params = new URLSearchParams();
-        params.set("page", String(targetPage - 1));
-        params.set("pageSize", "30");
-        if (sort !== "recently-added") params.set("sort", sort);
-        fetch(`/api/albums?${params}`)
-            .then(r => r.json())
-            .then((data: { albums: AlbumCardData[] }) => {
-                data.albums?.forEach(album => {
-                    if (!album.artpath || album.missing_since) return;
-                    const img = new window.Image();
-                    img.src = `/api/album/${album.id}/art?size=400`;
-                });
-            })
-            .catch(() => {});
-    }, [sort]);
+    const go = useCallback((n: number) => (e: React.MouseEvent) => { e.preventDefault(); onPage(n); }, [onPage]);
 
     return (
-        <ShadcnPagination className="mt-auto pt-6 flex-shrink-0">
+        <ShadcnPagination>
             <PaginationContent>
                 <PaginationItem>
                     <PaginationPrevious
-                        href={href(prev)}
+                        href="#"
                         disabled={page === 1}
-                        onMouseEnter={() => page > 1 && prefetchPageImages(prev)}
+                        onClick={go(prev)}
+                        onMouseEnter={() => page > 1 && onHoverPage(prev)}
                     />
                 </PaginationItem>
 
                 {pages.map((n) => (
                     <PaginationItem key={n}>
-                        <PaginationLink href={href(n)} isActive={page === n}>
+                        <PaginationLink
+                            href="#"
+                            isActive={page === n}
+                            onClick={go(n)}
+                            onMouseEnter={() => onHoverPage(n)}
+                        >
                             {n}
                         </PaginationLink>
                     </PaginationItem>
@@ -267,22 +247,15 @@ function Pagination({ page, totalPages, sort }: { page: number; totalPages: numb
 
                 <PaginationItem>
                     <PaginationNext
-                        href={href(next)}
+                        href="#"
                         disabled={page === totalPages}
-                        onMouseEnter={() => page < totalPages && prefetchPageImages(next)}
+                        onClick={go(next)}
+                        onMouseEnter={() => page < totalPages && onHoverPage(next)}
                     />
                 </PaginationItem>
             </PaginationContent>
         </ShadcnPagination>
     );
-}
-
-function pageHref(n: number, sort: AlbumSort): string {
-    const params = new URLSearchParams();
-    if (n > 1) params.set("page", String(n));
-    if (sort !== "recently-added") params.set("sort", sort);
-    const qs = params.toString();
-    return qs ? `/?${qs}` : "/";
 }
 
 function SortSelector({ sort, onChange }: { sort: AlbumSort; onChange: (s: AlbumSort) => void }) {
@@ -317,9 +290,7 @@ function getPageNumbers(currentPage: number, totalPages: number): number[] {
     const maxVisible = 5;
     let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
     const end = Math.min(totalPages, start + maxVisible - 1);
-    if (end - start < maxVisible - 1) {
-        start = Math.max(1, end - maxVisible + 1);
-    }
+    if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1);
     const pages: number[] = [];
     for (let i = start; i <= end; i++) pages.push(i);
     return pages;
