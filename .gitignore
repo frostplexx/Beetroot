@@ -27,6 +27,7 @@ db.sqlite3-wal
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
