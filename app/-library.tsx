@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { ChevronDownIcon } from "lucide-react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useResizeObserver } from "usehooks-ts";
+import { useNavigate } from "@tanstack/react-router";
 import AlbumCard from "@/components/album_card";
 import { AlbumContextMenu } from "@/components/album-context-menu";
 import type { AlbumCardData, AlbumSort } from "@/lib/music/database/albums";
@@ -34,7 +35,15 @@ const SORT_LABELS: Record<AlbumSort, string> = {
     "year":           "Year",
 };
 
-type AlbumsResponse = { albums: AlbumCardData[]; total: number };
+type AlbumsResponse = {
+    albums: AlbumCardData[];
+    pagination: {
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+    };
+};
 
 async function fetchAlbums(uiPage: number, pageSize: number, sort: AlbumSort): Promise<AlbumsResponse> {
     const params = new URLSearchParams();
@@ -55,14 +64,26 @@ function warmImages(albums: AlbumCardData[] | undefined) {
     });
 }
 
-export default function Library() {
+export default function Library({ page, sort }: { page: number; sort: AlbumSort }) {
     const queryClient = useQueryClient();
     const gridRef = useRef<HTMLDivElement>(null);
-    const [page, setPage] = useState(1);
-    const [sort, setSort] = useState<AlbumSort>("recently-added");
+    const navigate = useNavigate({ from: "/" });
+
+    const setPage = useCallback(
+        (p: number, replace = false) => navigate({ search: (old) => ({ ...old, page: p }), replace }),
+        [navigate],
+    );
+
+    const setSort = useCallback(
+        (s: AlbumSort) => navigate({ search: (old) => ({ ...old, sort: s, page: 1 }) }),
+        [navigate],
+    );
 
     // ── Concern 1: how many cards fit ────────────────────────────────────────
-    const { width = 0, height = 0 } = useResizeObserver({ ref: gridRef, box: "border-box" });
+    const { width = 0, height = 0 } = useResizeObserver({
+        ref: gridRef,
+        box: "border-box",
+    });
 
     const { cols, pageSize } = useMemo(() => {
         if (width <= 0 || height <= 0) return { cols: 0, pageSize: 0 };
@@ -81,16 +102,16 @@ export default function Library() {
     });
 
     const albums = data?.albums ?? [];
-    const total = data?.total ?? 0;
-    const totalPages = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
-
-    // Reset to page 1 on sort change.
-    useEffect(() => { setPage(1); }, [sort]);
+    const total = data?.pagination.total ?? 0;
+    const totalPages = data?.pagination.totalPages ?? 1;
 
     // Clamp page if a resize shrank the page count.
+    // ONLY clamp if we have data and aren't loading, to avoid resetting ?page=N to 1 during initial load.
     useEffect(() => {
-        if (page > totalPages) setPage(totalPages);
-    }, [page, totalPages]);
+        if (!isLoading && data && page > totalPages) {
+            setPage(totalPages, true);
+        }
+    }, [page, totalPages, setPage, isLoading, data]);
 
     // Prefetch next page (data + images) so forward nav feels instant.
     useEffect(() => {

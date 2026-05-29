@@ -68,14 +68,6 @@ function RootLayout() {
                     />
                 </div>
                 <Providers>
-                    <div className="z-1000">
-                        <SystemBanner
-                            text="You are in Development Mode"
-                            color="bg-orange-500"
-                            size="sm"
-                            show={import.meta.env.DEV}
-                        />
-                    </div>
                     <Navigation />
                     <main className="flex-1 relative mt-[75px]">
                         <Outlet />
