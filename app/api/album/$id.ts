@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getAlbumById, updateAlbumFields } from "@/lib/music/database/albums";
 import { getItemsByAlbum, batchUpdateItems } from "@/lib/music/database/items";
-import { writeBackItem } from "@/lib/music/repository/writeback";
+import { writeBackItem, moveFile } from "@/lib/music/repository/writeback";
 import { globalConfig } from "@/lib/config";
 import db from "@/lib/music/database/db";
 import * as path from "path";
@@ -181,13 +181,31 @@ export const Route = createFileRoute("/api/album/$id")({
                     let filesDeleted = 0;
                     if (deleteFiles && album.missing_since == null) {
                         const items = getItemsByAlbum(albumId);
-                        const dirs = new Set(items.map((item) => path.dirname(item.path)));
-                        for (const dir of dirs) {
+                        const trashDir = globalConfig.trash_directory
+                            ? globalConfig.trash_directory
+                            : path.join(globalConfig.music_directory, ".trash") + path.sep;
+                        for (const item of items) {
                             try {
-                                await fs.rm(dir, { recursive: true, force: true });
-                                filesDeleted++;
+                                const exists = await fs.access(item.path).then(() => true).catch(() => false);
+                                if (exists) {
+                                    const trashPath = item.path.replace(globalConfig.music_directory, trashDir);
+                                    if (moveFile(item.path, trashPath)) {
+                                        filesDeleted++;
+                                    }
+                                }
                             } catch (err) {
-                                console.error(`Failed to delete directory ${dir}:`, err);
+                                console.error(`Failed to move ${item.path} to trash:`, err);
+                            }
+                        }
+                        if (album.artpath) {
+                            try {
+                                const exists = await fs.access(album.artpath).then(() => true).catch(() => false);
+                                if (exists) {
+                                    const trashArtPath = album.artpath.replace(globalConfig.music_directory, trashDir);
+                                    moveFile(album.artpath, trashArtPath);
+                                }
+                            } catch {
+                                // best effort
                             }
                         }
                     }

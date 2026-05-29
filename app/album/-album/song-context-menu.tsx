@@ -302,9 +302,9 @@ function ConfirmDeleteDialog({
                         className="mt-1"
                     />
                     <span>
-                        Also delete the file from disk
+                        Also move the file to trash
                         <div className="text-xs text-white/75 mt-0.5">
-                            Permanently removes <code className="font-mono">{item.path}</code>
+                            Moves <code className="font-mono">{item.path}</code> to the trash folder
                         </div>
                     </span>
                 </label>

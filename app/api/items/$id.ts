@@ -7,9 +7,10 @@ import {
     getAlbumById,
     updateItem,
 } from "@/lib/music/database";
-import { writeBackItem } from "@/lib/music/repository/writeback";
+import { writeBackItem, moveFile } from "@/lib/music/repository/writeback";
 import { globalConfig } from "@/lib/config";
 import * as fs from "fs";
+import * as path from "path";
 
 function deleteAlbumIfEmpty(albumId: number): boolean {
     const row = db
@@ -166,17 +167,17 @@ export const Route = createFileRoute("/api/items/$id")({
                 const previousAlbumId = item.album_id;
 
                 if (deleteFile) {
-                    try {
-                        if (fs.existsSync(item.path)) {
-                            fs.unlinkSync(item.path);
+                    if (fs.existsSync(item.path)) {
+                        const trashDir = globalConfig.trash_directory
+                            ? globalConfig.trash_directory
+                            : path.join(globalConfig.music_directory, ".trash") + path.sep;
+                        const trashPath = item.path.replace(globalConfig.music_directory, trashDir);
+                        if (!moveFile(item.path, trashPath)) {
+                            return Response.json(
+                                { error: `Failed to move file to trash: ${item.path}` },
+                                { status: 500 },
+                            );
                         }
-                    } catch (err) {
-                        return Response.json(
-                            {
-                                error: `Failed to delete file: ${err instanceof Error ? err.message : String(err)}`,
-                            },
-                            { status: 500 },
-                        );
                     }
                 }
 

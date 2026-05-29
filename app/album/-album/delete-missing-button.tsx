@@ -98,10 +98,10 @@ export function DeleteAlbumButton({ albumId, albumName, isMissing }: DeleteAlbum
                             <div className="flex flex-col gap-0.5">
                                 <Label htmlFor="delete-files-detail" className="flex items-center gap-1.5 cursor-pointer text-sm font-medium">
                                     <HardDriveIcon className="w-3.5 h-3.5" />
-                                    Also delete files from disk
+                                    Also move files to trash
                                 </Label>
                                 <p className="text-xs text-muted-foreground">
-                                    Permanently deletes the album folder. Cannot be undone.
+                                    Moves the album files to the trash folder.
                                 </p>
                             </div>
                         </div>
