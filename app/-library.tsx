@@ -175,7 +175,7 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
         <div className="absolute inset-0 overflow-hidden">
             <div className="container mx-auto pb-4 flex flex-col h-full">
 
-                <div className="container mx-auto pt-4 pb-2 flex-shrink-0 content-center">
+                <div className="container mx-auto pt-4 pb-2 flex-1 min-h-0 flex flex-col">
                     {total !== 0 && (
                         <div className="w-full mb-4 flex-shrink-0 flex items-center justify-between gap-4">
                             <p className="text-[11px] uppercase tracking-[0.14em] text-white/30 font-medium">
