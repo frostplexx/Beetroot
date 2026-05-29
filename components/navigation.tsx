@@ -43,8 +43,8 @@ export default function Navigation() {
     const iconButtonInactive = "text-white/50 hover:text-white hover:bg-white/8 transition-colors"
 
     return (
-        <div className="mt-3 fixed absolute overflow-hidden w-screen flex justify-center pointer-events-auto inline-flex ">
-            <header className="bg-[#0e0e0e]/40 backdrop-blur-3xl border border-white/[0.05] rounded-2xl shadow-[0_8px_40px_-8px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.02),0_0_60px_-20px_rgba(232,65,64,0.12)]">
+        <div className="mt-3 fixed w-screen flex justify-center pointer-events-none z-50">
+            <header className="pointer-events-auto bg-[#0e0e0e]/40 backdrop-blur-3xl border border-white/[0.05] rounded-2xl shadow-[0_8px_40px_-8px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.02),0_0_60px_-20px_rgba(232,65,64,0.12)]">
                 <div className="px-2.5 py-2">
                     <div className="flex items-center gap-1.5">
 
