@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, FileSearchCorner } from "lucide-react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useResizeObserver } from "usehooks-ts";
 import { useNavigate } from "@tanstack/react-router";
@@ -176,12 +176,13 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
             <div className="container mx-auto pb-4 flex flex-col h-full">
 
                 <div className="container mx-auto pt-4 pb-2 flex-shrink-0 content-center">
-                    <div className="w-full mb-4 flex-shrink-0 flex items-center justify-between gap-4">
-                        <p className="text-[11px] uppercase tracking-[0.14em] text-white/30 font-medium">
-                            {total > 0 ? `${albums.length} of ${total.toLocaleString()} albums` : "\u00A0"}
-                        </p>
-                        <SortSelector sort={sort} onChange={setSort} />
-                    </div>
+                    {total !== 0 && (
+                        <div className="w-full mb-4 flex-shrink-0 flex items-center justify-between gap-4">
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-white/30 font-medium">
+                                {total > 0 ? `${albums.length} of ${total.toLocaleString()} albums` : "\u00A0"}
+                            </p>
+                            <SortSelector sort={sort} onChange={setSort} />
+                        </div>)}
 
                     <div
                         ref={gridRef}
@@ -198,8 +199,9 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
                 </div>
 
                 {!isLoading && total === 0 && (
-                    <div className="flex-1 flex items-center justify-center">
-                        <p className="text-white/60">No albums in library</p>
+                    <div className="text-white/60 gap-4 flex-1 flex flex-col items-center justify-center">
+                        <FileSearchCorner size={100}/>
+                        <p className="text-xl font-bold">No Albums in Library</p>
                     </div>
                 )}
 
