@@ -215,7 +215,7 @@ docker compose up -d
 Verify the chromaprint binary exists in the container:
 
 ```bash
-docker compose exec beetroot ls -la /app/lib/bin/chromaprint/
+docker compose exec beetroot ls -la /app/lib/music/binaries/chromaprint/
 ```
 
 If missing, rebuild the image:
