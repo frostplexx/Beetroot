@@ -1,8 +1,6 @@
-"use client"
-
 import * as React from "react"
 import { createPortal } from "react-dom"
-import { useRouter } from "next/navigation"
+import { useRouter } from "@tanstack/react-router"
 import {
     ContextMenu,
     ContextMenuContent,
@@ -91,7 +89,7 @@ function PrimedAlbumContextMenu({
         setTimeout(() => setToast(null), 3000)
     }
 
-    const handleOpen = () => router.push(`/album/${album.id}`)
+    const handleOpen = () => router.navigate({ to: "/album/$id", params: { id: String(album.id) } })
 
     const handleReveal = async () => {
         try {
@@ -166,7 +164,7 @@ function PrimedAlbumContextMenu({
                     isMissing={isMissing}
                     onRemoved={() => {
                         showToast({ kind: "ok", message: "Album removed" })
-                        router.refresh()
+                        router.invalidate()
                     }}
                     onError={(message) => showToast({ kind: "error", message })}
                 />

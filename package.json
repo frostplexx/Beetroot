@@ -2,11 +2,11 @@
   "name": "beetroot",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "bun run next dev",
-    "build": "bun run next build",
-    "start": "bun run next start",
-    "lint": "bun run eslint",
+    "dev": "vite dev",
+    "build": "vite build",
+    "start": "node .output/server/index.mjs",
     "postinstall": "bun ./scripts/postinstall.js",
     "test:repository": "bun lib/music/repository/index.ts",
     "test:coverart": "bun lib/music/repository/test-coverart.ts",
@@ -14,7 +14,13 @@
     "clean:all": "bun ./scripts/clean-library.js --with-music"
   },
   "dependencies": {
+    "@fontsource-variable/geist-mono": "^5.2.8",
+    "@fontsource-variable/inter": "^5.2.5",
+    "@fontsource-variable/space-grotesk": "^5.2.5",
     "@tanstack/react-query": "^5.100.14",
+    "@tanstack/react-router": "^1.131.30",
+    "@tanstack/react-router-devtools": "^1.131.30",
+    "@tanstack/react-start": "^1.131.30",
     "@tanstack/react-table": "^8.21.3",
     "chokidar": "^5.0.0",
     "class-variance-authority": "^0.7.1",
@@ -28,8 +34,7 @@
     "lucide": "^1.17.0",
     "lucide-react": "^1.17.0",
     "music-metadata": "^11.12.3",
-    "next": "16.2.6",
-    "next-themes": "^0.4.6",
+    "nitro": "^3.0.0",
     "node-id3": "^0.2.9",
     "radix-ui": "^1.4.3",
     "react": "19.2.4",
@@ -39,17 +44,18 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "tw-animate-css": "^1.4.0",
-    "usehooks-ts": "^3.1.1"
+    "usehooks-ts": "^3.1.1",
+    "vite": "^6.3.6"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.0",
+    "@tailwindcss/vite": "^4.3.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.41",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
-    "eslint": "^9.39.4",
-    "eslint-config-next": "16.2.6",
+    "@vitejs/plugin-react": "^5.0.0",
     "tailwindcss": "^4.3.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite-tsconfig-paths": "^5.1.4"
   }
 }

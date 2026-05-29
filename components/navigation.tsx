@@ -1,8 +1,5 @@
-"use client"
-
 import { Library, Search, Bell } from "lucide-react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { Link, useLocation } from "@tanstack/react-router"
 import { useState, useEffect, useRef } from "react"
 import { Button } from "./ui/button"
 import { Kbd, KbdGroup } from "./ui/kbd"
@@ -11,7 +8,7 @@ import { useLibrarySync } from "@/hooks/use-library-sync"
 import type { SyncLogEntry } from "@/hooks/use-library-sync"
 
 export default function Navigation() {
-    const pathname = usePathname()
+    const pathname = useLocation({ select: (s) => s.pathname })
     const [commandOpen, setCommandOpen] = useState(false)
     const [notifOpen, setNotifOpen] = useState(false)
     const isLibraryActive = pathname === "/" || pathname.startsWith("/library") || pathname.startsWith("/album")
@@ -52,7 +49,7 @@ export default function Navigation() {
                     <div className="flex items-center gap-1.5">
 
                         <Link
-                            href="/"
+                            to="/"
                             className={`${iconButtonClass} flex-shrink-0 ${isLibraryActive ? iconButtonActive : iconButtonInactive}`}
                             aria-label="Library"
                         >

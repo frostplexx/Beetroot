@@ -1,11 +1,9 @@
-"use client"
+import * as React from "react";
 
-import * as React from "react"
-import { ThemeProvider as NextThemesProvider } from "next-themes"
-
-export function ThemeProvider({
-  children,
-  ...props
-}: React.ComponentProps<typeof NextThemesProvider>) {
-  return <NextThemesProvider {...props}>{children}</NextThemesProvider>
+// The app is dark-only (the original next-themes config was
+// defaultTheme="dark" + enableSystem={false}). We keep a tiny provider
+// purely for parity at the call site — the `dark` class is added directly
+// on <html> in the root route.
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+    return <>{children}</>;
 }

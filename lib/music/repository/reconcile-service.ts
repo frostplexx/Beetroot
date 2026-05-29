@@ -1,8 +1,6 @@
-import { revalidateTag } from "next/cache";
 import { globalConfig } from "../../config";
 import Repository from "./index";
 import db from "../database/db";
-import { ALBUMS_CACHE_TAG } from "../database/albums";
 import chokidar from 'chokidar';
 import { EventEmitter } from 'events';
 import * as path from 'path';
@@ -208,18 +206,6 @@ class ReconcileService extends EventEmitter {
             if (result.errors.length > 0) {
                 console.error(`ReconcileService: ${result.errors.length} errors - showing first 5:`);
                 result.errors.slice(0, 5).forEach(err => console.error(`  ${err}`));
-            }
-
-            // Bust the albums RSC cache so the next request sees the new rows
-            // before we notify clients to refresh.
-            if (hasChanges) {
-                try {
-                    revalidateTag(ALBUMS_CACHE_TAG, "max");
-                } catch (e) {
-                    // revalidateTag is request-scoped in some contexts; the
-                    // 60s revalidate window catches reconciles outside requests.
-                    console.debug('[ReconcileService] revalidateTag skipped:', e instanceof Error ? e.message : String(e));
-                }
             }
 
             // Emit completed event

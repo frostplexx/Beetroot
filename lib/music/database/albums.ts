@@ -1,18 +1,14 @@
-import { revalidateTag, unstable_cache } from "next/cache"
 import db from "./db"
 import { decodeRows, decodeRow } from "./utils"
 import { normalizeAlbumString } from "./normalize"
 
+// Kept for call-site compatibility — TanStack Start has no framework cache to
+// invalidate. SQLite reads are sub-ms; the unstable_cache layer never paid for
+// itself, so the cached* wrappers below just forward to their raw versions.
 export const ALBUMS_CACHE_TAG = "albums"
 
 function invalidateAlbumsCache() {
-    try {
-        revalidateTag(ALBUMS_CACHE_TAG, "max")
-    } catch {
-        // revalidateTag throws if called outside a request context (e.g. during
-        // initial reconcile on server boot). The cache will refresh on its own
-        // via the `revalidate: 60` window in those cases.
-    }
+    // no-op
 }
 
 // Cache for schema introspection - loaded once on first use
@@ -154,19 +150,16 @@ export function getAlbumsPaginatedSlim(page: number = 0, pageSize: number = 30, 
     }
 }
 
-// Cached wrappers. Invalidated by `revalidateTag(ALBUMS_CACHE_TAG)` in the
-// write paths and on reconcile completion (see reconcile-service.ts).
-export const getCachedAlbumsPaginatedSlim = unstable_cache(
-    async (page: number, pageSize: number, sort: AlbumSort = "recently-added") => getAlbumsPaginatedSlim(page, pageSize, sort),
-    ["albums-paginated-slim"],
-    { tags: [ALBUMS_CACHE_TAG], revalidate: 60 }
-)
+// Compat aliases: kept so existing call sites don't need touching. The
+// underlying SQLite reads are fast enough that the previous unstable_cache
+// wrapper added more bookkeeping than it saved.
+export const getCachedAlbumsPaginatedSlim = async (
+    page: number,
+    pageSize: number,
+    sort: AlbumSort = "recently-added",
+) => getAlbumsPaginatedSlim(page, pageSize, sort)
 
-export const getCachedAlbumCount = unstable_cache(
-    async () => getAlbumCount(),
-    ["albums-count"],
-    { tags: [ALBUMS_CACHE_TAG], revalidate: 60 }
-)
+export const getCachedAlbumCount = async () => getAlbumCount()
 
 export function getAlbumsPaginated(page: number = 0, pageSize: number = 24): Album[] {
     try {

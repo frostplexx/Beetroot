@@ -1,5 +1,4 @@
 import * as React from "react"
-import Link from "next/link"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -38,7 +37,7 @@ type PaginationLinkProps = {
   isActive?: boolean
   disabled?: boolean
 } & Pick<React.ComponentProps<typeof Button>, "size"> &
-  React.ComponentProps<typeof Link>
+  React.ComponentProps<"a">
 
 function PaginationLink({
   className,
@@ -73,8 +72,7 @@ function PaginationLink({
       size={size}
       className={cn(className)}
     >
-      <Link
-        prefetch
+      <a
         aria-current={isActive ? "page" : undefined}
         data-slot="pagination-link"
         data-active={isActive}

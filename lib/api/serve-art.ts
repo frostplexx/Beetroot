@@ -1,4 +1,3 @@
-import { NextRequest, NextResponse } from "next/server"
 import { promises as fsp } from "fs"
 import path from "path"
 import { createHash } from "crypto"
@@ -105,22 +104,22 @@ function isWithinMusicDir(fullPath: string): boolean {
  * Handles ETag/If-None-Match revalidation.
  */
 export async function serveArtFromPath(
-    request: NextRequest,
+    request: Request,
     fullPath: string,
     sizeParam: string | null,
-): Promise<NextResponse> {
+): Promise<Response> {
     if (!isWithinMusicDir(fullPath)) {
-        return new NextResponse("Forbidden", { status: 403 })
+        return new Response("Forbidden", { status: 403 })
     }
 
     let stat
     try {
         stat = await fsp.stat(fullPath)
     } catch {
-        return new NextResponse("Image not found", { status: 404 })
+        return new Response("Image not found", { status: 404 })
     }
     if (!stat.isFile()) {
-        return new NextResponse("Image not found", { status: 404 })
+        return new Response("Image not found", { status: 404 })
     }
 
     const size = parseSize(sizeParam)
@@ -129,7 +128,7 @@ export async function serveArtFromPath(
     // 304 fast-path
     const ifNoneMatch = request.headers.get("if-none-match")
     if (ifNoneMatch && ifNoneMatch === etag) {
-        return new NextResponse(null, {
+        return new Response(null, {
             status: 304,
             headers: { ETag: etag, "Cache-Control": "public, max-age=31536000" },
         })
@@ -141,7 +140,7 @@ export async function serveArtFromPath(
         // L1: in-memory LRU
         const cached = lruGet(cacheKey)
         if (cached) {
-            return new NextResponse(cached.buf as unknown as BodyInit, {
+            return new Response(cached.buf as unknown as BodyInit, {
                 headers: baseHeaders("image/webp", cached.etag, cached.mtimeMs),
             })
         }
@@ -177,7 +176,7 @@ export async function serveArtFromPath(
         }
 
         const result = await pending
-        return new NextResponse(result.buf as unknown as BodyInit, {
+        return new Response(result.buf as unknown as BodyInit, {
             headers: baseHeaders("image/webp", result.etag, result.mtimeMs),
         })
     }
@@ -186,14 +185,14 @@ export async function serveArtFromPath(
     const ext = path.extname(fullPath).toLowerCase()
     const contentType = CONTENT_TYPE_BY_EXT[ext] || "image/jpeg"
 
-    return new NextResponse(buf as unknown as BodyInit, {
+    return new Response(buf as unknown as BodyInit, {
         headers: baseHeaders(contentType, etag, stat.mtimeMs),
     })
 }
 
-export function notFoundArt(): NextResponse {
+export function notFoundArt(): Response {
     // Tell clients not to slam us if there's no art for this album.
-    return new NextResponse(null, {
+    return new Response(null, {
         status: 404,
         headers: { "Cache-Control": "public, max-age=300" },
     })

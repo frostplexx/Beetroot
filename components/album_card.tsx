@@ -1,8 +1,6 @@
-import Link from "next/link"
+import { Link } from "@tanstack/react-router"
 import { Music2, FileQuestion } from "lucide-react"
 import { cn } from "@/lib/ui/utils"
-import Image from "next/image";
-import { ViewTransition } from "react";
 
 interface AlbumCardData {
     id: number;
@@ -22,32 +20,10 @@ export default function AlbumCard({
     className?: string;
     priority?: boolean;
 }) {
-
-    // Shimmer effect for image placeholder
-    const shimmer = (w: number, h: number) => `
-<svg width="${w}" height="${h}" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-  <defs>
-    <linearGradient id="g">
-      <stop stop-color="#333" offset="20%" />
-      <stop stop-color="#222" offset="50%" />
-      <stop stop-color="#333" offset="70%" />
-    </linearGradient>
-  </defs>
-  <rect width="${w}" height="${h}" fill="#333" />
-  <rect id="r" width="${w}" height="${h}" fill="url(#g)" />
-  <animate xlink:href="#r" attributeName="x" from="-${w}" to="${w}" dur="1s" repeatCount="indefinite"  />
-</svg>`;
-
-    const toBase64 = (str: string) =>
-        typeof window === "undefined"
-            ? Buffer.from(str).toString("base64")
-            : window.btoa(str);
-
-
     return (
         <Link
-            href={`/album/${album.id}`}
-            transitionTypes={['nav-forward']}
+            to="/album/$id"
+            params={{ id: String(album.id) }}
             className={cn(
                 "group block overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] transition-all duration-300 ease-out hover:scale-[1.03] hover:border-white/[0.12] hover:bg-white/[0.04] hover:shadow-[0_8px_30px_-8px_rgba(0,0,0,0.8),0_0_20px_-8px_rgba(232,65,64,0.15)] active:scale-[0.99]",
                 className
@@ -60,20 +36,13 @@ export default function AlbumCard({
                         <span className="mt-2 text-xs text-red-400/70 tracking-wide">Missing</span>
                     </div>
                 ) : album.artpath ? (
-                    <ViewTransition name={`album-${album.id}`} share="morph">
-                        <Image
-                            src={`/api/album/${album.id}/art?size=400`}
-                            alt={`${album.album} by ${album.albumartist}`}
-                            className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
-                            fill
-                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 17vw"
-                            // priority={priority}
-                            quality={75}
-                            preload={true}
-                            placeholder={`data:image/svg+xml;base64,${toBase64(shimmer(700, 475))}`}
-                            decoding="async"
-                        />
-                    </ViewTransition>
+                    <img
+                        src={`/api/album/${album.id}/art?size=400`}
+                        alt={`${album.album} by ${album.albumartist}`}
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
+                        loading={priority ? "eager" : "lazy"}
+                        decoding="async"
+                    />
                 ) : (
                     <div className="flex h-full w-full items-center justify-center text-white/20">
                         <Music2 className="w-16 h-16" />

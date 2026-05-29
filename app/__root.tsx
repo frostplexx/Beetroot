@@ -1,0 +1,109 @@
+import * as React from "react";
+import {
+    createRootRouteWithContext,
+    HeadContent,
+    Outlet,
+    Scripts,
+} from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import appCss from "./globals.css?url";
+import { cn } from "@/lib/ui/utils";
+import Navigation from "@/components/navigation";
+import SystemBanner from "@/components/ui/system-banner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+
+interface RouterContext {
+    queryClient: QueryClient;
+}
+
+export const Route = createRootRouteWithContext<RouterContext>()({
+    head: () => ({
+        meta: [
+            { charSet: "utf-8" },
+            { name: "viewport", content: "width=device-width, initial-scale=1" },
+            { title: "Beetroot — Music Library" },
+            { name: "description", content: "Modern music library with dynamic theming" },
+        ],
+        links: [{ rel: "stylesheet", href: appCss }],
+    }),
+    component: RootLayout,
+});
+
+function RootLayout() {
+    return (
+        <html
+            lang="en"
+            suppressHydrationWarning
+            className={cn("h-full antialiased font-sans dark")}
+        >
+            <head>
+                <HeadContent />
+            </head>
+            <body className="min-h-full flex flex-col bg-[#0a0a0a] text-white noise">
+                {/* Global ambient glow — Raycast-style background blobs */}
+                <div
+                    className="fixed inset-0 pointer-events-none -z-10 overflow-hidden"
+                    aria-hidden
+                >
+                    <div
+                        className="absolute -top-[200px] left-1/2 -translate-x-1/2 w-[900px] h-[700px] rounded-full opacity-[0.055] blur-[140px]"
+                        style={{
+                            background:
+                                "radial-gradient(ellipse, #e84140 0%, #c0392b 40%, transparent 70%)",
+                        }}
+                    />
+                    <div
+                        className="absolute top-[40%] -right-[200px] w-[500px] h-[500px] rounded-full opacity-[0.025] blur-[100px]"
+                        style={{
+                            background:
+                                "radial-gradient(ellipse, #e84140 0%, transparent 70%)",
+                        }}
+                    />
+                    <div
+                        className="absolute bottom-0 left-[10%] w-[400px] h-[400px] rounded-full opacity-[0.02] blur-[120px]"
+                        style={{
+                            background:
+                                "radial-gradient(ellipse, #e84140 0%, transparent 70%)",
+                        }}
+                    />
+                </div>
+                <Providers>
+                    <div className="z-1000">
+                        <SystemBanner
+                            text="You are in Development Mode"
+                            color="bg-orange-500"
+                            size="sm"
+                            show={import.meta.env.DEV}
+                        />
+                    </div>
+                    <Navigation />
+                    <main className="flex-1 relative mt-[75px]">
+                        <Outlet />
+                    </main>
+                </Providers>
+                <Scripts />
+            </body>
+        </html>
+    );
+}
+
+function Providers({ children }: { children: React.ReactNode }) {
+    const [client] = React.useState(
+        () =>
+            new QueryClient({
+                defaultOptions: {
+                    queries: {
+                        staleTime: 60_000,
+                        gcTime: 5 * 60_000,
+                        refetchOnWindowFocus: false,
+                    },
+                },
+            }),
+    );
+
+    return (
+        <QueryClientProvider client={client}>
+            <TooltipProvider>{children}</TooltipProvider>
+        </QueryClientProvider>
+    );
+}

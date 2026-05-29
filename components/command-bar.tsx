@@ -1,8 +1,5 @@
-"use client"
-
 import * as React from "react"
-import { useRouter } from "next/navigation"
-import Image from "next/image"
+import { useRouter } from "@tanstack/react-router"
 import { Album as AlbumIcon, Music, Disc, Upload, FolderOpen, Library, FileQuestion } from "lucide-react"
 import {
   CommandDialog,
@@ -33,13 +30,10 @@ function AlbumArtwork({ albumId, albumName, added, missingSince }: { albumId: nu
       {missingSince ? (
         <FileQuestion className="w-5 h-5 text-red-400/60" />
       ) : (
-        <Image
+        <img
           src={`/api/album/${albumId}/art?size=80&t=${added}`}
           alt={albumName}
-          fill
-          className="object-cover"
-          sizes="40px"
-          unoptimized
+          className="absolute inset-0 w-full h-full object-cover"
         />
       )}
     </div>
@@ -98,7 +92,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
   }, [searchQuery])
 
   const handleSelectAlbum = (albumId: number) => {
-    router.push(`/album/${albumId}`)
+    router.navigate({ to: `/album/${albumId}` })
     onOpenChange(false)
     setSearchQuery("")
   }
@@ -150,7 +144,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
           {showSuggestions ? (
             <>
               <CommandGroup heading="Quick Actions">
-                <CommandItem onSelect={() => router.push("/")} className="py-3">
+                <CommandItem onSelect={() => router.navigate({ to: "/" })} className="py-3">
                   <Library className="mr-3 h-5 w-5 opacity-60" />
                   <span className="text-sm">Browse Library</span>
                 </CommandItem>
