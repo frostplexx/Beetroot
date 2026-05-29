@@ -1,153 +1,170 @@
 import { BucketConfig, globalConfig } from "../../config";
 import * as fs from 'fs';
 import { Item } from "../database";
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import * as path from 'path';
-
-const execFileAsync = promisify(execFile);
+import NodeID3 from 'node-id3';
+import { writeFlacTagsSync } from 'flac-tagger';
+import { writeMp4Tags } from './utils/mp4-tagger';
 
 export type WriteBackMode = 'always' | 'never' | 'missing-only';
 
-// Use system ffmpeg - assumes ffmpeg is installed and in PATH
-const FFMPEG_BIN = 'ffmpeg';
+// == MP3 (ID3v2) Logic ==
+
+function writeTagsMp3(filePath: string, item: Item): boolean {
+    const tags: NodeID3.Tags = {
+        title: item.title || undefined,
+        artist: item.artist || undefined,
+        album: item.album || undefined,
+        performerInfo: item.albumartist || undefined, // TPE2
+        year: item.year ? String(item.year) : undefined,
+        trackNumber: item.track ? (item.tracktotal ? `${item.track}/${item.tracktotal}` : String(item.track)) : undefined,
+        partOfSet: item.disc ? (item.disctotal ? `${item.disc}/${item.disctotal}` : String(item.disc)) : undefined,
+        genre: item.genres?.join('; ') || undefined,
+        composer: item.composers || undefined,
+        comment: item.comments ? { language: 'eng', text: item.comments } : undefined,
+        userDefinedText: [
+            { description: 'MUSICBRAINZ_TRACKID', value: item.mb_trackid || '' },
+            { description: 'MUSICBRAINZ_ALBUMID', value: item.mb_albumid || '' },
+            { description: 'MUSICBRAINZ_ARTISTID', value: item.mb_artistid || '' },
+            { description: 'MUSICBRAINZ_ALBUMARTISTID', value: item.mb_albumartistid || '' },
+            { description: 'MUSICBRAINZ_RELEASEGROUPID', value: item.mb_releasegroupid || '' },
+            { description: 'MUSICBRAINZ_WORKID', value: item.mb_workid || '' },
+            { description: 'ISRC', value: item.isrc || '' },
+            { description: 'BARCODE', value: item.barcode || '' },
+            { description: 'ASIN', value: item.asin || '' },
+            { description: 'ACOUSTID_ID', value: item.acoustid_id || '' },
+            { description: 'CATALOGNUMBER', value: item.catalognum || '' },
+            { description: 'BPM', value: item.bpm ? String(item.bpm) : '' },
+            { description: 'INITIAL_KEY', value: item.initial_key || '' },
+            { description: 'LANGUAGE', value: item.language || '' },
+            { description: 'LABEL', value: item.label || '' },
+            { description: 'MEDIA', value: item.media || '' },
+            { description: 'LYRICS', value: item.lyrics || '' },
+            { description: 'WORK', value: item.work || '' },
+        ].filter(t => t.value !== '')
+    };
+
+    try {
+        const success = NodeID3.write(tags, filePath);
+        return success === true;
+    } catch (error) {
+        console.error(`Error writing MP3 tags to ${filePath}:`, error);
+        throw error;
+    }
+}
+
+// == FLAC (Vorbis Comments) Logic ==
+
+function writeTagsFlac(filePath: string, item: Item): boolean {
+    const tags: Record<string, string> = {};
+    if (item.title) tags.TITLE = item.title;
+    if (item.artist) tags.ARTIST = item.artist;
+    if (item.album) tags.ALBUM = item.album;
+    if (item.albumartist) tags.ALBUMARTIST = item.albumartist;
+    if (item.year) tags.DATE = String(item.year);
+    if (item.track) tags.TRACKNUMBER = String(item.track);
+    if (item.tracktotal) tags.TRACKTOTAL = String(item.tracktotal);
+    if (item.disc) tags.DISCNUMBER = String(item.disc);
+    if (item.disctotal) tags.DISCTOTAL = String(item.disctotal);
+    if (item.genres && item.genres.length > 0) tags.GENRE = item.genres.join('; ');
+    if (item.composers) tags.COMPOSER = item.composers;
+    if (item.comments) tags.COMMENT = item.comments;
+    if (item.mb_trackid) tags.MUSICBRAINZ_TRACKID = item.mb_trackid;
+    if (item.mb_albumid) tags.MUSICBRAINZ_ALBUMID = item.mb_albumid;
+    if (item.mb_artistid) tags.MUSICBRAINZ_ARTISTID = item.mb_artistid;
+    if (item.mb_albumartistid) tags.MUSICBRAINZ_ALBUMARTISTID = item.mb_albumartistid;
+    if (item.mb_releasegroupid) tags.MUSICBRAINZ_RELEASEGROUPID = item.mb_releasegroupid;
+    if (item.mb_workid) tags.MUSICBRAINZ_WORKID = item.mb_workid;
+    if (item.isrc) tags.ISRC = item.isrc;
+    if (item.barcode) tags.BARCODE = item.barcode;
+    if (item.asin) tags.ASIN = item.asin;
+    if (item.acoustid_id) tags.ACOUSTID_ID = item.acoustid_id;
+    if (item.catalognum) tags.CATALOGNUMBER = item.catalognum;
+    if (item.bpm) tags.BPM = String(item.bpm);
+    if (item.initial_key) tags.INITIAL_KEY = item.initial_key;
+    if (item.language) tags.LANGUAGE = item.language;
+    if (item.label) tags.LABEL = item.label;
+    if (item.media) tags.MEDIA = item.media;
+    if (item.lyrics) tags.LYRICS = item.lyrics;
+    if (item.work) tags.WORK = item.work;
+
+    try {
+        writeFlacTagsSync({ vorbisComments: tags }, filePath);
+        return true;
+    } catch (error) {
+        console.error(`Error writing FLAC tags to ${filePath}:`, error);
+        throw error;
+    }
+}
 
 
+// == M4A (MP4 Atoms) Logic ==
 
-// == Write back logic
-
-// Mapping configuration: Item field -> ffmpeg metadata key or transform function
-type MetadataMapping = {
-    [K in keyof Partial<Item>]: string | ((item: Item) => string | null);
-};
-
-const METADATA_MAPPING: MetadataMapping = {
-    // Basic metadata
-    title: 'title',
-    artist: 'artist',
-    album: 'album',
-    albumartist: 'album_artist',
-    year: 'date',
-
-    // Track/disc info (handled specially)
-    track: (item) => {
-        if (item.track === null || item.track === undefined) return null;
-        if (item.tracktotal !== null && item.tracktotal !== undefined) {
-            return `${item.track}/${item.tracktotal}`;
-        }
-        return String(item.track);
-    },
-    disc: (item) => {
-        if (item.disc === null || item.disc === undefined) return null;
-        if (item.disctotal !== null && item.disctotal !== undefined) {
-            return `${item.disc}/${item.disctotal}`;
-        }
-        return String(item.disc);
-    },
-
-    // Additional metadata
-    genres: (item) => item.genres?.join('; ') || null,
-    composers: 'composer',
-    comments: 'comment',
-    grouping: 'grouping',
-    subtitle: 'subtitle',
-
-    // MusicBrainz IDs
-    mb_trackid: 'musicbrainz_trackid',
-    mb_albumid: 'musicbrainz_albumid',
-    mb_artistid: 'musicbrainz_artistid',
-    mb_albumartistid: 'musicbrainz_albumartistid',
-    mb_releasegroupid: 'musicbrainz_releasegroupid',
-    mb_workid: 'musicbrainz_workid',
-
-    // Other identifiers
-    isrc: 'isrc',
-    barcode: 'barcode',
-    asin: 'asin',
-    acoustid_id: 'acoustid_id',
-    catalognum: 'catalog_number',
-
-    // Additional fields
-    bpm: 'bpm',
-    initial_key: 'initial_key',
-    language: 'language',
-    label: 'label',
-    media: 'media',
-    lyrics: 'lyrics',
-    work: 'work',
-};
-
-function buildMetadataArgs(item: Item): string[] {
-    const args: string[] = [];
-
-    // Helper to add metadata if value exists
-    const addMeta = (key: string, value: any) => {
-        if (value !== null && value !== undefined && value !== '') {
-            // Convert value to string and ensure it doesn't contain 'undefined'
-            const strValue = String(value);
-            if (!strValue.includes('undefined')) {
-                args.push('-metadata', `${key}=${strValue}`);
-            }
+async function writeTagsM4A(filePath: string, item: Item): Promise<boolean> {
+    const tags: any = {
+        title: item.title || undefined,
+        artist: item.artist || undefined,
+        album: item.album || undefined,
+        albumArtist: item.albumartist || undefined,
+        year: item.year ? String(item.year) : undefined,
+        track: item.track || undefined,
+        trackTotal: item.tracktotal || undefined,
+        disc: item.disc || undefined,
+        discTotal: item.disctotal || undefined,
+        genre: item.genres?.join('; ') || undefined,
+        composer: item.composers || undefined,
+        comment: item.comments || undefined,
+        lyrics: item.lyrics || undefined,
+        custom: {
+            'MUSICBRAINZ_TRACKID': item.mb_trackid || '',
+            'MUSICBRAINZ_ALBUMID': item.mb_albumid || '',
+            'MUSICBRAINZ_ARTISTID': item.mb_artistid || '',
+            'MUSICBRAINZ_ALBUMARTISTID': item.mb_albumartistid || '',
+            'MUSICBRAINZ_RELEASEGROUPID': item.mb_releasegroupid || '',
+            'MUSICBRAINZ_WORKID': item.mb_workid || '',
+            'ISRC': item.isrc || '',
+            'BARCODE': item.barcode || '',
+            'ASIN': item.asin || '',
+            'ACOUSTID_ID': item.acoustid_id || '',
+            'CATALOGNUMBER': item.catalognum || '',
+            'BPM': item.bpm ? String(item.bpm) : '',
+            'INITIAL_KEY': item.initial_key || '',
+            'LANGUAGE': item.language || '',
+            'LABEL': item.label || '',
+            'MEDIA': item.media || '',
+            'WORK': item.work || '',
         }
     };
 
-    // Process each mapping entry
-    for (const [itemKey, ffmpegKeyOrFn] of Object.entries(METADATA_MAPPING)) {
-        const itemValue = item[itemKey as keyof Item];
-
-        if (typeof ffmpegKeyOrFn === 'function') {
-            // Transform function
-            const result = ffmpegKeyOrFn(item);
-            if (result !== null && result !== undefined) {
-                // Extract the metadata key from the function (use itemKey as fallback)
-                addMeta(itemKey, result);
-            }
-        } else {
-            // Direct mapping - only add if value exists
-            if (itemValue !== null && itemValue !== undefined) {
-                addMeta(ffmpegKeyOrFn, itemValue);
-            }
-        }
-    }
-
-    return args;
-}
-
-async function writeTags(filePath: string, item: Item): Promise<boolean> {
-    // Use same extension as original file so ffmpeg can detect format
-    const ext = filePath.substring(filePath.lastIndexOf('.'));
-    const tempPath = filePath + '.writing' + ext;
-    const metadataArgs = buildMetadataArgs(item);
+    // Remove empty custom tags
+    Object.keys(tags.custom).forEach(key => {
+        if (tags.custom[key] === '') delete tags.custom[key];
+    });
 
     try {
-        // Build ffmpeg command: input file -> copy streams -> add metadata -> output
-        const args = [
-            '-i', filePath,           // Input file
-            '-c', 'copy',             // Copy all streams without re-encoding
-            '-map_metadata', '0',     // Copy existing metadata first
-            ...metadataArgs,          // Add/override with new metadata
-            '-y',                     // Overwrite output file
-            tempPath                  // Output to temp file
-        ];
-
-        await execFileAsync(FFMPEG_BIN, args, {
-            maxBuffer: 10 * 1024 * 1024,
-            timeout: 60_000,  // 60s timeout for metadata-only rewrite
-            killSignal: 'SIGKILL'
-        });
-
-        // Replace original file with temp file
-        fs.renameSync(tempPath, filePath);
+        writeMp4Tags(filePath, tags);
         return true;
     } catch (error) {
-        console.error(`Error writing tags to ${filePath}:`, error);
-        // Clean up temp file if it exists
-        if (fs.existsSync(tempPath)) {
-            fs.unlinkSync(tempPath);
-        }
-        throw error; // Throw to abort import
+        console.error(`Error writing M4A tags to ${filePath}:`, error);
+        throw error;
     }
 }
+
+
+async function writeTags(filePath: string, item: Item): Promise<boolean> {
+    const ext = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
+    
+    if (ext === '.mp3') {
+        return writeTagsMp3(filePath, item);
+    } else if (ext === '.flac') {
+        return writeTagsFlac(filePath, item);
+    } else if (ext === '.m4a' || ext === '.mp4') {
+        return await writeTagsM4A(filePath, item);
+    }
+    
+    return false;
+}
+
 
 function shouldWriteBack(mode: WriteBackMode, item: Item): boolean {
     switch (mode) {
