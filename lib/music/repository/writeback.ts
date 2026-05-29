@@ -11,7 +11,16 @@ export type WriteBackMode = 'always' | 'never' | 'missing-only';
 // == MP3 (ID3v2) Logic ==
 
 function writeTagsMp3(filePath: string, item: Item): boolean {
+    const fileBuffer = fs.readFileSync(filePath);
+
+    // Preserve existing frames we don't manage (e.g. embedded cover art / APIC).
+    // NodeID3.write() replaces the entire ID3 block, so we must carry the image forward.
+    // node-id3 types declare read() as returning Tags, but at runtime it returns false for tagless files
+    const existing = NodeID3.read(fileBuffer) as NodeID3.Tags | false;
+    const existingTags = existing === false ? {} : existing;
+
     const tags: NodeID3.Tags = {
+        ...existingTags,
         title: item.title || undefined,
         artist: item.artist || undefined,
         album: item.album || undefined,
@@ -44,10 +53,21 @@ function writeTagsMp3(filePath: string, item: Item): boolean {
         ].filter(t => t.value !== '')
     };
 
+    // NodeID3.write(tags, Buffer) returns Buffer|Error — it never throws for the buffer overload.
+    const result = NodeID3.write(tags, fileBuffer);
+    if (result instanceof Error) {
+        console.error(`Error writing MP3 tags to ${filePath}:`, result);
+        throw result;
+    }
+
+    // Write atomically: temp file + rename to avoid corruption on crash/full-disk
+    const tmpPath = `${filePath}.tmp`;
     try {
-        const success = NodeID3.write(tags, filePath);
-        return success === true;
+        fs.writeFileSync(tmpPath, result as Buffer);
+        fs.renameSync(tmpPath, filePath);
+        return true;
     } catch (error) {
+        try { fs.unlinkSync(tmpPath); } catch { /* ignore cleanup error */ }
         console.error(`Error writing MP3 tags to ${filePath}:`, error);
         throw error;
     }
@@ -89,7 +109,7 @@ function writeTagsFlac(filePath: string, item: Item): boolean {
     if (item.work) tags.WORK = item.work;
 
     try {
-        writeFlacTagsSync({ vorbisComments: tags }, filePath);
+        writeFlacTagsSync({ tagMap: tags }, filePath);
         return true;
     } catch (error) {
         console.error(`Error writing FLAC tags to ${filePath}:`, error);
@@ -215,7 +235,7 @@ export function computeTargetPath(item: Item): string {
     const nodes = parse((lex(globalConfig.path)))
 
     const clean_music_path = (globalConfig.music_directory.endsWith('/') ? globalConfig.music_directory : globalConfig.music_directory + '/')
-        .replace("~", process.env.HOME || '')  // ensure music_directory ends with '/' and expand ~ to home dir;
+        .replace(/^~/, process.env.HOME || '')  // ensure music_directory ends with '/' and expand ~ to home dir;
 
     // vars available to path template: $albumartist, $album, $track, $title (extend as needed)
     const result = clean_music_path + evaluate(nodes, {
