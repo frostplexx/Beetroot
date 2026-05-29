@@ -72,7 +72,7 @@ export function SongsDataTable<TData, TValue>({
                     onChange={(event) =>
                         table.getColumn("title")?.setFilterValue(event.target.value)
                     }
-                    className="max-w-sm bg-white/[0.06] border-white/10 placeholder:text-white/40 rounded-full transition-all duration-200 focus:bg-white/[0.1] focus:border-white/20"
+                    className="max-w-sm bg-white/[0.06] border-white/10 placeholder:text-white/55 rounded-full transition-all duration-200 focus:bg-white/[0.1] focus:border-white/20"
                 />
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -111,7 +111,7 @@ export function SongsDataTable<TData, TValue>({
                         <TableRow key={headerGroup.id} className="border-white/[0.06] hover:bg-transparent">
                             {headerGroup.headers.map((header) => {
                                 return (
-                                    <TableHead key={header.id} className="text-[10px] uppercase tracking-[0.12em] text-white/50 font-semibold">
+                                    <TableHead key={header.id} className="text-[10px] uppercase tracking-[0.12em] text-white/65 font-semibold">
                                         {header.isPlaceholder
                                             ? null
                                             : flexRender(
@@ -133,7 +133,7 @@ export function SongsDataTable<TData, TValue>({
                                 <SongContextMenu key={row.id} item={item}>
                                     <TableRow
                                         data-state={row.getIsSelected() && "selected"}
-                                        className={`border-white/[0.04] hover:bg-white/[0.04] data-[state=open]:bg-white/[0.06] transition-colors duration-150 ${missing ? "text-white/40" : ""}`}
+                                        className={`border-white/[0.04] hover:bg-white/[0.04] data-[state=open]:bg-white/[0.06] transition-colors duration-150 ${missing ? "text-white/55" : ""}`}
                                     >
                                         {row.getVisibleCells().map((cell) => (
                                             <TableCell key={cell.id}>
@@ -146,7 +146,7 @@ export function SongsDataTable<TData, TValue>({
                         })
                     ) : (
                         <TableRow>
-                            <TableCell colSpan={columns.length} className="h-24 text-center text-white/60">
+                            <TableCell colSpan={columns.length} className="h-24 text-center text-white/75">
                                 No results.
                             </TableCell>
                         </TableRow>

@@ -178,7 +178,7 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
                 <div className="container mx-auto pt-4 pb-2 flex-1 min-h-0 flex flex-col">
                     {total !== 0 && (
                         <div className="w-full mb-4 flex-shrink-0 flex items-center justify-between gap-4">
-                            <p className="text-[11px] uppercase tracking-[0.14em] text-white/30 font-medium">
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-white/55 font-medium">
                                 {total > 0 ? `${albums.length} of ${total.toLocaleString()} albums` : "\u00A0"}
                             </p>
                             <SortSelector sort={sort} onChange={setSort} />
@@ -199,7 +199,7 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
                 </div>
 
                 {!isLoading && total === 0 && (
-                    <div className="text-white/60 gap-4 flex-1 flex flex-col items-center justify-center">
+                    <div className="text-white/75 gap-4 flex-1 flex flex-col items-center justify-center">
                         <FileSearchCorner size={100}/>
                         <p className="text-xl font-bold">No Albums in Library</p>
                     </div>
@@ -286,7 +286,7 @@ function SortSelector({ sort, onChange }: { sort: AlbumSort; onChange: (s: Album
     const options = Object.keys(SORT_LABELS) as AlbumSort[];
     return (
         <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em] font-medium text-white/30 hover:text-white/60 transition-colors outline-none">
+            <DropdownMenuTrigger className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em] font-medium text-white/55 hover:text-white/80 transition-colors outline-none">
                 {SORT_LABELS[sort]}
                 <ChevronDownIcon className="size-3 opacity-60" />
             </DropdownMenuTrigger>

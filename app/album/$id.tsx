@@ -31,7 +31,7 @@ export const Route = createFileRoute("/album/$id")({
     component: AlbumPage,
     notFoundComponent: () => (
         <div className="flex items-center justify-center h-screen">
-            <p className="text-white/60">Album not found</p>
+            <p className="text-white/75">Album not found</p>
         </div>
     ),
 });

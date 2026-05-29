@@ -44,7 +44,7 @@ export default function AlbumCard({
                         decoding="async"
                     />
                 ) : (
-                    <div className="flex h-full w-full items-center justify-center text-white/20">
+                    <div className="flex h-full w-full items-center justify-center text-white/50">
                         <Music2 className="w-16 h-16" />
                     </div>
                 )}
@@ -53,7 +53,7 @@ export default function AlbumCard({
                     <h3 className="font-heading font-semibold text-[13px] leading-tight drop-shadow-lg line-clamp-2 tracking-tight text-white/95">
                         {album.album}
                     </h3>
-                    <p className="text-[11px] text-white/55 drop-shadow-lg line-clamp-1 mt-0.5 tracking-wide">
+                    <p className="text-[11px] text-white/70 drop-shadow-lg line-clamp-1 mt-0.5 tracking-wide">
                         {album.albumartist}
                     </p>
                 </div>

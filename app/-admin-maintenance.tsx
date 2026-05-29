@@ -85,7 +85,7 @@ function CardHeader({
             </div>
             <div>
                 <h2 className="text-lg font-semibold">{title}</h2>
-                <p className="text-sm text-white/60 mt-1">{description}</p>
+                <p className="text-sm text-white/75 mt-1">{description}</p>
             </div>
         </div>
     );
@@ -96,7 +96,7 @@ function Stat({ label, value, tone }: { label: string; value: number | string; t
         tone === "warn" ? "text-amber-300" : tone === "ok" ? "text-emerald-300" : "text-white";
     return (
         <div className="flex flex-col">
-            <span className="text-xs uppercase tracking-wide text-white/40">{label}</span>
+            <span className="text-xs uppercase tracking-wide text-white/75">{label}</span>
             <span className={`text-xl font-semibold ${toneClass}`}>{value}</span>
         </div>
     );
@@ -187,13 +187,13 @@ function DedupCard() {
                     </div>
 
                     {report.dryRun && (
-                        <p className="text-xs text-white/40 mb-3">
+                        <p className="text-xs text-white/75 mb-3">
                             Dry-run preview. Click Merge Duplicates to apply.
                         </p>
                     )}
 
                     {report.groups.length === 0 ? (
-                        <p className="text-sm text-white/50">No duplicates found.</p>
+                        <p className="text-sm text-white/65">No duplicates found.</p>
                     ) : (
                         <ul className="space-y-2">
                             {report.groups.map((g) => (
@@ -213,19 +213,19 @@ function DedupCard() {
                                         <span className="font-medium">
                                             {g.canonicalAlbum ?? "(unknown)"}
                                         </span>
-                                        <span className="text-white/50">
+                                        <span className="text-white/65">
                                             — {g.canonicalArtist ?? "(unknown artist)"}
                                         </span>
-                                        <span className="ml-auto text-xs text-white/40">
+                                        <span className="ml-auto text-xs text-white/75">
                                             {g.key}
                                         </span>
                                     </div>
-                                    <div className="mt-2 ml-6 space-y-1 text-xs text-white/60">
+                                    <div className="mt-2 ml-6 space-y-1 text-xs text-white/75">
                                         {g.merged.map((m) => (
                                             <div key={m.id} className="flex items-center gap-1">
                                                 <ChevronRight className="w-3 h-3" />
                                                 <span>
-                                                    <span className="text-white/40">#{m.id}</span>{" "}
+                                                    <span className="text-white/75">#{m.id}</span>{" "}
                                                     {m.album ?? "(no name)"} —{" "}
                                                     {m.albumartist ?? "(no artist)"}
                                                 </span>
@@ -328,7 +328,7 @@ function RefetchCard() {
             )}
 
             {loading === "run" && (
-                <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.02] p-3 text-sm text-white/70 mb-4">
+                <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.02] p-3 text-sm text-white/85 mb-4">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Running MusicBrainz lookup… this may take a few minutes.
                 </div>
@@ -364,26 +364,26 @@ function RefetchCard() {
                                         ) : d.newAlbumId !== null ? (
                                             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                                         ) : (
-                                            <CheckCircle2 className="w-4 h-4 text-white/40" />
+                                            <CheckCircle2 className="w-4 h-4 text-white/75" />
                                         )}
                                         <span className="font-medium">{filename}</span>
-                                        <span className="ml-auto text-white/40">
+                                        <span className="ml-auto text-white/75">
                                             #{d.itemId}
                                         </span>
                                     </div>
                                     {d.error ? (
                                         <p className="mt-1 ml-6 text-red-300">{d.error}</p>
                                     ) : (
-                                        <div className="mt-1 ml-6 text-white/60 space-y-0.5">
+                                        <div className="mt-1 ml-6 text-white/75 space-y-0.5">
                                             {d.filledFields.length > 0 && (
                                                 <div>
-                                                    <span className="text-white/40">Filled:</span>{" "}
+                                                    <span className="text-white/75">Filled:</span>{" "}
                                                     {d.filledFields.join(", ")}
                                                 </div>
                                             )}
                                             {d.newAlbumId !== null && (
                                                 <div>
-                                                    <span className="text-white/40">Album:</span>{" "}
+                                                    <span className="text-white/75">Album:</span>{" "}
                                                     #{d.oldAlbumId} → #{d.newAlbumId}
                                                 </div>
                                             )}
@@ -397,7 +397,7 @@ function RefetchCard() {
 
             {preview && !report && (
                 <>
-                    <p className="text-sm text-white/60 mb-2">
+                    <p className="text-sm text-white/75 mb-2">
                         {preview.count} item{preview.count === 1 ? "" : "s"} would be probed.
                     </p>
                     {preview.count > 0 && (
@@ -407,18 +407,18 @@ function RefetchCard() {
                                 return (
                                     <li
                                         key={it.id}
-                                        className="text-xs text-white/60 px-2 py-1 rounded hover:bg-white/[0.04]"
+                                        className="text-xs text-white/75 px-2 py-1 rounded hover:bg-white/[0.04]"
                                     >
-                                        <span className="text-white/40">#{it.id}</span>{" "}
-                                        <span className="text-white/80">{filename}</span>
+                                        <span className="text-white/75">#{it.id}</span>{" "}
+                                        <span className="text-white/90">{filename}</span>
                                         {it.title && (
-                                            <span className="text-white/50">
+                                            <span className="text-white/65">
                                                 {" "}
                                                 — {it.title}
                                             </span>
                                         )}
                                         {it.artist && (
-                                            <span className="text-white/40">
+                                            <span className="text-white/75">
                                                 {" "}
                                                 ({it.artist}
                                                 {it.year ? `, ${it.year}` : ""})
@@ -482,7 +482,7 @@ function ImportHeatmapCard() {
             )}
 
             {!data && !error && (
-                <div className="flex items-center gap-2 text-sm text-white/40">
+                <div className="flex items-center gap-2 text-sm text-white/75">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Loading…
                 </div>
@@ -519,7 +519,7 @@ export default function Maintenance() {
         <div className="container mx-auto px-4 py-8 max-w-4xl">
             <div className="mb-8">
                 <h1 className="text-2xl font-bold mb-1">Library Maintenance</h1>
-                <p className="text-sm text-white/60">
+                <p className="text-sm text-white/75">
                     Tools to clean up duplicate albums and re-enrich items with weak metadata.
                 </p>
             </div>
@@ -530,7 +530,7 @@ export default function Maintenance() {
                 <DedupCard />
             </div>
 
-            <div className="mt-8 text-xs text-white/40">
+            <div className="mt-8 text-xs text-white/75">
                 <p>
                     Recommended order: <strong>Refetch</strong> first (fills in missing
                     MusicBrainz IDs), then <strong>Deduplicate</strong> (merges rows that

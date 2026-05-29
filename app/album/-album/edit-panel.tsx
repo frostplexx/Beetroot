@@ -372,7 +372,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                     href={`https://musicbrainz.org/release/${selectedMbRelease.id}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-[10px] text-white/80 hover:text-white hover:underline flex items-center gap-1"
+                                    className="text-[10px] text-white/90 hover:text-white hover:underline flex items-center gap-1"
                                 >
                                     Open <ExternalLink className="w-2.5 h-2.5" />
                                 </a>
@@ -501,8 +501,8 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                                             <span className={cn(
                                                                 "ml-auto font-semibold",
                                                                 release.score >= 90 ? "text-white" :
-                                                                release.score >= 75 ? "text-white/70" :
-                                                                "text-white/50"
+                                                                release.score >= 75 ? "text-white/85" :
+                                                                "text-white/65"
                                                             )}>
                                                                 {release.score}%
                                                             </span>
@@ -809,7 +809,7 @@ function FieldWithSuggestion({
                     <button
                         type="button"
                         onClick={() => onChange(suggestion!)}
-                        className="flex items-center gap-1 text-[10px] text-white/80 hover:text-white font-semibold transition-all duration-150 group shrink-0 active:scale-95"
+                        className="flex items-center gap-1 text-[10px] text-white/90 hover:text-white font-semibold transition-all duration-150 group shrink-0 active:scale-95"
                     >
                         <Sparkles className="w-2.5 h-2.5 transition-transform group-hover:rotate-12" />
                         <span className="max-w-[140px] truncate group-hover:underline underline-offset-2">

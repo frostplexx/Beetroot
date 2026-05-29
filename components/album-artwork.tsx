@@ -70,7 +70,7 @@ export default function AlbumArtwork({
                 />
             ) : (
                 <div className="w-full h-full flex items-center justify-center bg-white/[0.04] rounded-2xl border border-white/[0.06]">
-                    <Music2 className="w-20 h-20 text-white/40" />
+                    <Music2 className="w-20 h-20 text-white/60" />
                 </div>
             )}
         </div>

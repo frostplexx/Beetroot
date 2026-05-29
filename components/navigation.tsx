@@ -40,7 +40,7 @@ export default function Navigation() {
 
     const iconButtonClass = "p-2 rounded-full transition-all duration-200 active:scale-90"
     const iconButtonActive = "text-white bg-white/15"
-    const iconButtonInactive = "text-white/50 hover:text-white hover:bg-white/8 transition-colors"
+    const iconButtonInactive = "text-white/65 hover:text-white hover:bg-white/8 transition-colors"
 
     return (
         <div className="mt-3 fixed w-screen flex justify-center pointer-events-none z-50">
@@ -57,12 +57,12 @@ export default function Navigation() {
                         </Link>
 
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/35 pointer-events-none z-10" />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/55 pointer-events-none z-10" />
                             <Button
                                 onClick={() => setCommandOpen(true)}
                                 className="h-8 w-68 pl-9 pr-3 text-sm bg-white/[0.05] border border-white/[0.07] rounded-xl text-white hover:bg-white/[0.08] hover:border-white/[0.14] hover:shadow-[0_0_16px_-4px_rgba(232,65,64,0.2)] transition-all duration-150 active:scale-[0.99] cursor-text"
                             >
-                                <span className="text-white/40 flex-1 flex items-center gap-2 font-normal text-[13px]">
+                                <span className="text-white/60 flex-1 flex items-center gap-2 font-normal text-[13px]">
                                     Search albums, artists...
                                     <span className="flex-1" />
                                     <KbdGroup>
@@ -88,9 +88,9 @@ export default function Navigation() {
                             {notifOpen && (
                                 <div className="absolute right-0 mt-2 w-80 bg-[#0e0e0e]/95 backdrop-blur-2xl border border-white/[0.08] rounded-2xl shadow-[0_8px_40px_-8px_rgba(0,0,0,0.9),0_0_60px_-20px_rgba(232,65,64,0.08)] animate-in fade-in slide-in-from-top-2 duration-200 z-50">
                                     <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
-                                        <p className="text-[11px] uppercase tracking-[0.14em] text-white/35 font-medium">Activity</p>
+                                        <p className="text-[11px] uppercase tracking-[0.14em] text-white/55 font-medium">Activity</p>
                                         {syncState.isReconciling && (
-                                            <span className="flex items-center gap-1.5 text-[11px] text-white/40">
+                                            <span className="flex items-center gap-1.5 text-[11px] text-white/60">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                                                 Scanning
                                             </span>
@@ -99,7 +99,7 @@ export default function Navigation() {
 
                                     <div className="max-h-72 overflow-y-auto py-1">
                                         {syncState.log.length === 0 ? (
-                                            <p className="text-sm text-white/25 px-4 py-6 text-center">No recent activity</p>
+                                            <p className="text-sm text-white/55 px-4 py-6 text-center">No recent activity</p>
                                         ) : (
                                             [...syncState.log].reverse().map(entry => (
                                                 <LogRow key={entry.id} entry={entry} />
@@ -124,14 +124,14 @@ function LogRow({ entry }: { entry: SyncLogEntry }) {
                 entry.type === "completed" ? "bg-emerald-400/70" :
                     "bg-white/20"
 
-    const textColor = entry.type === "error" ? "text-red-400" : "text-white/70"
+    const textColor = entry.type === "error" ? "text-red-400" : "text-white/85"
 
     return (
         <div className="flex items-start gap-3 px-4 py-2.5">
             <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${dotColor}`} />
             <div className="flex-1 min-w-0">
                 <p className={`text-[13px] leading-snug ${textColor}`}>{entry.message}</p>
-                <p className="text-[11px] text-white/25 mt-0.5">
+                <p className="text-[11px] text-white/55 mt-0.5">
                     {new Date(entry.timestamp).toLocaleTimeString()}
                 </p>
             </div>

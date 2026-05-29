@@ -91,19 +91,19 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                     <span>{album.albumartist}</span>
                                     {album.year && (
                                         <>
-                                            <span className="text-white/40">•</span>
+                                            <span className="text-white/55">•</span>
                                             <span>{album.year}</span>
                                         </>
                                     )}
                                     {album.total_tracks && (
                                         <>
-                                            <span className="text-white/40">•</span>
+                                            <span className="text-white/55">•</span>
                                             <span>{album.total_tracks} songs</span>
                                         </>
                                     )}
                                     {totalMinutes > 0 && (
                                         <>
-                                            <span className="text-white/40">•</span>
+                                            <span className="text-white/55">•</span>
                                             <span>{totalMinutes} min</span>
                                         </>
                                     )}
@@ -112,7 +112,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                 <div className="flex flex-wrap gap-6">
                                     {album.country && (
                                         <div className="flex flex-col gap-1.5">
-                                            <label className="text-[10px] uppercase tracking-[0.14em] text-white/30 font-medium">
+                                            <label className="text-[10px] uppercase tracking-[0.14em] text-white/55 font-medium">
                                                 Country
                                             </label>
                                             <span className="text-xs font-semibold text-white/90">{album.country}</span>
@@ -120,7 +120,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                     )}
                                     {album.label && (
                                         <div className="flex flex-col gap-1.5">
-                                            <label className="text-[10px] uppercase tracking-[0.14em] text-white/30 font-medium">
+                                            <label className="text-[10px] uppercase tracking-[0.14em] text-white/55 font-medium">
                                                 Label
                                             </label>
                                             <span className="text-xs font-semibold text-white/90">{album.label}</span>
@@ -133,7 +133,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                         {genres.map((genre) => (
                                             <span
                                                 key={genre}
-                                                className="py-1 px-3 bg-white/[0.05] border border-white/[0.08] backdrop-blur-md rounded-full text-xs font-medium text-white/70 hover:bg-white/[0.10] hover:border-white/[0.15] hover:text-white hover:scale-105 active:scale-95 transition-all duration-200 cursor-default"
+                                                className="py-1 px-3 bg-white/[0.05] border border-white/[0.08] backdrop-blur-md rounded-full text-xs font-medium text-white/85 hover:bg-white/[0.10] hover:border-white/[0.15] hover:text-white hover:scale-105 active:scale-95 transition-all duration-200 cursor-default"
                                             >
                                                 {genre}
                                             </span>

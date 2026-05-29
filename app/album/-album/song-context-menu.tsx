@@ -144,13 +144,13 @@ function MoveToAlbumDialog({
                 </DialogHeader>
 
                 <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/65" />
                     <Input
                         autoFocus
                         placeholder="Search albums..."
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        className="pl-9 bg-white/10 border-white/20 placeholder:text-white/40"
+                        className="pl-9 bg-white/10 border-white/20 placeholder:text-white/75"
                     />
                 </div>
 
@@ -163,12 +163,12 @@ function MoveToAlbumDialog({
 
                 <div className="max-h-80 overflow-y-auto -mx-1">
                     {loading && albums.length === 0 ? (
-                        <div className="flex items-center justify-center py-8 text-sm text-white/50">
+                        <div className="flex items-center justify-center py-8 text-sm text-white/65">
                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                             Searching…
                         </div>
                     ) : albums.length === 0 ? (
-                        <div className="py-8 text-center text-sm text-white/50">
+                        <div className="py-8 text-center text-sm text-white/65">
                             No albums found.
                         </div>
                     ) : (
@@ -202,18 +202,18 @@ function MoveToAlbumDialog({
                                                 <div className="text-sm font-medium truncate">
                                                     {album.album}
                                                 </div>
-                                                <div className="text-xs text-white/50 truncate">
+                                                <div className="text-xs text-white/65 truncate">
                                                     {album.albumartist}
                                                     {album.year ? ` · ${album.year}` : ""}
                                                 </div>
                                             </div>
                                             {isCurrent && (
-                                                <span className="text-xs text-white/40 shrink-0">
+                                                <span className="text-xs text-white/75 shrink-0">
                                                     Current
                                                 </span>
                                             )}
                                             {isMoving && (
-                                                <Loader2 className="w-4 h-4 animate-spin text-white/60" />
+                                                <Loader2 className="w-4 h-4 animate-spin text-white/75" />
                                             )}
                                         </button>
                                     </li>
@@ -294,7 +294,7 @@ function ConfirmDeleteDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                <label className="flex items-start gap-2 text-sm text-white/70 cursor-pointer">
+                <label className="flex items-start gap-2 text-sm text-white/85 cursor-pointer">
                     <input
                         type="checkbox"
                         checked={deleteFile}
@@ -303,7 +303,7 @@ function ConfirmDeleteDialog({
                     />
                     <span>
                         Also delete the file from disk
-                        <div className="text-xs text-white/40 mt-0.5">
+                        <div className="text-xs text-white/75 mt-0.5">
                             Permanently removes <code className="font-mono">{item.path}</code>
                         </div>
                     </span>
@@ -374,7 +374,7 @@ function InfoDialog({
                 <dl className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-1.5 text-sm">
                     {rows.map(([k, v]) => (
                         <React.Fragment key={k}>
-                            <dt className="text-white/50">{k}</dt>
+                            <dt className="text-white/65">{k}</dt>
                             <dd className="text-white/90 min-w-0">{v}</dd>
                         </React.Fragment>
                     ))}
