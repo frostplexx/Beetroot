@@ -35,7 +35,7 @@ export default function AlbumArtwork({
 
     return (
         <div
-            className="w-full md:w-72 aspect-square perspective-1000"
+            className="w-full md:w-67 aspect-square perspective-1000"
             onMouseMove={handleMouseMove}
             onMouseEnter={() => setIsHovering(true)}
             onMouseLeave={handleMouseLeave}
@@ -60,8 +60,8 @@ export default function AlbumArtwork({
                             ? "transform 0.1s ease-out"
                             : "transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
                     }}
-                    width={800}
-                    height={800}
+                    width={500}
+                    height={500}
                 />
             ) : (
                 <div className="w-full h-full flex items-center justify-center bg-white/[0.04] rounded-2xl border border-white/[0.06]">

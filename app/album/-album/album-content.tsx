@@ -9,6 +9,7 @@ import { Pencil, Eye } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EditPanel } from "./edit-panel"
 import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface AlbumContentProps {
     album: Album
@@ -24,12 +25,12 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
     const [isSaving, setIsSaving] = React.useState(false)
 
     return (
-        <>
+        <div className="absolute inset-0 overflow-hidden">
             <DynamicBackground artUrl={artUrl} />
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="h-screen flex flex-col">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
                 {/* Unified Header Bar */}
-                <div className="container mx-auto px-4 pt-6 shrink-0">
-                    <div className="flex items-center justify-between gap-4 mb-4 transition-all duration-200">
+                <div className="container mx-auto shrink-0">
+                    <div className="flex items-center justify-between mb-2 transition-all duration-200">
                         <div className="flex items-center gap-4 min-w-0">
                             <BackLink />
                             {activeTab === "edit" && (
@@ -39,7 +40,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                 </div>
                             )}
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center  shrink-0">
                             <TabsList>
                                 <TabsTrigger value="view" className="gap-2">
                                     <Eye className="w-4 h-4" />
@@ -69,8 +70,8 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                     </div>
                 </div>
 
-                <TabsContent value="view" className="flex-1 overflow-auto mt-0">
-                    <div className="container mx-auto px-4 pb-6">
+                <TabsContent value="view" className="flex-1 flex flex-col overflow-hidden mt-0">
+                    <div className="container mx-auto px-4 pb-4 shrink-0">
                         <div className="flex flex-col md:flex-row gap-8 items-start">
                             <AlbumArtwork
                                 artUrl={artUrl}
@@ -84,7 +85,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                     <h1 className="font-heading text-4xl md:text-5xl font-black leading-none tracking-tight">
                                         {album.album}
                                     </h1>
-                                    </div>
+                                </div>
 
                                 <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-base">
                                     <span>{album.albumartist}</span>
@@ -141,10 +142,10 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                 )}
                             </div>
                         </div>
+                    </div>
 
-                        <div className="mt-12">
-                            <SongsDataTable columns={columns} data={songs} totalTracks={album.total_tracks} />
-                        </div>
+                    <div className="flex-1 min-h-0 flex flex-col container mx-auto">
+                        <SongsDataTable columns={columns} data={songs} />
                     </div>
                 </TabsContent>
 
@@ -158,6 +159,6 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                     />
                 </TabsContent>
             </Tabs>
-        </>
+        </div>
     )
 }

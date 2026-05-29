@@ -39,7 +39,7 @@ function RootLayout() {
             <head>
                 <HeadContent />
             </head>
-            <body className="min-h-full flex flex-col bg-[#0a0a0a] text-white noise">
+            <body className="h-screen flex flex-col bg-[#0a0a0a] text-white noise overflow-hidden">
                 {/* Global ambient glow — Raycast-style background blobs */}
                 <div
                     className="fixed inset-0 pointer-events-none -z-10 overflow-hidden"
@@ -69,7 +69,7 @@ function RootLayout() {
                 </div>
                 <Providers>
                     <Navigation />
-                    <main className="flex-1 relative mt-[75px]">
+                    <main className="flex-1 relative mt-[75px] overflow-y-auto">
                         <Outlet />
                     </main>
                 </Providers>

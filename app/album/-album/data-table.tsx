@@ -30,6 +30,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { SongContextMenu } from "./song-context-menu"
 import type { Item } from "@/lib/music/database"
 
@@ -63,8 +64,8 @@ export function SongsDataTable<TData, TValue>({
     })
 
     return (
-        <div className="space-y-4">
-            <div className="flex items-center gap-2">
+        <div className="flex flex-col h-full space-y-4 overflow-hidden">
+            <div className="flex items-center gap-2 shrink-0">
                 <Input
                     placeholder="Filter songs..."
                     value={(table.getColumn("title")?.getFilterValue() as string) ?? ""}
@@ -103,57 +104,57 @@ export function SongsDataTable<TData, TValue>({
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
-            <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-md">
-                <Table>
-                    <TableHeader>
-                        {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow key={headerGroup.id} className="border-white/[0.06] hover:bg-transparent">
-                                {headerGroup.headers.map((header) => {
-                                    return (
-                                        <TableHead key={header.id} className="text-[10px] uppercase tracking-[0.12em] text-white/50 font-semibold">
-                                            {header.isPlaceholder
-                                                ? null
-                                                : flexRender(
-                                                    header.column.columnDef.header,
-                                                    header.getContext()
-                                                )}
-                                        </TableHead>
-                                    )
-                                })}
-                            </TableRow>
-                        ))}
-                    </TableHeader>
-                    <TableBody>
-                        {table.getRowModel().rows?.length ? (
-                            table.getRowModel().rows.map((row) => {
-                                const item = row.original as Item
-                                const missing = item.missing_since != null
+
+            <Table>
+                <TableHeader className="sticky top-0 bg-zinc-950/80 backdrop-blur-md z-10">
+                    {table.getHeaderGroups().map((headerGroup) => (
+                        <TableRow key={headerGroup.id} className="border-white/[0.06] hover:bg-transparent">
+                            {headerGroup.headers.map((header) => {
                                 return (
-                                    <SongContextMenu key={row.id} item={item}>
-                                        <TableRow
-                                            data-state={row.getIsSelected() && "selected"}
-                                            className={`border-white/[0.04] hover:bg-white/[0.04] data-[state=open]:bg-white/[0.06] transition-colors duration-150 ${missing ? "text-white/40" : ""}`}
-                                        >
-                                            {row.getVisibleCells().map((cell) => (
-                                                <TableCell key={cell.id}>
-                                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                                </TableCell>
-                                            ))}
-                                        </TableRow>
-                                    </SongContextMenu>
+                                    <TableHead key={header.id} className="text-[10px] uppercase tracking-[0.12em] text-white/50 font-semibold">
+                                        {header.isPlaceholder
+                                            ? null
+                                            : flexRender(
+                                                header.column.columnDef.header,
+                                                header.getContext()
+                                            )}
+                                    </TableHead>
                                 )
-                            })
-                        ) : (
-                            <TableRow>
-                                <TableCell colSpan={columns.length} className="h-24 text-center text-white/60">
-                                    No results.
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
-            <div className="text-xs uppercase tracking-[0.12em] text-white/50 font-medium">
+                            })}
+                        </TableRow>
+                    ))}
+                </TableHeader>
+                <TableBody>
+                    {table.getRowModel().rows?.length ? (
+                        table.getRowModel().rows.map((row) => {
+                            const item = row.original as Item
+                            const missing = item.missing_since != null
+                            return (
+                                <SongContextMenu key={row.id} item={item}>
+                                    <TableRow
+                                        data-state={row.getIsSelected() && "selected"}
+                                        className={`border-white/[0.04] hover:bg-white/[0.04] data-[state=open]:bg-white/[0.06] transition-colors duration-150 ${missing ? "text-white/40" : ""}`}
+                                    >
+                                        {row.getVisibleCells().map((cell) => (
+                                            <TableCell key={cell.id}>
+                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                </SongContextMenu>
+                            )
+                        })
+                    ) : (
+                        <TableRow>
+                            <TableCell colSpan={columns.length} className="h-24 text-center text-white/60">
+                                No results.
+                            </TableCell>
+                        </TableRow>
+                    )}
+                </TableBody>
+            </Table>
+
+            <div className="shrink-0 text-xs uppercase tracking-[0.12em] text-white/50 font-medium">
                 {table.getFilteredRowModel().rows.length} song{table.getFilteredRowModel().rows.length === 1 ? '' : 's'}
             </div>
         </div>
