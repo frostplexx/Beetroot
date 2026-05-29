@@ -334,7 +334,7 @@ function runMigrations(db: Database): void {
         }
 
         // Record migration
-        db.run('INSERT INTO migrations (name, table_name) VALUES (?, ?)', migrationName, 'albums');
+        db.prepare('INSERT INTO migrations (name, table_name) VALUES (?, ?)').run( migrationName, 'albums');
 
         console.log(`Migration complete: backfilled ${albums.length} albums with normalized values`);
     }
@@ -346,7 +346,7 @@ function runMigrations(db: Database): void {
     ).get(rgIndexMigration, 'albums');
     if (!rgIndexExists) {
         db.run('CREATE INDEX IF NOT EXISTS album_mb_releasegroupid ON albums(mb_releasegroupid)');
-        db.run('INSERT INTO migrations (name, table_name) VALUES (?, ?)', rgIndexMigration, 'albums');
+        db.prepare('INSERT INTO migrations (name, table_name) VALUES (?, ?)').run( rgIndexMigration, 'albums');
     }
 
     // Migration: Create FTS tables for full-text search
@@ -442,7 +442,7 @@ function runMigrations(db: Database): void {
         `);
 
         // Record migration
-        db.run('INSERT INTO migrations (name, table_name) VALUES (?, ?)', ftsMigration, 'fts');
+        db.prepare('INSERT INTO migrations (name, table_name) VALUES (?, ?)').run( ftsMigration, 'fts');
 
         console.log('Migration complete: FTS tables created and populated');
     }
@@ -551,7 +551,7 @@ function runMigrations(db: Database): void {
         `);
 
         // Record migration
-        db.run('INSERT INTO migrations (name, table_name) VALUES (?, ?)', ftsUnicodeMigration, 'fts');
+        db.prepare('INSERT INTO migrations (name, table_name) VALUES (?, ?)').run( ftsUnicodeMigration, 'fts');
 
         console.log('Migration complete: FTS tables rebuilt with unicode61 tokenizer');
     }

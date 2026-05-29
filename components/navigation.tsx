@@ -50,6 +50,7 @@ export default function Navigation() {
 
                         <Link
                             to="/"
+                            search={{ page: 1, sort: "recently-added" as const }}
                             className={`${iconButtonClass} flex-shrink-0 ${isLibraryActive ? iconButtonActive : iconButtonInactive}`}
                             aria-label="Library"
                         >

@@ -79,7 +79,7 @@ export const Route = createFileRoute("/api/items/$id")({
                     let previousAlbumDeleted = false;
                     db.transaction(() => {
                         db.prepare("UPDATE items SET album_id = ? WHERE id = ?").run(
-                            body.album_id,
+                            body.album_id!,
                             itemId,
                         );
                         if (previousAlbumId !== null) {

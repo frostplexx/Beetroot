@@ -108,7 +108,7 @@ export const Route = createFileRoute("/api/album/$id")({
                                 year: album.year,
                                 country: album.country,
                                 label: album.label,
-                                genres: album.genres,
+                                genres: album.genres ? album.genres.split(",").map(g => g.trim()) : null,
                             },
                         }));
 

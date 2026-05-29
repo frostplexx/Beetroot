@@ -76,6 +76,8 @@ export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
         data: { ...validItems[0].data! },
         sources: {} // D5: Track which source provided each field
     };
+    // merged.data is guaranteed non-null here (validItems filtered to data != null above)
+    const mergedData = merged.data as Item;
 
     // D5: Helper to record which source provided a field
     const recordSource = (key: string, sourceName: string) => {
@@ -89,7 +91,7 @@ export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
     };
 
     // Initialize sources for all fields from the highest confidence source
-    for (const key of Object.keys(merged.data!)) {
+    for (const key of Object.keys(mergedData)) {
         recordSource(key, merged.sourceName);
     }
 
@@ -111,7 +113,7 @@ export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
         // Special handling for genres
         if (key === 'genres') {
             const genresResult = resolveGenres(validItems);
-            merged.data[key] = genresResult;
+            mergedData[key] = genresResult;
             // D5: Track source for genres - use the first source that has genres
             const genresSource = validItems.find(s => s.data?.genres != null);
             if (genresSource) {
@@ -129,7 +131,7 @@ export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
 
         // If only one source has this field, use it
         if (valuesWithSource.length === 1) {
-            merged.data[key] = valuesWithSource[0].value;
+            mergedData[key] = valuesWithSource[0].value;
             recordSource(key, valuesWithSource[0].sourceName); // D5
             continue;
         }
@@ -147,24 +149,24 @@ export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
                 const localTagsSource = validItems.find(s => s.sourceName === 'LocalTagsSource');
                 const localTagsValue = localTagsSource?.data?.[key];
                 if (localTagsValue != null) {
-                    merged.data[key] = localTagsValue;
+                    mergedData[key] = localTagsValue;
                     recordSource(key, 'LocalTagsSource'); // D5
                 } else {
                     // Fallback to max confidence if LocalTags doesn't have it
                     // validItems is already sorted by confidence descending, so just take first
-                    merged.data[key] = valuesWithSource[0].value;
+                    mergedData[key] = valuesWithSource[0].value;
                     recordSource(key, valuesWithSource[0].sourceName); // D5
                 }
             } else {
                 // For other numbers: pick by max confidence
                 // validItems is already sorted by confidence descending, so just take first
-                merged.data[key] = valuesWithSource[0].value;
+                mergedData[key] = valuesWithSource[0].value;
                 recordSource(key, valuesWithSource[0].sourceName); // D5
             }
         } else if (valueType === 'boolean') {
             // For booleans: pick by max confidence
             // validItems is already sorted by confidence descending, so just take first
-            merged.data[key] = valuesWithSource[0].value;
+            mergedData[key] = valuesWithSource[0].value;
             recordSource(key, valuesWithSource[0].sourceName); // D5
         } else if (valueType === 'array') {
             // Ordered arrays (credits) should preserve order from highest confidence source
@@ -178,14 +180,14 @@ export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
             if (orderedArrayFields.includes(key)) {
                 // For ordered arrays: pick the whole array from the highest confidence source
                 // validItems is already sorted by confidence descending, so just take first
-                merged.data[key] = valuesWithSource[0].value;
+                mergedData[key] = valuesWithSource[0].value;
                 recordSource(key, valuesWithSource[0].sourceName); // D5
             } else {
                 // For unordered arrays: union all values from sources with confidence >= 0.65
                 const filteredValues = valuesWithSource.filter(v => v.confidence >= 0.65);
                 const allArrayValues = filteredValues
                     .flatMap(v => Array.isArray(v.value) ? v.value : []);
-                merged.data[key] = [...new Set(allArrayValues)];
+                mergedData[key] = [...new Set(allArrayValues)];
                 // D5: For unions, record the first high-confidence source
                 if (filteredValues.length > 0) {
                     recordSource(key, filteredValues[0].sourceName);
@@ -199,7 +201,7 @@ export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
 
             if (stringValues.length === 0) continue;
             if (stringValues.length === 1) {
-                merged.data[key] = stringValues[0];
+                mergedData[key] = stringValues[0];
                 recordSource(key, valuesWithSource[0].sourceName); // D5
                 continue;
             }
@@ -207,7 +209,7 @@ export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
             // Check if all values are identical
             const uniqueValues = new Set(stringValues);
             if (uniqueValues.size === 1) {
-                merged.data[key] = stringValues[0];
+                mergedData[key] = stringValues[0];
                 recordSource(key, valuesWithSource[0].sourceName); // D5
                 continue;
             }
@@ -224,7 +226,7 @@ export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
                     typeof v.value === 'string' && (v.value as string).trim() !== ''
                 );
                 if (firstNonEmpty) {
-                    merged.data[key] = firstNonEmpty.value;
+                    mergedData[key] = firstNonEmpty.value;
                     recordSource(key, firstNonEmpty.sourceName); // D5
                 }
                 continue;
@@ -255,14 +257,14 @@ export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
                     typeof v.value === 'string' && (v.value as string).trim() !== ''
                 );
                 if (firstNonEmpty) {
-                    merged.data[key] = firstNonEmpty.value;
+                    mergedData[key] = firstNonEmpty.value;
                     recordSource(key, firstNonEmpty.sourceName); // D5
                 }
             }
         } else {
             // For other types (objects, etc.), pick by max confidence
             // validItems is already sorted by confidence descending, so just take first
-            merged.data[key] = valuesWithSource[0].value;
+            mergedData[key] = valuesWithSource[0].value;
             recordSource(key, valuesWithSource[0].sourceName); // D5
         }
     }
@@ -270,7 +272,7 @@ export function mergeData<T extends SourceResult>(items: T[]): MergedResult {
     // Second pass: resolve conflicts once for each conflicted key
     for (const key of conflictKeys) {
         const result = resolveConflict(key, validItems);
-        merged.data[key] = result.value;
+        mergedData[key] = result.value;
         // D5: Record source from conflict resolution
         if (result.sourceName) {
             recordSource(key, result.sourceName);
@@ -428,11 +430,11 @@ function resolveGenres(sources: SourceResult[]): string[] {
             }
             genresWithSource.push(...value.map(g => ({ genre: g, confidence: source.confidence })));
             useAllSources = false;
-        } else if (typeof value === 'string' && value.trim().length > 0) {
+        } else if (typeof (value as any) === 'string' && (value as unknown as string).trim().length > 0) {
             if (DEBUG_MERGE) {
                 console.log(`  [${source.sourceName}] genres: ${value}`);
             }
-            genresWithSource.push(...(value as string).split(',').map(g => ({ genre: g.trim(), confidence: source.confidence })));
+            genresWithSource.push(...(value as unknown as string).split(',').map(g => ({ genre: g.trim(), confidence: source.confidence })));
             useAllSources = false;
         }
     }

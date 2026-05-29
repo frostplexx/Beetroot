@@ -29,7 +29,7 @@ export function BackLink() {
     }
 
     return (
-        <Link to="/" className={className}>
+        <Link to="/" search={{ page: 1, sort: "recently-added" as const }} className={className}>
             <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
             Back
         </Link>

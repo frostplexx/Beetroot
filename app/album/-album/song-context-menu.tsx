@@ -417,7 +417,7 @@ export function SongContextMenu({
     const handleSourceAlbumDeleted = (previousAlbumId: number | null) => {
         if (previousAlbumId == null) return;
         if (pathname?.startsWith(`/album/${previousAlbumId}`)) {
-            router.navigate({ to: "/" });
+            router.navigate({ to: "/", search: { page: 1, sort: "recently-added" as const } });
         }
     };
 

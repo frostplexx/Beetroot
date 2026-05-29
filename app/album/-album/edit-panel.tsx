@@ -62,7 +62,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
     const [formData, setFormData] = React.useState({
         album: album.album,
         albumartist: album.albumartist || "",
-        year: album.year || "",
+        year: album.year ? String(album.year) : "",
         country: album.country || "",
         label: album.label || "",
         genres: album.genres || "",
@@ -396,7 +396,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                             <Button
                                 type="button"
                                 size="sm"
-                                onClick={searchMusicBrainz}
+                                onClick={() => searchMusicBrainz()}
                                 disabled={loadingMb}
                                 className="shrink-0 h-8 w-8 p-0 transition-all duration-150 active:scale-90"
                             >

@@ -9,7 +9,7 @@ import { globalConfig } from "../../config";
 const FFMPEG_BIN = 'ffmpeg';
 
 // Per-album lock to prevent concurrent cover art operations on same album
-const albumLocks = new Map<number, Promise<void>>();
+const albumLocks = new Map<number, Promise<unknown>>();
 
 async function withAlbumLock<T>(albumId: number, fn: () => Promise<T>): Promise<T> {
     const prev = albumLocks.get(albumId) ?? Promise.resolve();
@@ -240,7 +240,7 @@ async function extractEmbeddedCoverArt(filePath: string): Promise<{ hasArt: bool
             // Return the first (usually best quality) picture
             return {
                 hasArt: true,
-                buffer: metadata.common.picture[0].data
+                buffer: Buffer.from(metadata.common.picture[0].data)
             };
         }
         return { hasArt: false, buffer: null };

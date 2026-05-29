@@ -1,7 +1,7 @@
 import { globalConfig } from "../../config";
 import Repository from "./index";
 import db from "../database/db";
-import chokidar from 'chokidar';
+import chokidar, { type FSWatcher } from 'chokidar';
 import { EventEmitter } from 'events';
 import * as path from 'path';
 
@@ -23,7 +23,7 @@ class ReconcileService extends EventEmitter {
     private currentProgress: any = null; // Live progress while reconciling
     private currentRunStart: number | null = null;
     private runCounter: number = 0; // Increments after every completed/errored run
-    private watcher: chokidar.FSWatcher | null = null;
+    private watcher: FSWatcher | null = null;
     private debounceTimeout: NodeJS.Timeout | null = null;
 
     private constructor() {
@@ -92,7 +92,7 @@ class ReconcileService extends EventEmitter {
 
         // Only watch for 'add' events (new files)
         // Ignore: addDir, unlink, unlinkDir, change (these are internal operations)
-        this.watcher.on('add', (filePath) => {
+        this.watcher.on('add', (filePath: string) => {
             // Only trigger for music files
             const musicExtensions = ['.flac', '.mp3', '.m4a', '.ogg', '.opus', '.wav', '.aiff', '.ape', '.wv'];
             const ext = path.extname(filePath).toLowerCase();

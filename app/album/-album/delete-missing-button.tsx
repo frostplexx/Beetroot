@@ -39,7 +39,7 @@ export function DeleteAlbumButton({ albumId, albumName, isMissing }: DeleteAlbum
                 throw new Error(data?.error || "Failed to delete album")
             }
             setOpen(false)
-            router.navigate({ to: "/" })
+            router.navigate({ to: "/", search: { page: 1, sort: "recently-added" as const } })
             router.invalidate()
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to delete album")

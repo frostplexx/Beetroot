@@ -88,12 +88,11 @@ export class LocalTagsSource extends DataSource {
     }
 
     private parseDate(dateString: string | undefined, item: Item): { month?: number; day?: number } {
-        if (!dateString) return { month: item.month, day: item.day };
+        if (!dateString) return { month: item.month ?? undefined, day: item.day ?? undefined };
 
         const date = new Date(dateString);
         if (isNaN(date.getTime())) {
-            // Invalid date string
-            return { month: item.month, day: item.day };
+            return { month: item.month ?? undefined, day: item.day ?? undefined };
         }
 
         return {
@@ -109,19 +108,18 @@ export class LocalTagsSource extends DataSource {
     } {
         if (!dateString) {
             return {
-                original_year: item.original_year,
-                original_month: item.original_month,
-                original_day: item.original_day
+                original_year: item.original_year ?? undefined,
+                original_month: item.original_month ?? undefined,
+                original_day: item.original_day ?? undefined
             };
         }
 
         const date = new Date(dateString);
         if (isNaN(date.getTime())) {
-            // Invalid date string
             return {
-                original_year: item.original_year,
-                original_month: item.original_month,
-                original_day: item.original_day
+                original_year: item.original_year ?? undefined,
+                original_month: item.original_month ?? undefined,
+                original_day: item.original_day ?? undefined
             };
         }
 

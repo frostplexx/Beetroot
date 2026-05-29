@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import { ChevronDownIcon, FileSearchCorner } from "lucide-react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useResizeObserver } from "usehooks-ts";
@@ -81,7 +81,7 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
 
     // ── Concern 1: how many cards fit ────────────────────────────────────────
     const { width = 0, height = 0 } = useResizeObserver({
-        ref: gridRef,
+        ref: gridRef as RefObject<HTMLElement>,
         box: "border-box",
     });
 

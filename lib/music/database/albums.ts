@@ -454,7 +454,7 @@ export function updateAlbumArtpath(albumId: number, artpath: string): void {
 export function updateAlbumFields(albumId: number, fields: Partial<Album>): void {
     const validColumns = getValidAlbumsColumns();
     const cols: string[] = [];
-    const values: unknown[] = [];
+    const values: any[] = [];
 
     for (const [key, value] of Object.entries(fields)) {
         if (key === 'id' || key === 'added') continue;

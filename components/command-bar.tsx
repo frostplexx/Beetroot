@@ -98,7 +98,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
   }
 
   const handleSelectTrack = (track: Track) => {
-    router.push(`/album/${track.album_id}`)
+    router.navigate({ to: `/album/${track.album_id}` })
     onOpenChange(false)
     setSearchQuery("")
   }
@@ -144,7 +144,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
           {showSuggestions ? (
             <>
               <CommandGroup heading="Quick Actions">
-                <CommandItem onSelect={() => router.navigate({ to: "/" })} className="py-3">
+                <CommandItem onSelect={() => router.navigate({ to: "/", search: { page: 1, sort: "recently-added" as const } })} className="py-3">
                   <Library className="mr-3 h-5 w-5 opacity-60" />
                   <span className="text-sm">Browse Library</span>
                 </CommandItem>
