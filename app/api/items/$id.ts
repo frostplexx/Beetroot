@@ -133,7 +133,7 @@ export const Route = createFileRoute("/api/items/$id")({
 
                 const writebackMode = globalConfig.writeback_mode || "missing-only";
                 try {
-                    writeBackItem(updatedItem, writebackMode);
+                    await writeBackItem(updatedItem, writebackMode);
                 } catch (error) {
                     console.error(`Failed to write back to ${updatedItem.path}:`, error);
                     return Response.json(

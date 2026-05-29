@@ -134,7 +134,7 @@ export const Route = createFileRoute("/api/album/$id")({
                             }
 
                             try {
-                                writeBackItem(item, writebackMode);
+                                await writeBackItem(item, writebackMode);
                                 successCount++;
                             } catch (error) {
                                 console.error(`Failed to write back to ${item.path}:`, error);

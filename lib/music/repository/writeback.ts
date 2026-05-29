@@ -8,6 +8,14 @@ import { writeMp4Tags } from './utils/mp4-tagger';
 
 export type WriteBackMode = 'always' | 'never' | 'missing-only';
 
+// Genres are stored in SQLite as a comma-separated string but typed as string[] in Item.
+// Handle both representations defensively.
+function genreString(genres: string[] | string | null | undefined): string | undefined {
+    if (!genres) return undefined;
+    if (Array.isArray(genres)) return genres.length > 0 ? genres.join('; ') : undefined;
+    return genres.trim() || undefined;
+}
+
 // == MP3 (ID3v2) Logic ==
 
 function writeTagsMp3(filePath: string, item: Item): boolean {
@@ -28,7 +36,7 @@ function writeTagsMp3(filePath: string, item: Item): boolean {
         year: item.year ? String(item.year) : undefined,
         trackNumber: item.track ? (item.tracktotal ? `${item.track}/${item.tracktotal}` : String(item.track)) : undefined,
         partOfSet: item.disc ? (item.disctotal ? `${item.disc}/${item.disctotal}` : String(item.disc)) : undefined,
-        genre: item.genres?.join('; ') || undefined,
+        genre: genreString(item.genres) || undefined,
         composer: item.composers || undefined,
         comment: item.comments ? { language: 'eng', text: item.comments } : undefined,
         userDefinedText: [
@@ -86,7 +94,8 @@ function writeTagsFlac(filePath: string, item: Item): boolean {
     if (item.tracktotal) tags.TRACKTOTAL = String(item.tracktotal);
     if (item.disc) tags.DISCNUMBER = String(item.disc);
     if (item.disctotal) tags.DISCTOTAL = String(item.disctotal);
-    if (item.genres && item.genres.length > 0) tags.GENRE = item.genres.join('; ');
+    const genreStr = genreString(item.genres);
+    if (genreStr) tags.GENRE = genreStr;
     if (item.composers) tags.COMPOSER = item.composers;
     if (item.comments) tags.COMMENT = item.comments;
     if (item.mb_trackid) tags.MUSICBRAINZ_TRACKID = item.mb_trackid;
@@ -131,7 +140,7 @@ async function writeTagsM4A(filePath: string, item: Item): Promise<boolean> {
         trackTotal: item.tracktotal || undefined,
         disc: item.disc || undefined,
         discTotal: item.disctotal || undefined,
-        genre: item.genres?.join('; ') || undefined,
+        genre: genreString(item.genres) || undefined,
         composer: item.composers || undefined,
         comment: item.comments || undefined,
         lyrics: item.lyrics || undefined,

@@ -442,7 +442,10 @@ export function batchUpdateItems(updates: Array<{ id: number; fields: Partial<It
             if (fieldNames.length === 0) continue
 
             const setClause = fieldNames.map(key => `${key} = ?`).join(', ')
-            const values = fieldNames.map(key => (fields as any)[key])
+            const values = fieldNames.map(key => {
+                const v = (fields as any)[key];
+                return Array.isArray(v) ? v.join(', ') : v;
+            })
 
             const stmt = db.prepare(`UPDATE items SET ${setClause} WHERE id = ?`)
             stmt.run(...values, id)

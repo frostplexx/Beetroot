@@ -88,7 +88,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
             isrc: song.isrc || "",
             comments: song.comments || "",
             lyrics: song.lyrics || "",
-            genre: song.genre || "",
+            genre: (Array.isArray(song.genres) ? song.genres.join(', ') : song.genres) || "",
             year: song.year || "",
             originalDate: song.original_date || "",
         }))
