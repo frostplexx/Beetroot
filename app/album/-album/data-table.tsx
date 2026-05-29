@@ -64,7 +64,7 @@ export function SongsDataTable<TData, TValue>({
     })
 
     return (
-        <div className="flex flex-col h-full space-y-4 overflow-hidden">
+        <div className="flex mb-4 flex-col h-full space-y-4 overflow-hidden">
             <div className="flex items-center gap-2 shrink-0">
                 <Input
                     placeholder="Filter songs..."
@@ -153,10 +153,6 @@ export function SongsDataTable<TData, TValue>({
                     )}
                 </TableBody>
             </Table>
-
-            <div className="shrink-0 text-xs uppercase tracking-[0.12em] text-white/50 font-medium">
-                {table.getFilteredRowModel().rows.length} song{table.getFilteredRowModel().rows.length === 1 ? '' : 's'}
-            </div>
         </div>
     )
 }

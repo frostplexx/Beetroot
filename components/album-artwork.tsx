@@ -35,10 +35,15 @@ export default function AlbumArtwork({
 
     return (
         <div
-            className="w-full md:w-67 aspect-square perspective-1000"
+            className="w-full md:w-57 sm:w-40 aspect-square perspective-1000"
             onMouseMove={handleMouseMove}
             onMouseEnter={() => setIsHovering(true)}
             onMouseLeave={handleMouseLeave}
+            onClick={() => {
+                if (artUrl) {
+                    window.open(artUrl, "_blank")
+                }
+            }}
             style={{ perspective: "1000px" }}
         >
             {missingSince ? (

@@ -30,9 +30,9 @@ const MAX_COLS = 8;
 
 const SORT_LABELS: Record<AlbumSort, string> = {
     "recently-added": "Recently Added",
-    "name":           "Name",
-    "artist":         "Artist",
-    "year":           "Year",
+    "name": "Name",
+    "artist": "Artist",
+    "year": "Year",
 };
 
 type AlbumsResponse = {
@@ -123,7 +123,7 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
                 queryFn: () => fetchAlbums(next, pageSize, sort),
             })
             .then((d) => warmImages(d.albums))
-            .catch(() => {});
+            .catch(() => { });
     }, [page, totalPages, pageSize, sort, queryClient]);
 
     // Library sync → invalidate instead of full refresh. Defer while hidden.
@@ -155,10 +155,10 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
             if (isTypingTarget(e.target)) return;
             let target: number | null = null;
             switch (e.key) {
-                case "ArrowLeft":  if (page > 1)            target = page - 1;     break;
-                case "ArrowRight": if (page < totalPages)   target = page + 1;     break;
-                case "Home":       if (page !== 1)          target = 1;            break;
-                case "End":        if (page !== totalPages) target = totalPages;   break;
+                case "ArrowLeft": if (page > 1) target = page - 1; break;
+                case "ArrowRight": if (page < totalPages) target = page + 1; break;
+                case "Home": if (page !== 1) target = 1; break;
+                case "End": if (page !== totalPages) target = totalPages; break;
                 default: return;
             }
             if (target == null) return;
@@ -173,25 +173,28 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
 
     return (
         <div className="absolute inset-0 overflow-hidden">
-            <div className="container mx-auto px-4 py-4 flex flex-col h-full">
-                <div className="w-full mb-4 flex-shrink-0 flex items-center justify-between gap-4">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-white/30 font-medium">
-                        {total > 0 ? `${albums.length} of ${total.toLocaleString()} albums` : "\u00A0"}
-                    </p>
-                    <SortSelector sort={sort} onChange={setSort} />
-                </div>
+            <div className="container mx-auto pb-4 flex flex-col h-full">
 
-                <div
-                    ref={gridRef}
-                    style={gridStyle}
-                    // auto-fill is the pre-measure fallback; inline cols take over once measured.
-                    className="grid w-full gap-4 [grid-template-columns:repeat(auto-fill,minmax(150px,1fr))] flex-1 min-h-0 overflow-hidden content-start"
-                >
-                    {albums.map((album, idx) => (
-                        <AlbumContextMenu key={album.id} album={album}>
-                            <AlbumCard album={album} priority={idx < cols} />
-                        </AlbumContextMenu>
-                    ))}
+                <div className="container mx-auto pt-4 pb-2 flex-shrink-0 content-center">
+                    <div className="w-full mb-4 flex-shrink-0 flex items-center justify-between gap-4">
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-white/30 font-medium">
+                            {total > 0 ? `${albums.length} of ${total.toLocaleString()} albums` : "\u00A0"}
+                        </p>
+                        <SortSelector sort={sort} onChange={setSort} />
+                    </div>
+
+                    <div
+                        ref={gridRef}
+                        style={gridStyle}
+                        // auto-fill is the pre-measure fallback; inline cols take over once measured.
+                        className="grid w-full gap-4 [grid-template-columns:repeat(auto-fill,minmax(150px,1fr))] flex-1 min-h-0 overflow-hidden content-start"
+                    >
+                        {albums.map((album, idx) => (
+                            <AlbumContextMenu key={album.id} album={album}>
+                                <AlbumCard album={album} priority={idx < cols} />
+                            </AlbumContextMenu>
+                        ))}
+                    </div>
                 </div>
 
                 {!isLoading && total === 0 && (
@@ -200,7 +203,7 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
                     </div>
                 )}
 
-                <div className="mt-auto pt-6 flex-shrink-0 min-h-[60px]">
+                <div className="mt-auto flex-shrink-0 min-h-[60px]">
                     {totalPages > 1 && (
                         <Pagination
                             page={page}
@@ -213,7 +216,7 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
                                         queryFn: () => fetchAlbums(n, pageSize, sort),
                                     })
                                     .then((d) => warmImages(d.albums))
-                                    .catch(() => {})
+                                    .catch(() => { })
                             }
                         />
                     )}
