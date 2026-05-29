@@ -31,8 +31,13 @@ function download(downloadUrl) {
     });
 }
 
+const bundledFpcalc = path.join(binDir, 'fpcalc');
+if (fs.existsSync(bundledFpcalc)) {
+    process.exit(0); // bundled binary already present
+}
+
 exec('which fpcalc', (error) => {
-    if (!error) return; // already installed
+    if (!error) return; // already installed on system PATH
 
     console.log('fpcalc not found, downloading...');
 
