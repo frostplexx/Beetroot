@@ -48,6 +48,10 @@ duplicate_action: skip
 # Compute SHA256 hash of files (slower imports, but enables file_hash duplicate detection)
 compute_file_hash: true
 
+# How files from watch_directories are brought into the library
+# Options: move (remove source after import), copy (keep source intact)
+watch_import_mode: move
+
 # Optional: Custom trash directory (defaults to music_directory/.trash)
 # trash_directory: ~/Music/Beetroot/.trash
 

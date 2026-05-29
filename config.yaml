@@ -26,3 +26,6 @@ compute_file_hash: true
 
 watch_directories:
   - /Users/daniel/Music/Download
+
+
+watch_import_mode: copy

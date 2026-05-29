@@ -8,7 +8,7 @@ import { ReplayGain } from "./sources/replaygain";
 import { DataSource, ReconcileProgress, ReconcileResult, SourceResult } from "./types";
 import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, deleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById, checkAndUpdateAlbumMissingStatus, getItemById } from "../database";
 import { mergeData } from "./merger";
-import { writeBackItem, moveItem, moveFile, computeTargetPath } from "./writeback";
+import { writeBackItem, moveItem, moveFile, copyFile, computeTargetPath } from "./writeback";
 import { globalConfig } from "../../config";
 import fsPromises from 'fs/promises';
 import { enumerateMusicFilesStream } from "../utils/enumerate";
@@ -174,13 +174,21 @@ class Repository {
                 return;
             }
 
-            // Phase 5: Move file (only if target differs from original)
+            // Phase 5: Move or copy file (only if target differs from original).
+            // Files already inside music_directory are always renamed (reorganise in-place).
+            // Files from a watch_directory follow the watch_import_mode setting: 'move'
+            // removes the source, 'copy' leaves the original intact.
             t = Date.now();
             if (originalPath !== targetPath) {
-                const moved = moveFile(originalPath, targetPath);
-                if (!moved) {
+                const fromWatchDir = (globalConfig.watch_directories ?? [])
+                    .some(d => originalPath.startsWith(d));
+                const useMove = !fromWatchDir || (globalConfig.watch_import_mode ?? 'move') === 'move';
+                const succeeded = useMove
+                    ? moveFile(originalPath, targetPath)
+                    : copyFile(originalPath, targetPath);
+                if (!succeeded) {
                     throw new AdoptionError(
-                        `File move failed: ${originalPath} → ${targetPath}`,
+                        `File ${useMove ? 'move' : 'copy'} failed: ${originalPath} → ${targetPath}`,
                         'move',
                         true,
                         originalPath

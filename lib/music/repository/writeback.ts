@@ -296,6 +296,23 @@ export function moveFile(oldPath: string, newPath: string): boolean {
 }
 
 
+export function copyFile(oldPath: string, newPath: string): boolean {
+    const dir = newPath.substring(0, newPath.lastIndexOf('/'));
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+
+    try {
+        fs.copyFileSync(oldPath, newPath);
+    } catch (error) {
+        console.error(`Error copying file from ${oldPath} to ${newPath}:`, error);
+        return false;
+    }
+
+    return true;
+}
+
+
 
 // == DSL Grammar definitions
 

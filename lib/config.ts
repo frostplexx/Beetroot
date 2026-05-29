@@ -8,6 +8,7 @@ export type ConflictResolution = 'keep-db' | 'keep-file' | 'keep-mb' | 'manual';
 export type WriteBackMode = 'always' | 'never' | 'missing-only';
 export type DuplicateDetection = 'mb_trackid' | 'file_hash' | 'path';
 export type DuplicateAction = 'skip' | 'overwrite';
+export type WatchImportMode = 'move' | 'copy';
 
 export interface BucketConfig {
     alpha: string[]; // e.g. "A-F"
@@ -39,6 +40,9 @@ interface GlobalConfig {
     duplicate_detection?: DuplicateDetection;
     duplicate_action?: DuplicateAction;
     compute_file_hash?: boolean;
+
+    // How files from watch_directories are brought into the library
+    watch_import_mode?: WatchImportMode;
 }
 
 // Default configuration
@@ -56,6 +60,7 @@ const DEFAULT_CONFIG: Partial<GlobalConfig> = {
     duplicate_detection: 'mb_trackid',
     duplicate_action: 'skip',
     compute_file_hash: true,
+    watch_import_mode: 'move',
 };
 
 // Normalize directory path: expand ~, resolve to absolute, add trailing /
@@ -117,6 +122,7 @@ function loadConfig(): GlobalConfig {
         compute_file_hash: process.env.COMPUTE_FILE_HASH === undefined
             ? undefined
             : process.env.COMPUTE_FILE_HASH === 'true',
+        watch_import_mode: process.env.WATCH_IMPORT_MODE as WatchImportMode,
     }
 
     // Remove undefined values from envConfig
