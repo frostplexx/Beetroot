@@ -41,7 +41,7 @@ async function rateLimitedFetch(url: string): Promise<Response> {
     }
 
     await mySlot;
-    return fetch(url, { headers });
+    return fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
 }
 
 interface DiscogsSearchResult {
@@ -121,7 +121,7 @@ export class DiscogsSource extends DataSource {
                 discogs_albumid: details.id || item.discogs_albumid,
             };
         } catch (error) {
-            console.debug(`Discogs lookup failed for ${item.path}:`, error);
+            console.debug(`Discogs lookup failed for ${item.path}: ${error instanceof Error ? error.message : String(error)}`);
             return item;
         }
     }
@@ -151,7 +151,7 @@ export class DiscogsSource extends DataSource {
             baseDelay: 1000,
             shouldRetry: isRetryableHttpError,
         }).catch((error) => {
-            console.debug('Discogs search failed:', error);
+            console.debug(`Discogs search failed: ${error instanceof Error ? error.message : String(error)}`);
             return null;
         });
     }
@@ -177,7 +177,7 @@ export class DiscogsSource extends DataSource {
             baseDelay: 1000,
             shouldRetry: isRetryableHttpError,
         }).catch((error) => {
-            console.debug('Discogs release details failed:', error);
+            console.debug(`Discogs release details failed: ${error instanceof Error ? error.message : String(error)}`);
             return null;
         });
     }

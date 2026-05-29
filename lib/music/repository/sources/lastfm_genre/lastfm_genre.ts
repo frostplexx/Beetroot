@@ -83,7 +83,7 @@ export class LastfmGenreSource extends DataSource {
                 autocorrect: '1',
             });
 
-            const response = await fetch(`${LASTFM_BASE_URL}/?${params}`);
+            const response = await fetch(`${LASTFM_BASE_URL}/?${params}`, { signal: AbortSignal.timeout(15_000) });
 
             if (!response.ok) {
                 throw new Error(`Last.fm API error ${response.status}: ${await response.text()}`);
@@ -104,7 +104,7 @@ export class LastfmGenreSource extends DataSource {
             baseDelay: 1000,
             shouldRetry: isRetryableHttpError,
         }).catch((error) => {
-            console.debug('Last.fm genre fetch failed:', error);
+            console.debug(`Last.fm genre fetch failed: ${error instanceof Error ? error.message : String(error)}`);
             return [];
         });
     }

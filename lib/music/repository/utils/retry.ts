@@ -131,6 +131,9 @@ export function extractHttpStatus(error: Error): number | null {
  * Detect if an error is a network error (connection issues, timeouts, DNS failures)
  */
 export function isNetworkError(error: Error): boolean {
+    // DOMException TimeoutError — thrown by AbortSignal.timeout() or OS TCP timeout in Bun/Node
+    if ((error as any).name === 'TimeoutError') return true;
+
     const message = error.message.toLowerCase();
 
     // Common network error patterns
@@ -145,6 +148,7 @@ export function isNetworkError(error: Error): boolean {
         'dns',
         'socket',
         'timeout',
+        'timed out',
         'connection',
     ];
 

@@ -163,7 +163,7 @@ export class WikipediaSource extends DataSource {
             const searchQuery = encodeURIComponent(`${album} ${artist} album`);
             const searchUrl = `${WIKIPEDIA_API_URL}?action=query&list=search&srsearch=${searchQuery}&format=json&origin=*`;
 
-            const searchResponse = await fetch(searchUrl, { headers: { 'User-Agent': USER_AGENT } });
+            const searchResponse = await fetch(searchUrl, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(15_000) });
 
             if (!searchResponse.ok) {
                 const errorText = await searchResponse.text();
@@ -186,7 +186,7 @@ export class WikipediaSource extends DataSource {
 
             // Get Wikidata ID from Wikipedia page
             const wikidataUrl = `${WIKIPEDIA_API_URL}?action=query&titles=${encodeURIComponent(pageTitle)}&prop=pageprops&format=json&origin=*`;
-            const wikidataResponse = await fetch(wikidataUrl, { headers: { 'User-Agent': USER_AGENT } });
+            const wikidataResponse = await fetch(wikidataUrl, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(15_000) });
 
             if (!wikidataResponse.ok) {
                 const errorText = await wikidataResponse.text();
@@ -209,7 +209,7 @@ export class WikipediaSource extends DataSource {
             backoff: 'exponential',
             shouldRetry: isRetryableHttpError,
         }).catch((error) => {
-            console.debug('Wikipedia search failed:', error);
+            console.debug(`Wikipedia search failed: ${error instanceof Error ? error.message : String(error)}`);
             return null;
         });
     }
@@ -220,7 +220,7 @@ export class WikipediaSource extends DataSource {
             await wikidataRateLimiter.acquire();
 
             const url = `${WIKIDATA_API_URL}?action=wbgetentities&ids=${wikidataId}&format=json&origin=*`;
-            const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+            const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(15_000) });
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -240,7 +240,7 @@ export class WikipediaSource extends DataSource {
             backoff: 'exponential',
             shouldRetry: isRetryableHttpError,
         }).catch((error) => {
-            console.debug('Wikidata fetch failed:', error);
+            console.debug(`Wikidata fetch failed: ${error instanceof Error ? error.message : String(error)}`);
             return null;
         });
     }
@@ -266,7 +266,7 @@ export class WikipediaSource extends DataSource {
             await wikidataRateLimiter.acquire();
 
             const url = `${WIKIDATA_API_URL}?action=wbgetentities&ids=${genreIds.join('|')}&format=json&origin=*`;
-            const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+            const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(15_000) });
 
             if (!response.ok) {
                 const errorText = await response.text();

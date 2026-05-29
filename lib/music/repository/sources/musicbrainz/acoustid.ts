@@ -141,7 +141,8 @@ export function acoustIDLookup(fingerprint: string, duration: number): Promise<A
     return fetch(lookupURL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString()
+        body: params.toString(),
+        signal: AbortSignal.timeout(15_000),
     })
         .then(async response => {
             if (!response.ok) {

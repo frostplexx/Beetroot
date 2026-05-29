@@ -27,7 +27,7 @@ async function rateLimitedFetch(url: string, options?: RequestInit): Promise<Res
 
     // Wait for our slot, then execute
     await mySlot;
-    return fetch(url, options);
+    return fetch(url, { ...options, signal: AbortSignal.timeout(15_000) });
 }
 
 export interface MusicBrainzArtist {

@@ -36,6 +36,7 @@ async function fetchLyrics(track: string, artist: string, album?: string, durati
             headers: {
                 'User-Agent': 'Beetroot/0.1.0 (https://github.com/yourusername/beetroot)',
             },
+            signal: AbortSignal.timeout(15_000),
         });
 
         if (response.status === 404) {
