@@ -1,84 +1,58 @@
-# Stage 1: Dependencies - Build native modules and download chromaprint
+# Stage 1: Dependencies - install packages and download chromaprint
 FROM oven/bun:1-debian AS dependencies
 
 WORKDIR /app
 
-# Install build dependencies for better-sqlite3 native addon
 RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
-    curl \
-    tar \
+    python3 make g++ curl tar \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
 COPY package.json bun.lock ./
 COPY scripts/postinstall.js ./scripts/
 
-# Install dependencies (includes postinstall -> chromaprint download)
-RUN bun install --production --frozen-lockfile
+RUN bun install --frozen-lockfile
 
-# Stage 2: Builder - Build Next.js application
+# Stage 2: Builder - compile the TanStack Start / Nitro app
 FROM oven/bun:1-debian AS builder
 
 WORKDIR /app
 
-# Copy dependencies from previous stage
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/lib/music/binaries ./lib/music/binaries
 
-# Copy source code
 COPY . .
 
-# Build Next.js application
 RUN bun run build
 
-# Stage 3: Runtime - Slim production image
+# Stage 3: Runtime - slim production image
 FROM oven/bun:1-debian AS runtime
 
 WORKDIR /app
 
-# Install only runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
+RUN apt-get update && apt-get install -y ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
 RUN groupadd -r -g 1000 beetroot && \
     useradd -r -u 1000 -g beetroot beetroot
 
-# Copy production dependencies and built application
+# node_modules needed for native addons (flac-tagger etc.); bun:sqlite is built-in
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/lib/music/binaries ./lib/music/binaries
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/lib ./lib
-COPY --from=builder /app/components ./components
-COPY --from=builder /app/app ./app
+COPY --from=builder /app/.output ./.output
 COPY --from=builder /app/package.json ./
-COPY --from=builder /app/bun.lockb ./
-COPY --from=builder /app/next.config.ts ./
-COPY --from=builder /app/instrumentation.ts ./
 
-# Create volume mount points
 RUN mkdir -p /data /music && \
     chown -R beetroot:beetroot /app /data /music
 
-# Set environment variables
 ENV NODE_ENV=production \
     PORT=3000 \
     CONFIG_PATH=/data/config.yaml
 
-# Expose port
 EXPOSE 3000
 
-# Switch to non-root user
 USER beetroot
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD bun -e "require('http').get('http://localhost:3000', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
+    CMD bun -e "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-# Start application
-CMD ["bun", "start"]
+CMD ["bun", "run", ".output/server/index.mjs"]
