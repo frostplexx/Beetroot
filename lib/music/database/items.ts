@@ -470,33 +470,29 @@ export function writeOrUpdateItem(item: Item): { action: 'inserted' | 'updated' 
 
 // Get all item paths from DB (for reconciliation)
 // Uses iterate() instead of all() to avoid materializing all rows at once (D7)
+// Returns paths the reconcile scanner is responsible for. Soft-deleted items
+// are skipped — their paths now live under the trash subtree, which the
+// scanner doesn't enumerate, so including them here would make every reconcile
+// re-mark them as missing_since. They're handled by Repository.deleteItem
+// (reaped after the retention window).
 export function getAllItemPaths(musicDirectory?: string): Map<string, { id: number; album_id: number | null }> {
     try {
-        let sql = 'SELECT id, path, album_id FROM items'
-        let stmt: ReturnType<typeof db.prepare>
-
+        const pathMap = new Map<string, { id: number; album_id: number | null }>()
         if (musicDirectory) {
-            // Filter in SQL using substr to match path prefix
-            // Add trailing '/' to musicDirectory to avoid matching similar paths
-            // (e.g., /Music should not match /MusicVideos)
             const musicDirNormalized = musicDirectory.endsWith('/') ? musicDirectory : musicDirectory + '/'
-
-            // D4: path is now TEXT, use LIKE for prefix matching
-            sql = 'SELECT id, path, album_id FROM items WHERE path LIKE ? || \'%\''
-            stmt = db.prepare(sql)
-            const pathMap = new Map<string, { id: number; album_id: number | null }>()
+            const stmt = db.prepare(
+                "SELECT id, path, album_id FROM items WHERE path LIKE ? || '%' AND marked_for_deletion IS NULL"
+            )
             for (const row of stmt.iterate(musicDirNormalized) as IterableIterator<{ id: number; path: string; album_id: number | null }>) {
                 pathMap.set(row.path, { id: row.id, album_id: row.album_id })
             }
-            return pathMap
         } else {
-            stmt = db.prepare(sql)
-            const pathMap = new Map<string, { id: number; album_id: number | null }>()
+            const stmt = db.prepare("SELECT id, path, album_id FROM items WHERE marked_for_deletion IS NULL")
             for (const row of stmt.iterate() as IterableIterator<{ id: number; path: string; album_id: number | null }>) {
                 pathMap.set(row.path, { id: row.id, album_id: row.album_id })
             }
-            return pathMap
         }
+        return pathMap
     } catch (error) {
         console.error('Error fetching item paths:', error)
         return new Map()

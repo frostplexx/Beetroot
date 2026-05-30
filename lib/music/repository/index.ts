@@ -440,6 +440,13 @@ class Repository {
                 if (item.marked_for_deletion == null) continue;
                 const toPath = computeTargetPath(item);
                 const fromPath = item.path;
+                // Refuse to overwrite: if something already occupies the
+                // canonical path (e.g. the user re-imported the same album
+                // while this one sat in trash), rename() would silently
+                // replace it on POSIX. That's a data-loss footgun, so bail.
+                if (fs.existsSync(toPath)) {
+                    throw new Error(`Cannot restore to ${toPath}: file already exists`);
+                }
                 if (!moveFile(fromPath, toPath)) {
                     throw new Error(`Failed to move ${fromPath} back to ${toPath}`);
                 }
@@ -453,10 +460,19 @@ class Repository {
             if (album.artpath && fs.existsSync(album.artpath) && itemMoves.length > 0) {
                 const destDir = path.dirname(itemMoves[0].toPath);
                 const destArt = path.join(destDir, path.basename(album.artpath));
-                if (!moveFile(album.artpath, destArt)) {
-                    throw new Error(`Failed to restore artpath ${album.artpath} → ${destArt}`);
+                if (fs.existsSync(destArt)) {
+                    // The destination already has a cover (e.g. a re-imported
+                    // copy of the album wrote one). Keep that file, drop our
+                    // trash copy, and re-point album.artpath at the surviving
+                    // file so nothing dangles in either DB or trash.
+                    try { fs.unlinkSync(album.artpath); } catch { /* best effort */ }
+                    artMove = { from: album.artpath, to: destArt };
+                } else {
+                    if (!moveFile(album.artpath, destArt)) {
+                        throw new Error(`Failed to restore artpath ${album.artpath} → ${destArt}`);
+                    }
+                    artMove = { from: album.artpath, to: destArt };
                 }
-                artMove = { from: album.artpath, to: destArt };
             }
         } catch (error) {
             if (artMove && !moveFile(artMove.to, artMove.from)) {

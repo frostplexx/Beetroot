@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useLocation } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
     ContextMenu,
     ContextMenuContent,
@@ -245,13 +246,11 @@ function ConfirmDeleteDialog({
     item: Item;
     onDeleted: (result: { previousAlbumId: number | null; previousAlbumDeleted: boolean }) => void;
 }) {
-    const [deleteFile, setDeleteFile] = React.useState(false);
     const [pending, setPending] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         if (!open) {
-            setDeleteFile(false);
             setError(null);
             setPending(false);
         }
@@ -261,8 +260,7 @@ function ConfirmDeleteDialog({
         setPending(true);
         setError(null);
         try {
-            const url = `/api/items/${item.id}${deleteFile ? "?deleteFile=true" : ""}`;
-            const res = await fetch(url, { method: "DELETE" });
+            const res = await fetch(`/api/items/${item.id}`, { method: "DELETE" });
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.error || `HTTP ${res.status}`);
@@ -287,27 +285,12 @@ function ConfirmDeleteDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Delete song from library?</DialogTitle>
+                    <DialogTitle>Move song to trash?</DialogTitle>
                     <DialogDescription>
-                        Removes <span className="text-foreground">{item.title || "this song"}</span>{" "}
-                        from the library database. This can&rsquo;t be undone.
+                        Moves <span className="text-foreground">{item.title || "this song"}</span>{" "}
+                        to trash. Recoverable until the configured retention window expires.
                     </DialogDescription>
                 </DialogHeader>
-
-                <label className="flex items-start gap-2 text-sm text-white/85 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={deleteFile}
-                        onChange={(e) => setDeleteFile(e.target.checked)}
-                        className="mt-1"
-                    />
-                    <span>
-                        Also move the file to trash
-                        <div className="text-xs text-white/75 mt-0.5">
-                            Moves <code className="font-mono">{item.path}</code> to the trash folder
-                        </div>
-                    </span>
-                </label>
 
                 {error && (
                     <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
@@ -401,6 +384,7 @@ export function SongContextMenu({
 }) {
     const router = useRouter();
     const pathname = useLocation({ select: (s) => s.pathname });
+    const queryClient = useQueryClient();
     const [moveOpen, setMoveOpen] = React.useState(false);
     const [deleteOpen, setDeleteOpen] = React.useState(false);
     const [infoOpen, setInfoOpen] = React.useState(false);
@@ -511,10 +495,11 @@ export function SongContextMenu({
                     showToast({
                         kind: "ok",
                         message: previousAlbumDeleted
-                            ? "Song deleted (album was emptied and removed)"
-                            : "Song deleted",
+                            ? "Song moved to trash (album emptied and removed)"
+                            : "Song moved to trash",
                     });
                     if (previousAlbumDeleted) {
+                        queryClient.invalidateQueries({ queryKey: ["albums"] });
                         handleSourceAlbumDeleted(previousAlbumId);
                     } else {
                         router.invalidate();

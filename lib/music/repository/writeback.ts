@@ -282,14 +282,24 @@ export function moveItem(item: Item): boolean {
 }
 
 
+/**
+ * Move a file via rename. Refuses to overwrite an existing destination — every
+ * caller of moveFile in this codebase expects the destination to be empty (a
+ * canonical library path that was just computed, a trash mirror that nothing
+ * else writes to, etc.). Silent overwrite would be a data-loss footgun.
+ *
+ * Returns false on failure (logged), so callers can branch on the result and
+ * trigger their own rollback / error path without try/catch noise.
+ */
 export function moveFile(oldPath: string, newPath: string): boolean {
-
-    // Recursively  create folders if they don't exist
     const dir = newPath.substring(0, newPath.lastIndexOf('/'));
     if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, {
-            recursive: true
-        });
+        fs.mkdirSync(dir, { recursive: true });
+    }
+
+    if (fs.existsSync(newPath)) {
+        console.error(`Error moving file from ${oldPath} to ${newPath}: destination already exists`);
+        return false;
     }
 
     try {
@@ -304,10 +314,19 @@ export function moveFile(oldPath: string, newPath: string): boolean {
 }
 
 
+/**
+ * Copy a file. Same overwrite-refusal as {@link moveFile} — `fs.copyFileSync`
+ * will happily clobber the destination otherwise.
+ */
 export function copyFile(oldPath: string, newPath: string): boolean {
     const dir = newPath.substring(0, newPath.lastIndexOf('/'));
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
+    }
+
+    if (fs.existsSync(newPath)) {
+        console.error(`Error copying file from ${oldPath} to ${newPath}: destination already exists`);
+        return false;
     }
 
     try {
