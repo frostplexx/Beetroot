@@ -21,30 +21,7 @@ export default defineConfig({
                 routesDirectory: "app",
             },
         }),
-        nitro({ preset: "bun" }),
+        nitro(),
         viteReact(),
-        {
-            name: "beetroot:reconcile-service",
-            async configureServer(server) {
-                try {
-                    const mod = await server.ssrLoadModule(
-                        "/lib/music/repository/reconcile-service.ts"
-                    );
-                    mod.default.start();
-
-                    const originalPrintUrls = server.printUrls.bind(server);
-                    server.printUrls = () => {
-                        originalPrintUrls();
-                        server.config.logger.info(
-                            "  \x1b[32m➜\x1b[0m  Reconcile service running"
-                        );
-                    };
-                } catch (err) {
-                    server.config.logger.error(
-                        `[beetroot] Failed to start reconcile service: ${err}`
-                    );
-                }
-            },
-        },
     ],
 });
