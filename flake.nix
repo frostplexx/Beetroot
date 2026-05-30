@@ -19,8 +19,30 @@
           cfg = config.services.beetroot-v2;
           # Use the built package from the same flake
           beetroot-package = self.packages.${pkgs.system}.default or (
-            # Fallback: build it inline if not available
-            pkgs.stdenv.mkDerivation {
+            let
+              fallbackNodeModules = pkgs.stdenv.mkDerivation {
+                name = "beetroot-v2-node-modules";
+                src = pkgs.lib.fileset.toSource {
+                  root = ./.;
+                  fileset = pkgs.lib.fileset.unions [
+                    ./package.json
+                    ./bun.lock
+                  ];
+                };
+                nativeBuildInputs = [ pkgs.bun ];
+                buildPhase = ''
+                  export HOME=$TMPDIR
+                  bun install --frozen-lockfile
+                '';
+                installPhase = ''
+                  mkdir $out
+                  cp -r node_modules $out/
+                '';
+                outputHashAlgo = "sha256";
+                outputHashMode = "recursive";
+                outputHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+              };
+            in pkgs.stdenv.mkDerivation {
               pname = "beetroot-v2";
               version = "0.1.0";
               src = ./.;
@@ -28,17 +50,18 @@
               buildInputs = [ pkgs.chromaprint ];
               buildPhase = ''
                 export HOME=$TMPDIR
-                export BUN_INSTALL_CACHE_DIR=$TMPDIR/.bun
-                bun install --frozen-lockfile
+                cp -r ${fallbackNodeModules}/node_modules ./node_modules
+                chmod -R u+w ./node_modules
                 bun run build
               '';
               installPhase = ''
                 mkdir -p $out
-                cp -r .next public node_modules app lib components package.json next.config.ts tsconfig.json $out/
+                cp -r .output node_modules $out/
+                cp package.json $out/
                 cat > $out/start.sh <<EOF
 #!/bin/sh
 cd $out
-exec ${pkgs.bun}/bin/bun start "\$@"
+exec ${pkgs.bun}/bin/bun run .output/server/index.mjs "\$@"
 EOF
                 chmod +x $out/start.sh
               '';
@@ -185,53 +208,60 @@ EOF
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        # Build the Next.js application
+        # Pre-fetch node_modules in a fixed-output derivation (has network access)
+        nodeModules = pkgs.stdenv.mkDerivation {
+          name = "beetroot-v2-node-modules";
+          src = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [
+              ./package.json
+              ./bun.lock
+            ];
+          };
+          nativeBuildInputs = [ pkgs.bun ];
+          buildPhase = ''
+            export HOME=$TMPDIR
+            bun install --frozen-lockfile
+          '';
+          installPhase = ''
+            mkdir $out
+            cp -r node_modules $out/
+          '';
+          outputHashAlgo = "sha256";
+          outputHashMode = "recursive";
+          outputHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        };
+
         beetroot-v2 = pkgs.stdenv.mkDerivation {
           pname = "beetroot-v2";
           version = "0.1.0";
 
           src = ./.;
 
-          nativeBuildInputs = with pkgs; [
-            bun
-          ];
+          nativeBuildInputs = [ pkgs.bun ];
 
           buildInputs = with pkgs; [
-            chromaprint  # For fpcalc
+            chromaprint
           ];
 
           buildPhase = ''
             export HOME=$TMPDIR
-            export BUN_INSTALL_CACHE_DIR=$TMPDIR/.bun
-
-            # Install dependencies
-            bun install --frozen-lockfile
-
-            # Build Next.js app
+            cp -r ${nodeModules}/node_modules ./node_modules
+            chmod -R u+w ./node_modules
             bun run build
           '';
 
           installPhase = ''
             mkdir -p $out
 
-            # Copy built Next.js app
-            cp -r .next $out/
-            cp -r public $out/
+            cp -r .output $out/
             cp -r node_modules $out/
-
-            # Copy source files needed at runtime
-            cp -r app $out/
-            cp -r lib $out/
-            cp -r components $out/
             cp package.json $out/
-            cp next.config.ts $out/
-            cp tsconfig.json $out/
 
-            # Create start script
             cat > $out/start.sh <<EOF
 #!/bin/sh
 cd $out
-exec ${pkgs.bun}/bin/bun start "\$@"
+exec ${pkgs.bun}/bin/bun run .output/server/index.mjs "\$@"
 EOF
             chmod +x $out/start.sh
           '';

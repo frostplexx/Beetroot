@@ -32,8 +32,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -r -g 1000 beetroot && \
-    useradd -r -u 1000 -g beetroot beetroot
+RUN groupadd -r beetroot && \
+    useradd -r -g beetroot beetroot
 
 # node_modules needed for native addons (flac-tagger etc.); bun:sqlite is built-in
 COPY --from=dependencies /app/node_modules ./node_modules
