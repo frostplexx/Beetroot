@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+// @ts-ignore - build artifact, only present after `bun run build`
 import handler from "./dist/server/server-entry.js";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
