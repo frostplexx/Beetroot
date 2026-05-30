@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
     FolderInput,
-    FolderOpen,
     Copy,
     Trash2,
     Info,
@@ -422,22 +421,6 @@ export function SongContextMenu({
         }
     };
 
-    const handleReveal = async () => {
-        try {
-            const res = await fetch(`/api/items/${item.id}/reveal`, { method: "POST" });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || `HTTP ${res.status}`);
-            }
-            showToast({ kind: "ok", message: "Revealed in Finder" });
-        } catch (e) {
-            showToast({
-                kind: "error",
-                message: e instanceof Error ? e.message : String(e),
-            });
-        }
-    };
-
     return (
         <>
             <ContextMenu>
@@ -453,10 +436,6 @@ export function SongContextMenu({
                         <ContextMenuShortcut>⌘I</ContextMenuShortcut>
                     </ContextMenuItem>
                     <ContextMenuSeparator />
-                    <ContextMenuItem onSelect={handleReveal}>
-                        <FolderOpen />
-                        Show in Finder
-                    </ContextMenuItem>
                     <ContextMenuItem onSelect={handleCopyPath}>
                         <Copy />
                         Copy file path
