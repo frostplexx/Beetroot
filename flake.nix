@@ -65,7 +65,7 @@
                 cat > $out/start.sh <<EOF
 #!/bin/sh
 cd $out
-exec ${pkgs.bun}/bin/bun run dist/server/server-entry.js "\$@"
+exec ${pkgs.bun}/bin/bun $out/.output/server/index.mjs "\$@"
 EOF
                 chmod +x $out/start.sh
               '';
@@ -264,7 +264,7 @@ EOF
           installPhase = ''
             mkdir -p $out
 
-            cp -r dist $out/
+            cp -r .output $out/
             cp -r node_modules $out/
             cp package.json $out/
 
@@ -274,7 +274,7 @@ EOF
             cat > $out/start.sh <<EOF
 #!/bin/sh
 cd $out
-exec ${pkgs.bun}/bin/bun run dist/server/server-entry.js "\$@"
+exec ${pkgs.bun}/bin/bun $out/.output/server/index.mjs "\$@"
 EOF
             chmod +x $out/start.sh
           '';

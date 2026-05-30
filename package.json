@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "start": "node .output/server/index.mjs",
+    "start": "bun .output/server/index.mjs",
     "postinstall": "bun ./scripts/postinstall.js",
     "test:repository": "bun lib/music/repository/index.ts",
     "test:coverart": "bun lib/music/repository/test-coverart.ts",

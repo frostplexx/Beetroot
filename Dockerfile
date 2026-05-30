@@ -38,7 +38,7 @@ RUN groupadd -r beetroot && \
 # node_modules needed for native addons (flac-tagger etc.); bun:sqlite is built-in
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/lib/music/binaries ./lib/music/binaries
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/.output ./.output
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/lib/music/repository/genres-tree.yaml ./lib/music/repository/genres-tree.yaml
 COPY --from=builder /app/lib/music/repository/sources/lastfm_genre/genres.txt ./lib/music/repository/sources/lastfm_genre/genres.txt
@@ -57,4 +57,4 @@ USER beetroot
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD bun -e "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["bun", "run", "dist/server/server-entry.js"]
+CMD ["bun", ".output/server/index.mjs"]
