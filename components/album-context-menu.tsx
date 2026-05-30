@@ -18,8 +18,6 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
 import {
     AlertTriangle,
     CheckCircle2,
@@ -28,7 +26,6 @@ import {
     FolderOpen,
     Loader2,
     Trash2,
-    HardDriveIcon,
 } from "lucide-react"
 
 interface AlbumLike {
@@ -214,22 +211,17 @@ function ConfirmRemoveDialog({
     onError: (message: string) => void
 }) {
     const [pending, setPending] = React.useState(false)
-    const [deleteFiles, setDeleteFiles] = React.useState(false)
 
     React.useEffect(() => {
         if (!open) {
             setPending(false)
-            setDeleteFiles(false)
         }
     }, [open])
 
     const handleRemove = async () => {
         setPending(true)
         try {
-            const url = deleteFiles
-                ? `/api/album/${album.id}?files=true`
-                : `/api/album/${album.id}`
-            const res = await fetch(url, { method: "DELETE" })
+            const res = await fetch(`/api/album/${album.id}`, { method: "DELETE" })
             const data = await res.json().catch(() => ({}))
             if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`)
             onOpenChange(false)
@@ -250,37 +242,18 @@ function ConfirmRemoveDialog({
                         {isMissing ? (
                             <>
                                 <strong className="text-foreground">{album.album}</strong> has no
-                                files on disk. Removing it deletes the album and its track rows
-                                from the database.
+                                files on disk. Removing it permanently deletes the album and its
+                                track rows from the database.
                             </>
                         ) : (
                             <>
-                                Remove <strong className="text-foreground">{album.album}</strong>{" "}
-                                from the library. The album and its track rows will be deleted
-                                from the database.
+                                Move <strong className="text-foreground">{album.album}</strong> to
+                                trash. Files stay recoverable for the configured retention window,
+                                then are permanently deleted.
                             </>
                         )}
                     </DialogDescription>
                 </DialogHeader>
-                {!isMissing && (
-                    <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5">
-                        <Checkbox
-                            id="delete-files"
-                            checked={deleteFiles}
-                            onCheckedChange={(v) => setDeleteFiles(v === true)}
-                            className="mt-0.5 shrink-0"
-                        />
-                        <div className="flex flex-col gap-0.5">
-                            <Label htmlFor="delete-files" className="flex items-center gap-1.5 cursor-pointer text-sm font-medium">
-                                <HardDriveIcon className="w-3.5 h-3.5" />
-                                Also move files to trash
-                            </Label>
-                            <p className="text-xs text-muted-foreground">
-                                Moves the album files to the trash folder.
-                            </p>
-                        </div>
-                    </div>
-                )}
                 <DialogFooter>
                     <Button
                         variant="outline"

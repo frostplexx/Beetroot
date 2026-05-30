@@ -6,11 +6,13 @@ import { WikipediaSource } from "./sources/wikipedia/wikipedia";
 import { LrclibSource } from "./sources/lrclib/lrclib";
 import { ReplayGain } from "./sources/replaygain";
 import { DataSource, ReconcileProgress, ReconcileResult, SourceResult } from "./types";
-import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, getAllItemsByAlbum, deleteItemFromDB, unsafeForceDeleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById, checkAndUpdateAlbumMissingStatus, getItemById, setAlbumMarkedForDeletion } from "../database";
+import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, getAllItemsByAlbum, deleteItemFromDB, unsafeForceDeleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById, checkAndUpdateAlbumMissingStatus, getItemById, setAlbumMarkedForDeletion, updateAlbumArtpath } from "../database";
 import { mergeData } from "./merger";
 import { writeBackItem, moveItem, moveFile, copyFile, computeTargetPath } from "./writeback";
 import { globalConfig } from "../../config";
 import fsPromises from 'fs/promises';
+import * as fs from 'fs';
+import * as path from 'path';
 import { enumerateMusicFilesStream } from "../utils/enumerate";
 import { computeFileHashIfEnabled } from "../utils/hash";
 import { handleCoverArt } from "./coverart";
@@ -335,11 +337,17 @@ class Repository {
      *
      * Returned counts let the API report exactly what happened to the user.
      */
-    markAlbumForDeletion(albumId: number): { itemsMoved: number; albumMarked: boolean } {
+    markAlbumForDeletion(albumId: number): { itemsMoved: number; albumMarked: boolean; artpathMoved: boolean } {
+        const album = getAlbumById(albumId);
+        if (!album) throw new Error(`Album ${albumId} not found`);
         const items = getItemsByAlbum(albumId);
 
-        // Phase 1: move files. Track every successful move so we can undo on partial failure.
-        const moved: Array<{ item: Item; originalPath: string; trashPath: string }> = [];
+        // Phase 1: move every file (tracks + artpath, if any) into trash.
+        // Tracked so a later failure can roll back the moves we already did.
+        const moved: Array<{ originalPath: string; trashPath: string }> = [];
+        let itemsMoved = 0;
+        let artpathMoved: { from: string; to: string } | null = null;
+
         try {
             for (const item of items) {
                 const trashPath = computeTrashPath(item.path);
@@ -347,33 +355,64 @@ class Repository {
                 if (!moveFile(originalPath, trashPath)) {
                     throw new Error(`Failed to move ${originalPath} to trash`);
                 }
-                moved.push({ item, originalPath, trashPath });
+                moved.push({ originalPath, trashPath });
+                item.path = trashPath; // staged; will be written in Phase 2
+                itemsMoved++;
+            }
+
+            // Album artpath: only move if it's inside music_directory and the
+            // file actually exists on disk. computeTrashPath throws otherwise,
+            // which we treat as "not ours to manage" (e.g. an absolute path
+            // pointing at an external cache) and silently skip.
+            if (album.artpath && fs.existsSync(album.artpath)) {
+                let trashArt: string | null = null;
+                try {
+                    trashArt = computeTrashPath(album.artpath);
+                } catch {
+                    trashArt = null;
+                }
+                if (trashArt) {
+                    if (!moveFile(album.artpath, trashArt)) {
+                        throw new Error(`Failed to move artpath ${album.artpath} to trash`);
+                    }
+                    moved.push({ originalPath: album.artpath, trashPath: trashArt });
+                    artpathMoved = { from: album.artpath, to: trashArt };
+                }
             }
         } catch (error) {
-            // Roll back every move we already did. Best-effort: if a rollback
-            // fails we log it but still surface the original error.
+            // Roll back every move we already did. Best-effort: log on failure
+            // but still surface the original error.
             for (const m of moved.reverse()) {
                 if (!moveFile(m.trashPath, m.originalPath)) {
                     console.error(`CRITICAL: failed to roll back ${m.trashPath} → ${m.originalPath}; manual recovery needed`);
                 }
             }
+            // Reset staged paths on item objects we already mutated in memory.
+            for (const item of items) {
+                const matching = moved.find(m => m.trashPath === item.path);
+                if (matching) item.path = matching.originalPath;
+            }
             throw error;
         }
 
-        // Phase 2: commit the soft-delete marker on every item + the album, atomically in one tx.
-        // Reaches the post-condition: every item.path now lives under trash, every
-        // item.marked_for_deletion is set, and album.marked_for_deletion is set.
+        // Phase 2: commit metadata + marker. Reaches the post-condition:
+        //   every item.path under trashRoot()
+        //   every item.marked_for_deletion = now
+        //   album.marked_for_deletion = now
+        //   album.artpath either null or under trashRoot()
         const now = Date.now();
         db.transaction(() => {
-            for (const m of moved) {
-                m.item.path = m.trashPath;
-                m.item.marked_for_deletion = now;
-                writeOrUpdateItem(m.item);
+            for (const item of items) {
+                item.marked_for_deletion = now;
+                writeOrUpdateItem(item);
+            }
+            if (artpathMoved) {
+                updateAlbumArtpath(albumId, artpathMoved.to);
             }
             setAlbumMarkedForDeletion(albumId, now);
         })();
 
-        return { itemsMoved: moved.length, albumMarked: true };
+        return { itemsMoved, albumMarked: true, artpathMoved: artpathMoved != null };
     }
 
     /**
@@ -383,7 +422,7 @@ class Repository {
      * to markAlbumForDeletion: all-or-nothing on the filesystem, single DB tx
      * for the metadata updates.
      */
-    restoreAlbum(albumId: number): { itemsRestored: number } {
+    restoreAlbum(albumId: number): { itemsRestored: number; artpathRestored: boolean } {
         const album = getAlbumById(albumId);
         if (!album) throw new Error(`Album ${albumId} not found`);
         if (album.marked_for_deletion == null) {
@@ -393,7 +432,9 @@ class Repository {
         // explicitly need to see them.
         const items = getAllItemsByAlbum(albumId);
 
-        const moved: Array<{ item: Item; fromPath: string; toPath: string }> = [];
+        const itemMoves: Array<{ item: Item; fromPath: string; toPath: string }> = [];
+        let artMove: { from: string; to: string } | null = null;
+
         try {
             for (const item of items) {
                 if (item.marked_for_deletion == null) continue;
@@ -402,10 +443,26 @@ class Repository {
                 if (!moveFile(fromPath, toPath)) {
                     throw new Error(`Failed to move ${fromPath} back to ${toPath}`);
                 }
-                moved.push({ item, fromPath, toPath });
+                itemMoves.push({ item, fromPath, toPath });
+            }
+
+            // Restore artpath to the directory of any restored item (all items
+            // in a single-disc album land in the same dir; for multi-disc, the
+            // cover sits next to the first item). Skip if there's no artpath
+            // or it doesn't exist on disk (e.g. retention reaped just the art).
+            if (album.artpath && fs.existsSync(album.artpath) && itemMoves.length > 0) {
+                const destDir = path.dirname(itemMoves[0].toPath);
+                const destArt = path.join(destDir, path.basename(album.artpath));
+                if (!moveFile(album.artpath, destArt)) {
+                    throw new Error(`Failed to restore artpath ${album.artpath} → ${destArt}`);
+                }
+                artMove = { from: album.artpath, to: destArt };
             }
         } catch (error) {
-            for (const m of moved.reverse()) {
+            if (artMove && !moveFile(artMove.to, artMove.from)) {
+                console.error(`CRITICAL: failed to roll back artpath restore ${artMove.to} → ${artMove.from}; manual recovery needed`);
+            }
+            for (const m of itemMoves.reverse()) {
                 if (!moveFile(m.toPath, m.fromPath)) {
                     console.error(`CRITICAL: failed to roll back restore ${m.toPath} → ${m.fromPath}; manual recovery needed`);
                 }
@@ -414,15 +471,18 @@ class Repository {
         }
 
         db.transaction(() => {
-            for (const m of moved) {
+            for (const m of itemMoves) {
                 m.item.path = m.toPath;
                 m.item.marked_for_deletion = undefined;
                 writeOrUpdateItem(m.item);
             }
+            if (artMove) {
+                updateAlbumArtpath(albumId, artMove.to);
+            }
             setAlbumMarkedForDeletion(albumId, null);
         })();
 
-        return { itemsRestored: moved.length };
+        return { itemsRestored: itemMoves.length, artpathRestored: artMove != null };
     }
 
 
@@ -747,6 +807,8 @@ class Repository {
             return;
         }
 
+        const albumId = item.album_id;
+
         try {
             await fsPromises.unlink(item.path);
             if (item.artpath) {
@@ -758,6 +820,23 @@ class Repository {
         }
 
         deleteItemFromDB(item.id);
+
+        // If this was the last item in a soft-deleted album, reap the album
+        // row + its trash artpath too so nothing orphans in either DB or fs.
+        if (albumId != null) {
+            const remaining = db
+                .prepare(`SELECT COUNT(*) AS c FROM items WHERE album_id = ?`)
+                .get(albumId) as { c: number };
+            if (remaining.c === 0) {
+                const album = getAlbumById(albumId);
+                if (album && album.marked_for_deletion != null) {
+                    if (album.artpath && album.artpath.startsWith(trash)) {
+                        await fsPromises.unlink(album.artpath).catch(() => {});
+                    }
+                    db.prepare(`DELETE FROM albums WHERE id = ?`).run(albumId);
+                }
+            }
+        }
     }
 
 

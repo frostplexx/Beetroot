@@ -457,8 +457,9 @@ export function checkAndUpdateAlbumMissingStatus(albumId: number): void {
     }
 }
 
-// Update only the artpath for an album (focused update to avoid lost-update bugs)
-export function updateAlbumArtpath(albumId: number, artpath: string): void {
+// Update only the artpath for an album (focused update to avoid lost-update bugs).
+// Pass null to clear the artpath, e.g. when the cover file no longer exists.
+export function updateAlbumArtpath(albumId: number, artpath: string | null): void {
     try {
         const stmt = db.prepare(`
             UPDATE albums
