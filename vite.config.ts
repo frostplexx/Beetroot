@@ -9,7 +9,7 @@ export default defineConfig({
     server: {
         port: 3000,
     },
-    base: "https://beet.int.kuipr.de",
+    base: "/Beetroot/",
     plugins: [
         tsconfigPaths(),
         tailwindcss(),
