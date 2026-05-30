@@ -10,11 +10,6 @@ export default defineConfig({
         port: 3000,
     },
     base: "/",
-    build: {
-        outDir: '.output',
-        assetsDir: 'assets',
-        emptyOutDir: true,
-    },
     plugins: [
         tsconfigPaths(),
         tailwindcss(),
@@ -27,7 +22,6 @@ export default defineConfig({
                 routesDirectory: "app",
             },
         }),
-        nitro(),
         viteReact(),
     ],
 });
