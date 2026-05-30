@@ -175,7 +175,13 @@ export async function serveArtFromPath(
             inFlight.set(cacheKey, pending)
         }
 
-        const result = await pending
+        let result: { buf: Buffer; etag: string; mtimeMs: number }
+        try {
+            result = await pending
+        } catch (err) {
+            console.error(`[serve-art] failed to process ${fullPath}:`, err)
+            return notFoundArt()
+        }
         return new Response(result.buf as unknown as BodyInit, {
             headers: baseHeaders("image/webp", result.etag, result.mtimeMs),
         })
