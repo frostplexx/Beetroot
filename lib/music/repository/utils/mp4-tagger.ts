@@ -67,10 +67,11 @@ function fixChunkOffsets(buf: Buffer, moovOffset: number, delta: number): void {
 }
 
 function patchOffsetsInRange(buf: Buffer, start: number, end: number, delta: number): void {
+    const safeEnd = Math.min(end, buf.length);
     let i = start;
-    while (i + 8 <= end) {
+    while (i + 8 <= safeEnd) {
         const size = buf.readUInt32BE(i);
-        if (size < 8) break;
+        if (size < 8 || i + size > safeEnd) break;
         const name = buf.toString('latin1', i + 4, i + 8);
 
         if (name === 'stco') {
