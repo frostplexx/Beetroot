@@ -254,6 +254,7 @@ export function searchItems(query: string, page: number = 0, pageSize: number = 
             FROM items
             INNER JOIN items_fts ON items.id = items_fts.rowid
             WHERE items_fts MATCH ?
+              AND items.marked_for_deletion IS NULL
             ORDER BY items.album_id, items.track
             LIMIT ? OFFSET ?
         `)
@@ -274,6 +275,7 @@ export function getItemsSearchCount(query: string): number {
             FROM items
             INNER JOIN items_fts ON items.id = items_fts.rowid
             WHERE items_fts MATCH ?
+              AND items.marked_for_deletion IS NULL
         `)
 
         const result = stmt.get(query.trim()) as { count: number }

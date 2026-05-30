@@ -215,6 +215,9 @@ export const Route = createFileRoute("/api/items/$id")({
                 if (previousAlbumId !== null) {
                     previousAlbumDeleted = deleteAlbumIfEmpty(previousAlbumId);
                     if (!previousAlbumDeleted) {
+                        previousAlbumDeleted = syncAlbumDeletionFromItems(previousAlbumId);
+                    }
+                    if (!previousAlbumDeleted) {
                         checkAndUpdateAlbumMissingStatus(previousAlbumId);
                     }
                 }
