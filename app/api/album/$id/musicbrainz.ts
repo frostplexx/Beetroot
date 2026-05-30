@@ -96,10 +96,12 @@ export const Route = createFileRoute("/api/album/$id/musicbrainz")({
 
                     const { searchParams } = new URL(request.url);
                     const query = searchParams.get("q");
+                    const artistOverride = searchParams.get("artist");
 
                     if (query) {
+                        const artist = artistOverride ?? album.albumartist ?? "";
                         const searchResults = await searchReleasesByArtistAlbum(
-                            album.albumartist || "",
+                            artist,
                             query,
                             10,
                             1, // user-facing: skip ahead of background reconciliation

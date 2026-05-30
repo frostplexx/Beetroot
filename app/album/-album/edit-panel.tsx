@@ -97,6 +97,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
 
     // MusicBrainz
     const [mbSearchQuery, setMbSearchQuery] = React.useState(album.album)
+    const [mbArtistQuery, setMbArtistQuery] = React.useState(album.albumartist ?? "")
     const [mbReleases, setMbReleases] = React.useState<MusicBrainzRelease[]>([])
     const [selectedMbRelease, setSelectedMbRelease] = React.useState<MusicBrainzRelease | null>(null)
     const [loadingMb, setLoadingMb] = React.useState(true)
@@ -121,9 +122,16 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
         try {
             // If useExactLookup is true (initial load), use cluster lookup for best match
             // Otherwise, always use search API with the query
-            const url = useExactLookup
-                ? `/api/album/${album.id}/musicbrainz`
-                : `/api/album/${album.id}/musicbrainz?q=${encodeURIComponent(mbSearchQuery.trim() || album.album)}`
+            let url: string
+            if (useExactLookup) {
+                url = `/api/album/${album.id}/musicbrainz`
+            } else {
+                const params = new URLSearchParams()
+                params.set("q", mbSearchQuery.trim() || album.album)
+                const artist = mbArtistQuery.trim()
+                if (artist) params.set("artist", artist)
+                url = `/api/album/${album.id}/musicbrainz?${params}`
+            }
             const response = await fetch(url)
             if (!response.ok) {
                 const data = await response.json()
@@ -381,24 +389,38 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
 
                         {/* Search bar */}
                         <div className="flex gap-1.5">
-                            <Input
-                                value={mbSearchQuery}
-                                onChange={(e) => setMbSearchQuery(e.target.value)}
-                                placeholder="Search MusicBrainz..."
-                                className="h-8 text-xs transition-all duration-150"
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault()
-                                        searchMusicBrainz()
-                                    }
-                                }}
-                            />
+                            <div className="flex-1 flex flex-col gap-1">
+                                <Input
+                                    value={mbSearchQuery}
+                                    onChange={(e) => setMbSearchQuery(e.target.value)}
+                                    placeholder="Album / single title"
+                                    className="h-8 text-xs transition-all duration-150"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault()
+                                            searchMusicBrainz()
+                                        }
+                                    }}
+                                />
+                                <Input
+                                    value={mbArtistQuery}
+                                    onChange={(e) => setMbArtistQuery(e.target.value)}
+                                    placeholder="Artist (optional)"
+                                    className="h-8 text-xs transition-all duration-150"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault()
+                                            searchMusicBrainz()
+                                        }
+                                    }}
+                                />
+                            </div>
                             <Button
                                 type="button"
                                 size="sm"
                                 onClick={() => searchMusicBrainz()}
                                 disabled={loadingMb}
-                                className="shrink-0 h-8 w-8 p-0 transition-all duration-150 active:scale-90"
+                                className="shrink-0 h-[68px] w-8 p-0 transition-all duration-150 active:scale-90"
                             >
                                 <Search className={cn("w-3.5 h-3.5 transition-transform", loadingMb && "animate-pulse")} />
                             </Button>
