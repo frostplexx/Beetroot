@@ -9,7 +9,12 @@ export default defineConfig({
     server: {
         port: 3000,
     },
-    base: "/*",
+    base: "/",
+    build: {
+        outDir: '.output',
+        assetsDir: 'assets',
+        emptyOutDir: true,
+    },
     plugins: [
         tsconfigPaths(),
         tailwindcss(),
