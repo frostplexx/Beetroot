@@ -102,6 +102,7 @@ export const Route = createFileRoute("/api/album/$id/musicbrainz")({
                             album.albumartist || "",
                             query,
                             10,
+                            1, // user-facing: skip ahead of background reconciliation
                         );
                         if (searchResults.length === 0) {
                             return Response.json({
@@ -118,12 +119,15 @@ export const Route = createFileRoute("/api/album/$id/musicbrainz")({
                         });
                     }
 
-                    const result = await lookupReleaseForCluster({
-                        albumartist: album.albumartist,
-                        album: album.album,
-                        trackCount: items.length,
-                        releaseGroupId: album.mb_releasegroupid,
-                    });
+                    const result = await lookupReleaseForCluster(
+                        {
+                            albumartist: album.albumartist,
+                            album: album.album,
+                            trackCount: items.length,
+                            releaseGroupId: album.mb_releasegroupid,
+                        },
+                        1, // user-facing: skip ahead of background reconciliation
+                    );
 
                     if (!result) {
                         return Response.json({

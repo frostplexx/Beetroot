@@ -13,20 +13,46 @@ async function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Promise chain for rate limiting - ensures sequential execution
-let rateLimitChain: Promise<void> = Promise.resolve();
+// Priority-aware queue. Background reconciliation often floods this with
+// dozens of requests; user-facing calls (edit panel search) pass priority=1
+// so they jump ahead instead of waiting tens of seconds behind background work.
+// The global 1.5s spacing is still respected regardless of priority.
+type QueueItem = { priority: number; resolve: () => void };
+const queue: QueueItem[] = [];
+let nextFireTime = 0;
+let draining = false;
 
-async function rateLimitedFetch(url: string, options?: RequestInit): Promise<Response> {
-    // Chain this request after the previous one
-    const mySlot = rateLimitChain.then(async () => {
-        await sleep(MIN_REQUEST_INTERVAL);
+function enqueue(priority: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+        // Insert before the first lower-priority entry; ties keep FIFO order.
+        const insertIdx = queue.findIndex((q) => q.priority < priority);
+        if (insertIdx === -1) queue.push({ priority, resolve });
+        else queue.splice(insertIdx, 0, { priority, resolve });
+
+        if (!draining) {
+            draining = true;
+            void drainQueue();
+        }
     });
+}
 
-    // Update chain for next request
-    rateLimitChain = mySlot;
+async function drainQueue(): Promise<void> {
+    while (queue.length > 0) {
+        const wait = nextFireTime - Date.now();
+        if (wait > 0) await sleep(wait);
+        const item = queue.shift()!;
+        nextFireTime = Date.now() + MIN_REQUEST_INTERVAL;
+        item.resolve();
+    }
+    draining = false;
+}
 
-    // Wait for our slot, then execute
-    await mySlot;
+async function rateLimitedFetch(
+    url: string,
+    options?: RequestInit,
+    priority = 0,
+): Promise<Response> {
+    await enqueue(priority);
     return fetch(url, { ...options, signal: AbortSignal.timeout(15_000) });
 }
 
@@ -157,7 +183,7 @@ async function fetchMusicBrainz(recordingId: string): Promise<MusicBrainzRecordi
 // dedupe to a single network request. Cleared when the promise settles.
 const releaseDetailsInFlight = new Map<string, Promise<MusicBrainzRelease | undefined>>();
 
-async function fetchReleaseDetails(releaseId: string): Promise<MusicBrainzRelease | undefined> {
+async function fetchReleaseDetails(releaseId: string, priority = 0): Promise<MusicBrainzRelease | undefined> {
     const cached = releaseDetailsInFlight.get(releaseId);
     if (cached) return cached;
 
@@ -165,7 +191,8 @@ async function fetchReleaseDetails(releaseId: string): Promise<MusicBrainzReleas
         // Fetch complete release data including media, tracks, labels, etc.
         const response = await rateLimitedFetch(
             `${BASE_URL}/release/${releaseId}?inc=artist-credits+recordings+release-groups+labels+media&fmt=json`,
-            { headers: { 'User-Agent': USER_AGENT } }
+            { headers: { 'User-Agent': USER_AGENT } },
+            priority,
         );
 
         // 404 or other client errors - don't retry, just return undefined
@@ -408,7 +435,8 @@ function totalTrackCount(r: MusicBrainzRelease): number {
 export async function searchReleasesByArtistAlbum(
     artist: string,
     album: string,
-    limit = 25
+    limit = 25,
+    priority = 0,
 ): Promise<ReleaseSearchHit[]> {
     const parts: string[] = [];
     if (album) parts.push(`release:"${escapeLucene(album)}"`);
@@ -420,7 +448,7 @@ export async function searchReleasesByArtistAlbum(
 
     try {
         return await withRetry(async () => {
-            const response = await rateLimitedFetch(url, { headers: { 'User-Agent': USER_AGENT } });
+            const response = await rateLimitedFetch(url, { headers: { 'User-Agent': USER_AGENT } }, priority);
             if (!response.ok) throw new Error(`MusicBrainz release search ${response.status}`);
             const data = await response.json();
             return (data?.releases as ReleaseSearchHit[]) ?? [];
@@ -440,14 +468,15 @@ export async function searchReleasesByArtistAlbum(
 // matches the cluster size, which is what stops a stray single-track lookup
 // from getting matched against a "single" release instead of the album.
 export async function lookupReleaseForCluster(
-    input: ClusterReleaseInput
+    input: ClusterReleaseInput,
+    priority = 0,
 ): Promise<ClusterReleaseResult | null> {
     const artist = input.albumartist?.trim() ?? '';
     const album = input.album?.trim() ?? '';
 
     if (!album) return null;
 
-    const hits = await searchReleasesByArtistAlbum(artist, album);
+    const hits = await searchReleasesByArtistAlbum(artist, album, 25, priority);
     if (!hits.length) return null;
 
     const targetCount = input.trackCount;
@@ -487,7 +516,7 @@ export async function lookupReleaseForCluster(
     // per-track lookup so we never regress on cluster-less imports.
     if (!best || best.score < 70) return null;
 
-    const full = await fetchReleaseDetails(best.hit.id);
+    const full = await fetchReleaseDetails(best.hit.id, priority);
     if (!full) return null;
 
     return {
