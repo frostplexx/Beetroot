@@ -73,13 +73,15 @@ EOF
             };
 
             acoustidApiKey = lib.mkOption {
-              type = lib.types.str;
-              description = "AcoustID API key for fingerprinting";
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "AcoustID API key for fingerprinting (optional if using configFile)";
             };
 
             lastfmApiKey = lib.mkOption {
-              type = lib.types.str;
-              description = "Last.fm API key for metadata";
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Last.fm API key for metadata (optional if using configFile)";
             };
 
             discogsToken = lib.mkOption {
@@ -137,7 +139,9 @@ EOF
                 PORT = toString cfg.port;
                 DATABASE_PATH = "${cfg.dataDirectory}/db.sqlite3";
                 MUSIC_DIRECTORY = cfg.musicDirectory;
+              } // lib.optionalAttrs (cfg.acoustidApiKey != null) {
                 ACOUSTID_API_KEY = cfg.acoustidApiKey;
+              } // lib.optionalAttrs (cfg.lastfmApiKey != null) {
                 LASTFM_API_KEY = cfg.lastfmApiKey;
               } // lib.optionalAttrs (cfg.discogsToken != null) {
                 DISCOGS_TOKEN = cfg.discogsToken;
