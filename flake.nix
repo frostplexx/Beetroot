@@ -27,13 +27,13 @@
                   fileset = pkgs.lib.fileset.unions [
                     ./package.json
                     ./bun.lock
-                    ./scripts
                   ];
                 };
-                nativeBuildInputs = [ pkgs.bun pkgs.chromaprint ];
+                nativeBuildInputs = [ pkgs.bun ];
+                dontFixup = true;
                 buildPhase = ''
                   export HOME=$TMPDIR
-                  bun install --frozen-lockfile
+                  bun install --frozen-lockfile --ignore-scripts
                 '';
                 installPhase = ''
                   mkdir $out
@@ -211,7 +211,11 @@ EOF
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        # Pre-fetch node_modules in a fixed-output derivation (has network access)
+        # Pre-fetch node_modules in a fixed-output derivation (has network access).
+        # dontFixup prevents patchShebangs from embedding nix store paths in the
+        # output, which would violate the FOD content-address constraint.
+        # --ignore-scripts skips postinstall (which would download chromaprint),
+        # keeping the FOD free of store-path references from nativeBuildInputs.
         nodeModules = pkgs.stdenv.mkDerivation {
           name = "beetroot-v2-node-modules";
           src = pkgs.lib.fileset.toSource {
@@ -219,13 +223,13 @@ EOF
             fileset = pkgs.lib.fileset.unions [
               ./package.json
               ./bun.lock
-              ./scripts
             ];
           };
-          nativeBuildInputs = [ pkgs.bun pkgs.chromaprint ];
+          nativeBuildInputs = [ pkgs.bun ];
+          dontFixup = true;
           buildPhase = ''
             export HOME=$TMPDIR
-            bun install --frozen-lockfile
+            bun install --frozen-lockfile --ignore-scripts
           '';
           installPhase = ''
             mkdir $out
@@ -233,7 +237,7 @@ EOF
           '';
           outputHashAlgo = "sha256";
           outputHashMode = "recursive";
-          outputHash = "sha256-2gMkIiteWlr3ubIUXFmqyFomVbbLL9oFXzchmjq0lZg=";
+          outputHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
         };
 
         beetroot-v2 = pkgs.stdenv.mkDerivation {
