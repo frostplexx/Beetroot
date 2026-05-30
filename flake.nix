@@ -27,9 +27,10 @@
                   fileset = pkgs.lib.fileset.unions [
                     ./package.json
                     ./bun.lock
+                    ./scripts
                   ];
                 };
-                nativeBuildInputs = [ pkgs.bun ];
+                nativeBuildInputs = [ pkgs.bun pkgs.chromaprint ];
                 buildPhase = ''
                   export HOME=$TMPDIR
                   bun install --frozen-lockfile
@@ -58,6 +59,8 @@
                 mkdir -p $out
                 cp -r .output node_modules $out/
                 cp package.json $out/
+                mkdir -p $out/lib/music/binaries/chromaprint
+                ln -sf ${pkgs.chromaprint}/bin/fpcalc $out/lib/music/binaries/chromaprint/fpcalc
                 cat > $out/start.sh <<EOF
 #!/bin/sh
 cd $out
@@ -216,9 +219,10 @@ EOF
             fileset = pkgs.lib.fileset.unions [
               ./package.json
               ./bun.lock
+              ./scripts
             ];
           };
-          nativeBuildInputs = [ pkgs.bun ];
+          nativeBuildInputs = [ pkgs.bun pkgs.chromaprint ];
           buildPhase = ''
             export HOME=$TMPDIR
             bun install --frozen-lockfile
@@ -257,6 +261,9 @@ EOF
             cp -r .output $out/
             cp -r node_modules $out/
             cp package.json $out/
+
+            mkdir -p $out/lib/music/binaries/chromaprint
+            ln -sf ${pkgs.chromaprint}/bin/fpcalc $out/lib/music/binaries/chromaprint/fpcalc
 
             cat > $out/start.sh <<EOF
 #!/bin/sh
