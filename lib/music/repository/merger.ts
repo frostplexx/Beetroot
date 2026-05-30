@@ -523,10 +523,14 @@ function resolveGenres(sources: SourceResult[]): string[] {
         }
     }
 
-    // Map back to original capitalization
-    const result = Array.from(leafGenres).map(normalized =>
-        originalCasing.get(normalized)?.original || normalized
-    );
+    // Map back to original capitalization, preserving Last.fm count order
+    const result = Array.from(leafGenres)
+        .sort((a, b) => {
+            const ia = normalizedGenres.indexOf(a);
+            const ib = normalizedGenres.indexOf(b);
+            return (ia === -1 ? Infinity : ia) - (ib === -1 ? Infinity : ib);
+        })
+        .map(normalized => originalCasing.get(normalized)?.original || normalized);
     if (DEBUG_MERGE) {
         console.log(`  Final leaf genres: [${result.join(', ')}]`);
     }

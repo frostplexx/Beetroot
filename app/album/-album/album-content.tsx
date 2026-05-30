@@ -22,7 +22,7 @@ function titleCase(s: string): string {
 
 export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
     const totalMinutes = album.total_time ? Math.round(album.total_time / 60) : 0
-    const genres = album.genres?.split(",").map(g => titleCase(g.trim())).filter(Boolean) || []
+    const genres = (album.genres?.split(",").map(g => titleCase(g.trim())).filter(Boolean) || []).slice(0, 2)
     const isMissing = album.missing_since != null
     const [activeTab, setActiveTab] = React.useState("view")
     const [isSaving, setIsSaving] = React.useState(false)
