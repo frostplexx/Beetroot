@@ -2,15 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import db from "@/lib/music/database/db";
 import {
     getItemById,
-    deleteItemFromDB,
+    unsafeForceDeleteItemFromDB,
     checkAndUpdateAlbumMissingStatus,
     getAlbumById,
     updateItem,
+    setAlbumMarkedForDeletion,
 } from "@/lib/music/database";
-import { writeBackItem, moveFile } from "@/lib/music/repository/writeback";
+import { writeBackItem } from "@/lib/music/repository/writeback";
+import Repository from "@/lib/music/repository";
 import { globalConfig } from "@/lib/config";
 import * as fs from "fs";
-import * as path from "path";
 
 function deleteAlbumIfEmpty(albumId: number): boolean {
     const row = db
@@ -19,6 +20,23 @@ function deleteAlbumIfEmpty(albumId: number): boolean {
     if (row.c > 0) return false;
     db.prepare("DELETE FROM albums WHERE id = ?").run(albumId);
     return true;
+}
+
+// If every remaining item in the album is soft-deleted, soft-delete the album row
+// too so the now-empty album doesn't keep showing up in listings.
+function syncAlbumDeletionFromItems(albumId: number): boolean {
+    const row = db.prepare(`
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN marked_for_deletion IS NOT NULL THEN 1 ELSE 0 END) AS deleted
+        FROM items
+        WHERE album_id = ?
+    `).get(albumId) as { total: number; deleted: number };
+    if (row.total > 0 && row.total === row.deleted) {
+        setAlbumMarkedForDeletion(albumId, Date.now());
+        return true;
+    }
+    return false;
 }
 
 interface UpdateItemPayload {
@@ -153,35 +171,46 @@ export const Route = createFileRoute("/api/items/$id")({
                 });
             },
 
-            DELETE: async ({ request, params }) => {
+            DELETE: async ({ params }) => {
                 const itemId = parseInt(params.id, 10);
                 if (Number.isNaN(itemId)) {
                     return Response.json({ error: "Invalid item id" }, { status: 400 });
                 }
                 const item = getItemById(itemId);
-                if (!item) {
+                if (!item || item.marked_for_deletion != null) {
                     return Response.json({ error: "Item not found" }, { status: 404 });
                 }
-                const { searchParams } = new URL(request.url);
-                const deleteFile = searchParams.get("deleteFile") === "true";
                 const previousAlbumId = item.album_id;
 
-                if (deleteFile) {
-                    if (fs.existsSync(item.path)) {
-                        const trashDir = globalConfig.trash_directory
-                            ? globalConfig.trash_directory
-                            : path.join(globalConfig.music_directory, ".trash") + path.sep;
-                        const trashPath = item.path.replace(globalConfig.music_directory, trashDir);
-                        if (!moveFile(item.path, trashPath)) {
-                            return Response.json(
-                                { error: `Failed to move file to trash: ${item.path}` },
-                                { status: 500 },
-                            );
-                        }
+                // Mode decided by file presence, not by caller: a present file
+                // becomes a soft-delete (restorable); an already-missing file is
+                // a permanent DB delete since there's nothing on disk to move.
+                if (fs.existsSync(item.path)) {
+                    try {
+                        Repository.markItemForDeletion(item);
+                    } catch (err) {
+                        return Response.json(
+                            { error: err instanceof Error ? err.message : String(err) },
+                            { status: 500 },
+                        );
                     }
+                    let previousAlbumDeleted = false;
+                    if (previousAlbumId !== null) {
+                        previousAlbumDeleted = syncAlbumDeletionFromItems(previousAlbumId);
+                    }
+                    return Response.json({
+                        deleted: true,
+                        mode: "soft",
+                        previousAlbumId,
+                        previousAlbumDeleted,
+                    });
                 }
 
-                deleteItemFromDB(itemId);
+                // File already gone on disk; the on-disk verification we just
+                // did is equivalent to the missing_since invariant, so use the
+                // unsafe path with a clear audit reason instead of writing
+                // missing_since just to re-read it inside deleteItemFromDB.
+                unsafeForceDeleteItemFromDB(itemId, `API item DELETE: file already missing at ${item.path}`);
                 let previousAlbumDeleted = false;
                 if (previousAlbumId !== null) {
                     previousAlbumDeleted = deleteAlbumIfEmpty(previousAlbumId);
@@ -189,10 +218,9 @@ export const Route = createFileRoute("/api/items/$id")({
                         checkAndUpdateAlbumMissingStatus(previousAlbumId);
                     }
                 }
-
                 return Response.json({
                     deleted: true,
-                    fileDeleted: deleteFile,
+                    mode: "permanent",
                     previousAlbumId,
                     previousAlbumDeleted,
                 });

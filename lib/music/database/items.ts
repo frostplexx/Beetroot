@@ -176,7 +176,30 @@ export function getItemsPaginated(page: number = 0, pageSize: number = 50): Item
     }
 }
 
+// User-facing item listing for an album. Excludes soft-deleted items so the
+// album detail view never shows tracks that the user moved to trash. Internal
+// callers that need the full set (e.g. Repository.restoreAlbum, which needs
+// to find items currently in trash) use {@link getAllItemsByAlbum}.
 export function getItemsByAlbum(albumId: number): Item[] {
+    try {
+        const stmt = db.prepare(`
+            SELECT *
+            FROM items
+            WHERE album_id = ?
+              AND marked_for_deletion IS NULL
+            ORDER BY track
+        `)
+        const rows = stmt.all(albumId) as Record<string, any>[]
+        return decodeRows(rows) as Item[]
+    } catch (error) {
+        console.error("Error fetching items for album:", error)
+        return []
+    }
+}
+
+// Internal raw listing including soft-deleted items. Used by restore and by
+// repository operations that need to see every row in the album.
+export function getAllItemsByAlbum(albumId: number): Item[] {
     try {
         const stmt = db.prepare(`
             SELECT *
@@ -187,7 +210,7 @@ export function getItemsByAlbum(albumId: number): Item[] {
         const rows = stmt.all(albumId) as Record<string, any>[]
         return decodeRows(rows) as Item[]
     } catch (error) {
-        console.error("Error fetching items for album:", error)
+        console.error("Error fetching all items for album:", error)
         return []
     }
 }
@@ -261,18 +284,64 @@ export function getItemsSearchCount(query: string): number {
     }
 }
 
+// An item is eligible for permanent hard delete only when there is nothing
+// left to lose: the file is already gone (missing_since), or the user soft-
+// deleted it and the configured retention window has elapsed. Any other state
+// implies the user still has a recoverable copy in trash, so we must refuse.
+function isHardDeleteEligible(row: { missing_since: number | null; marked_for_deletion: number | null }): boolean {
+    if (row.missing_since != null) return true;
+    if (row.marked_for_deletion != null) {
+        const cutoffMs = globalConfig.delete_after * 24 * 60 * 60 * 1000;
+        return Date.now() - row.marked_for_deletion > cutoffMs;
+    }
+    return false;
+}
+
+/**
+ * Permanently remove an item row from the DB. Refuses to act unless the row
+ * is hard-delete eligible (see {@link isHardDeleteEligible}). This is the
+ * chokepoint that makes accidental hard delete impossible: any new caller
+ * that uses this function on a live item will throw at runtime instead of
+ * silently destroying data.
+ *
+ * Internal code paths that legitimately need to bypass this — adoption
+ * rollback of a freshly-inserted row, admin-side dedupe — must use
+ * {@link unsafeForceDeleteItemFromDB} and document the reason.
+ */
 export function deleteItemFromDB(id: number): void {
     try {
-        const stmt = db.prepare(`
-            DELETE FROM items
-            WHERE id = ?
-        `)
-        stmt.run(id)
+        const row = db
+            .prepare(`SELECT missing_since, marked_for_deletion FROM items WHERE id = ?`)
+            .get(id) as { missing_since: number | null; marked_for_deletion: number | null } | undefined;
+        if (!row) return; // already gone — idempotent
+        if (!isHardDeleteEligible(row)) {
+            throw new Error(
+                `Refusing to hard-delete item ${id}: not eligible ` +
+                `(missing_since=${row.missing_since}, marked_for_deletion=${row.marked_for_deletion}, ` +
+                `retention_days=${globalConfig.delete_after}). Soft-delete first via Repository.markItemForDeletion.`,
+            );
+        }
+        db.prepare(`DELETE FROM items WHERE id = ?`).run(id);
     }
     catch (error) {
         console.error("Error deleting item:", error)
         throw error
     }
+}
+
+/**
+ * Bypass the eligibility check. Reserved for code paths where the caller has
+ * already proven the row should be deleted by other means:
+ *   - adopt rollback: the row was just inserted and never published anywhere
+ *   - admin dedupe: the user explicitly chose to merge duplicates
+ *   - permanent-delete-of-missing-album: album.missing_since is set and the
+ *     handler has verified every item is also missing
+ *
+ * Always log the reason — this is the audit trail for accidental data loss.
+ */
+export function unsafeForceDeleteItemFromDB(id: number, reason: string): void {
+    console.warn(`unsafeForceDeleteItemFromDB(${id}): ${reason}`);
+    db.prepare(`DELETE FROM items WHERE id = ?`).run(id);
 }
 
 /**

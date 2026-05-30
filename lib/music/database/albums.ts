@@ -97,11 +97,17 @@ export interface Album {
     [key: string]: any
 }
 
+// All user-facing album queries exclude rows where marked_for_deletion is set.
+// Soft-deleted albums remain in the DB (so they can be restored) but should
+// never appear in library / search / detail views — the visible album set is
+// {row | marked_for_deletion IS NULL}. Repository.restoreAlbum is the only
+// supported way for one of these rows to re-enter the visible set.
 export function getAllAlbums(): Album[] {
     try {
         const stmt = db.prepare(`
             SELECT *
             FROM albums
+            WHERE marked_for_deletion IS NULL
             ORDER BY added DESC
         `)
         const rows = stmt.all() as Record<string, any>[]
@@ -139,6 +145,7 @@ export function getAlbumsPaginatedSlim(page: number = 0, pageSize: number = 30, 
         const stmt = db.prepare(`
             SELECT id, album, albumartist, artpath, added, missing_since
             FROM albums
+            WHERE marked_for_deletion IS NULL
             ${orderClause}
             LIMIT ? OFFSET ?
         `)
@@ -167,6 +174,7 @@ export function getAlbumsPaginated(page: number = 0, pageSize: number = 24): Alb
         const stmt = db.prepare(`
             SELECT *
             FROM albums
+            WHERE marked_for_deletion IS NULL
             ORDER BY added DESC
             LIMIT ? OFFSET ?
         `)
@@ -195,7 +203,7 @@ export function getAlbumById(id: number): Album | null {
 
 export function getAlbumCount(): number {
     try {
-        const result = db.prepare("SELECT COUNT(*) as count FROM albums").get() as {
+        const result = db.prepare("SELECT COUNT(*) as count FROM albums WHERE marked_for_deletion IS NULL").get() as {
             count: number
         }
         return result.count
@@ -217,6 +225,7 @@ export function searchAlbums(query: string, page: number = 0, pageSize: number =
             FROM albums
             INNER JOIN albums_fts ON albums.id = albums_fts.rowid
             WHERE albums_fts MATCH ?
+              AND albums.marked_for_deletion IS NULL
             ORDER BY albums.added DESC
             LIMIT ? OFFSET ?
         `)
@@ -237,6 +246,7 @@ export function getAlbumsSearchCount(query: string): number {
             FROM albums
             INNER JOIN albums_fts ON albums.id = albums_fts.rowid
             WHERE albums_fts MATCH ?
+              AND albums.marked_for_deletion IS NULL
         `)
 
         const result = stmt.get(query.trim()) as { count: number }
@@ -397,6 +407,22 @@ export function unmarkAlbumMissing(albumId: number): void {
         invalidateAlbumsCache()
     } catch (error) {
         console.error('Error unmarking album as missing:', error)
+        throw error
+    }
+}
+
+// Mark / unmark album as soft-deleted. The row stays in the DB so the album
+// can be restored, but it disappears from every user-facing query.
+export function setAlbumMarkedForDeletion(albumId: number, at: number | null): void {
+    try {
+        db.prepare(`
+            UPDATE albums
+            SET marked_for_deletion = ?
+            WHERE id = ?
+        `).run(at, albumId)
+        invalidateAlbumsCache()
+    } catch (error) {
+        console.error('Error setting album marked_for_deletion:', error)
         throw error
     }
 }

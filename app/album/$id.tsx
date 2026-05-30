@@ -13,7 +13,9 @@ const loadAlbum = createServerFn({ method: "GET" })
             return null;
         }
         const album = getAlbumById(albumId);
-        if (!album) return null;
+        // Soft-deleted albums are kept in the DB so they can be restored, but
+        // should look like a 404 from the public route until restored.
+        if (!album || album.marked_for_deletion != null) return null;
         const artUrl =
             album.artpath && !album.missing_since
                 ? `/api/album/${albumId}/art?size=800&t=${album.added}`

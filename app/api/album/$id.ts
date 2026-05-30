@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getAlbumById, updateAlbumFields } from "@/lib/music/database/albums";
 import { getItemsByAlbum, batchUpdateItems } from "@/lib/music/database/items";
-import { writeBackItem, moveFile } from "@/lib/music/repository/writeback";
+import { writeBackItem } from "@/lib/music/repository/writeback";
 import { globalConfig } from "@/lib/config";
+import Repository from "@/lib/music/repository";
 import db from "@/lib/music/database/db";
 import * as path from "path";
 import * as fs from "fs/promises";
@@ -164,71 +165,62 @@ export const Route = createFileRoute("/api/album/$id")({
                 }
             },
 
-            DELETE: async ({ request, params }) => {
+            DELETE: async ({ params }) => {
                 try {
                     const albumId = parseInt(params.id, 10);
                     if (!Number.isFinite(albumId) || albumId <= 0) {
                         return Response.json({ error: "Invalid album ID" }, { status: 400 });
                     }
                     const album = getAlbumById(albumId);
-                    if (!album) {
+                    if (!album || album.marked_for_deletion != null) {
                         return Response.json({ error: "Album not found" }, { status: 404 });
                     }
 
-                    const { searchParams } = new URL(request.url);
-                    const deleteFiles = searchParams.get("files") === "true";
-
-                    let filesDeleted = 0;
-                    if (deleteFiles && album.missing_since == null) {
-                        const items = getItemsByAlbum(albumId);
-                        const trashDir = globalConfig.trash_directory
-                            ? globalConfig.trash_directory
-                            : path.join(globalConfig.music_directory, ".trash") + path.sep;
-                        for (const item of items) {
-                            try {
-                                const exists = await fs.access(item.path).then(() => true).catch(() => false);
-                                if (exists) {
-                                    const trashPath = item.path.replace(globalConfig.music_directory, trashDir);
-                                    if (moveFile(item.path, trashPath)) {
-                                        filesDeleted++;
-                                    }
-                                }
-                            } catch (err) {
-                                console.error(`Failed to move ${item.path} to trash:`, err);
-                            }
+                    // Two distinct delete modes, picked from existing album state — the
+                    // caller doesn't get to choose between them, which keeps the
+                    // dangerous one off-limits unless the data is already lost on disk.
+                    //
+                    //   missing on disk → permanent: nothing to move to trash, so the
+                    //     DB rows can be removed in a single transaction.
+                    //   present on disk → soft delete: files move to trash, items and
+                    //     the album row keep a marked_for_deletion timestamp. The user
+                    //     can restore via the restore endpoint up to delete_after days
+                    //     later, after which the reconcile cleanup reaps them.
+                    if (album.missing_since != null) {
+                        // Defense in depth: the album-level missing flag isn't enough —
+                        // verify every item is also missing before any DELETE runs. If
+                        // even one item still has files on disk, bail out instead of
+                        // hard-deleting recoverable data.
+                        const presence = db.prepare(`
+                            SELECT COUNT(*) AS c FROM items
+                            WHERE album_id = ? AND missing_since IS NULL AND marked_for_deletion IS NULL
+                        `).get(albumId) as { c: number };
+                        if (presence.c > 0) {
+                            return Response.json({
+                                error: `Album ${albumId} has ${presence.c} live item(s); refusing permanent delete. Soft-delete instead.`,
+                            }, { status: 409 });
                         }
-                        if (album.artpath) {
-                            try {
-                                const exists = await fs.access(album.artpath).then(() => true).catch(() => false);
-                                if (exists) {
-                                    const trashArtPath = album.artpath.replace(globalConfig.music_directory, trashDir);
-                                    moveFile(album.artpath, trashArtPath);
-                                }
-                            } catch {
-                                // best effort
-                            }
-                        }
+                        const result = db.transaction(() => {
+                            const itemRes = db
+                                .prepare("DELETE FROM items WHERE album_id = ?")
+                                .run(albumId);
+                            const albRes = db
+                                .prepare("DELETE FROM albums WHERE id = ?")
+                                .run(albumId);
+                            return {
+                                itemsDeleted: Number(itemRes.changes),
+                                albumDeleted: Number(albRes.changes) > 0,
+                            };
+                        })();
+                        return Response.json({ deleted: true, mode: "permanent", albumId, ...result });
                     }
 
-                    const tx = db.transaction(() => {
-                        const itemRes = db
-                            .prepare("DELETE FROM items WHERE album_id = ?")
-                            .run(albumId);
-                        const albRes = db
-                            .prepare("DELETE FROM albums WHERE id = ?")
-                            .run(albumId);
-                        return {
-                            itemsDeleted: Number(itemRes.changes),
-                            albumDeleted: Number(albRes.changes) > 0,
-                        };
-                    });
-                    const result = tx();
-
+                    const result = Repository.markAlbumForDeletion(albumId);
                     return Response.json({
                         deleted: true,
+                        mode: "soft",
                         albumId,
-                        filesDeleted,
-                        ...result,
+                        itemsMoved: result.itemsMoved,
                     });
                 } catch (error) {
                     console.error("Error deleting album:", error);

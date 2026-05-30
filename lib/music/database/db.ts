@@ -91,6 +91,7 @@ function createSchema(db: Database): void {
             year INTEGER,
             added REAL,
             missing_since REAL,
+            marked_for_deletion REAL,
             album_normalized TEXT,
             albumartist_normalized TEXT
         );
@@ -554,6 +555,24 @@ function runMigrations(db: Database): void {
         db.prepare('INSERT INTO migrations (name, table_name) VALUES (?, ?)').run( ftsUnicodeMigration, 'fts');
 
         console.log('Migration complete: FTS tables rebuilt with unicode61 tokenizer');
+    }
+
+    // Migration: Add marked_for_deletion to albums for soft delete + restore.
+    // Items already carry this column; mirroring it on albums lets list queries
+    // hide a soft-deleted album without scanning every track row.
+    const albumMarkDeletionMigration = 'add_album_marked_for_deletion';
+    const albumMarkDeletionExists = db.prepare(
+        'SELECT 1 FROM migrations WHERE name = ?'
+    ).get(albumMarkDeletionMigration);
+    if (!albumMarkDeletionExists) {
+        const tableInfo = db.prepare('PRAGMA table_info(albums)').all() as Array<{ name: string }>;
+        const hasColumn = tableInfo.some(col => col.name === 'marked_for_deletion');
+        if (!hasColumn) {
+            db.run('ALTER TABLE albums ADD COLUMN marked_for_deletion REAL');
+        }
+        db.run('CREATE INDEX IF NOT EXISTS idx_album_marked_for_deletion ON albums(marked_for_deletion) WHERE marked_for_deletion IS NOT NULL');
+        db.prepare('INSERT INTO migrations (name, table_name) VALUES (?, ?)').run(albumMarkDeletionMigration, 'albums');
+        console.log('Migration complete: added marked_for_deletion to albums');
     }
 }
 

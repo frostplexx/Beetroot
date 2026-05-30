@@ -6,7 +6,7 @@ import { WikipediaSource } from "./sources/wikipedia/wikipedia";
 import { LrclibSource } from "./sources/lrclib/lrclib";
 import { ReplayGain } from "./sources/replaygain";
 import { DataSource, ReconcileProgress, ReconcileResult, SourceResult } from "./types";
-import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, deleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById, checkAndUpdateAlbumMissingStatus, getItemById } from "../database";
+import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, getAllItemsByAlbum, deleteItemFromDB, unsafeForceDeleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById, checkAndUpdateAlbumMissingStatus, getItemById, setAlbumMarkedForDeletion } from "../database";
 import { mergeData } from "./merger";
 import { writeBackItem, moveItem, moveFile, copyFile, computeTargetPath } from "./writeback";
 import { globalConfig } from "../../config";
@@ -32,6 +32,36 @@ class AdoptionError extends Error {
         super(message);
         this.name = 'AdoptionError';
     }
+}
+
+
+/**
+ * Resolve the canonical trash root, with a trailing slash. Soft-deleted
+ * files always live under this prefix; deleteItem() asserts the invariant
+ * before unlinking anything.
+ */
+function trashRoot(): string {
+    const raw = globalConfig.trash_directory
+        ? globalConfig.trash_directory
+        : `${globalConfig.music_directory}/.trash`;
+    return raw.endsWith('/') ? raw : raw + '/';
+}
+
+/**
+ * Map a file path inside music_directory to its mirrored location inside the
+ * trash root. Throws if the source path isn't actually inside music_directory
+ * (would otherwise be a silent no-op via String.replace and trash a file in
+ * place — exactly the kind of bad state we want unrepresentable).
+ */
+function computeTrashPath(itemPath: string): string {
+    const musicDir = globalConfig.music_directory.endsWith('/')
+        ? globalConfig.music_directory
+        : globalConfig.music_directory + '/';
+    if (!itemPath.startsWith(musicDir)) {
+        throw new Error(`Cannot compute trash path: ${itemPath} is outside music_directory ${musicDir}`);
+    }
+    const relative = itemPath.slice(musicDir.length);
+    return trashRoot() + relative;
 }
 
 
@@ -220,7 +250,11 @@ class Repository {
                 console.error(`Adoption failed after DB commit, rolling back item ${itemId}`);
                 try {
                     db.transaction(() => {
-                        deleteItemFromDB(itemId!);
+                        // Item was inserted seconds ago and never surfaced to the user;
+                        // no soft-delete state to satisfy the normal guard. Force is
+                        // safe here because the row's only existence was this in-flight
+                        // adoption that we're aborting.
+                        unsafeForceDeleteItemFromDB(itemId!, `adopt rollback for ${originalPath}`);
                     })();
                     console.log(`Rollback successful: removed item ${itemId} from database`);
                 } catch (rollbackError) {
@@ -246,21 +280,26 @@ class Repository {
     }
 
     markItemForDeletion(item: Item): void {
-        // Mark item as missing in DB (don't delete immediately to allow for recovery)
-        item.marked_for_deletion = Date.now();
+        // Soft delete: file moves into trash, item row keeps a marked_for_deletion
+        // timestamp + a path that lives under the trash root. Restoring is the
+        // inverse: move file back, clear the timestamp, reset the path.
+        //
+        // Invariant maintained after this method returns successfully:
+        //   marked_for_deletion IS NOT NULL ⟺ item.path is inside trashRoot()
+        // The reconcile cleanup at deleteItem() relies on that biconditional to
+        // decide what's safe to permanently unlink.
+        const trashPath = computeTrashPath(item.path);
 
-        // Move item to trash directory
-        const trash = globalConfig.trash_directory ? globalConfig.trash_directory : `${globalConfig.music_directory}/.trash`;
-        const trashPath = item.path.replace(globalConfig.music_directory, trash);
-
-        // Check if move succeeded before updating DB
+        // Move first; only persist the marker + new path if the move succeeds.
+        // If the move fails, the DB is unchanged and the file is unchanged —
+        // the user can retry without ending up in a half-deleted state.
         const moveSucceeded = moveFile(item.path, trashPath);
         if (!moveSucceeded) {
             throw new Error(`Failed to move ${item.path} to trash at ${trashPath}`);
         }
 
-        // Update item path to new location in trash
         item.path = trashPath;
+        item.marked_for_deletion = Date.now();
         writeOrUpdateItem(item);
     }
 
@@ -285,13 +324,105 @@ class Repository {
         }
     }
 
-    markAlbumForDeletion(albumId: number): void {
-        // Get all items for album
+    /**
+     * Soft-delete an album: move every track file into trash, mark each
+     * item row with `marked_for_deletion`, and mark the album row too so it
+     * disappears from listings. All-or-nothing on the filesystem side: if any
+     * file move fails, the already-moved files are rolled back to their
+     * original locations and the DB is untouched. The caller sees the
+     * original error so they can surface it; the library is in the same state
+     * as before the call.
+     *
+     * Returned counts let the API report exactly what happened to the user.
+     */
+    markAlbumForDeletion(albumId: number): { itemsMoved: number; albumMarked: boolean } {
         const items = getItemsByAlbum(albumId);
-        
-        // Mark each item for deletion
-        // This will move files to trash and update DB records
-        items.forEach(item => this.markItemForDeletion(item));
+
+        // Phase 1: move files. Track every successful move so we can undo on partial failure.
+        const moved: Array<{ item: Item; originalPath: string; trashPath: string }> = [];
+        try {
+            for (const item of items) {
+                const trashPath = computeTrashPath(item.path);
+                const originalPath = item.path;
+                if (!moveFile(originalPath, trashPath)) {
+                    throw new Error(`Failed to move ${originalPath} to trash`);
+                }
+                moved.push({ item, originalPath, trashPath });
+            }
+        } catch (error) {
+            // Roll back every move we already did. Best-effort: if a rollback
+            // fails we log it but still surface the original error.
+            for (const m of moved.reverse()) {
+                if (!moveFile(m.trashPath, m.originalPath)) {
+                    console.error(`CRITICAL: failed to roll back ${m.trashPath} → ${m.originalPath}; manual recovery needed`);
+                }
+            }
+            throw error;
+        }
+
+        // Phase 2: commit the soft-delete marker on every item + the album, atomically in one tx.
+        // Reaches the post-condition: every item.path now lives under trash, every
+        // item.marked_for_deletion is set, and album.marked_for_deletion is set.
+        const now = Date.now();
+        db.transaction(() => {
+            for (const m of moved) {
+                m.item.path = m.trashPath;
+                m.item.marked_for_deletion = now;
+                writeOrUpdateItem(m.item);
+            }
+            setAlbumMarkedForDeletion(albumId, now);
+        })();
+
+        return { itemsMoved: moved.length, albumMarked: true };
+    }
+
+    /**
+     * Restore a soft-deleted album: move every track file back to its
+     * canonical location (computed from the path template), clear the
+     * marked_for_deletion markers, and unmark the album. Symmetric counterpart
+     * to markAlbumForDeletion: all-or-nothing on the filesystem, single DB tx
+     * for the metadata updates.
+     */
+    restoreAlbum(albumId: number): { itemsRestored: number } {
+        const album = getAlbumById(albumId);
+        if (!album) throw new Error(`Album ${albumId} not found`);
+        if (album.marked_for_deletion == null) {
+            throw new Error(`Album ${albumId} is not soft-deleted`);
+        }
+        // getItemsByAlbum hides marked items from user-facing lookups; here we
+        // explicitly need to see them.
+        const items = getAllItemsByAlbum(albumId);
+
+        const moved: Array<{ item: Item; fromPath: string; toPath: string }> = [];
+        try {
+            for (const item of items) {
+                if (item.marked_for_deletion == null) continue;
+                const toPath = computeTargetPath(item);
+                const fromPath = item.path;
+                if (!moveFile(fromPath, toPath)) {
+                    throw new Error(`Failed to move ${fromPath} back to ${toPath}`);
+                }
+                moved.push({ item, fromPath, toPath });
+            }
+        } catch (error) {
+            for (const m of moved.reverse()) {
+                if (!moveFile(m.toPath, m.fromPath)) {
+                    console.error(`CRITICAL: failed to roll back restore ${m.toPath} → ${m.fromPath}; manual recovery needed`);
+                }
+            }
+            throw error;
+        }
+
+        db.transaction(() => {
+            for (const m of moved) {
+                m.item.path = m.toPath;
+                m.item.marked_for_deletion = undefined;
+                writeOrUpdateItem(m.item);
+            }
+            setAlbumMarkedForDeletion(albumId, null);
+        })();
+
+        return { itemsRestored: moved.length };
     }
 
 
@@ -599,29 +730,34 @@ class Repository {
     // == Private functions
 
     private async deleteItem(item: Item): Promise<void> {
-        // Permanently delete item from DB and filesystem
+        // Permanently reap a soft-deleted item. Caller (reconcile cleanup) is
+        // expected to have already filtered to items whose marked_for_deletion
+        // is past the delete_after threshold; we re-check the invariants here
+        // because this is the one place that actually unlinks user files.
+        const trash = trashRoot();
+        const eligible =
+            item.marked_for_deletion != null &&
+            item.path.startsWith(trash) &&
+            (Date.now() - item.marked_for_deletion) > globalConfig.delete_after * 24 * 60 * 60 * 1000;
 
-        const trash = globalConfig.trash_directory ? globalConfig.trash_directory : `${globalConfig.music_directory}/.trash`;
-
-        if (item.marked_for_deletion && item.path.startsWith(trash) && (Date.now() - item.marked_for_deletion) > globalConfig.delete_after * 24 * 60 * 60 * 1000) {
-            // Delete file from filesystem
-            try {
-                await fsPromises.unlink(item.path)
-                if (item.artpath) {
-                    await fsPromises.unlink(item.artpath).catch(() => {}) // Ignore if art doesn't exist
-                }
-            } catch (error) {
-                console.error(`Delete failed: ${item.path} - ${error instanceof Error ? error.message : String(error)}`);
-                throw error;
-            }
-
-            // Delete item from DB
-            deleteItemFromDB(item.id);
-        } else {
-            // This should not happen - log as debug since it's a logic error, not user-actionable
-            console.debug(`Delete skipped: item ${item.id} not eligible (marked: ${item.marked_for_deletion}, path: ${item.path})`);
+        if (!eligible) {
+            // Invariant violation upstream — refuse to delete rather than silently
+            // unlinking something that may not be in trash at all.
+            console.warn(`deleteItem refused: item ${item.id} fails invariant (marked: ${item.marked_for_deletion}, path: ${item.path})`);
+            return;
         }
 
+        try {
+            await fsPromises.unlink(item.path);
+            if (item.artpath) {
+                await fsPromises.unlink(item.artpath).catch(() => {}); // Ignore if art doesn't exist
+            }
+        } catch (error) {
+            console.error(`Delete failed: ${item.path} - ${error instanceof Error ? error.message : String(error)}`);
+            throw error;
+        }
+
+        deleteItemFromDB(item.id);
     }
 
 

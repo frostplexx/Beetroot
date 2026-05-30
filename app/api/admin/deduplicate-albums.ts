@@ -210,6 +210,11 @@ function dedupeItemsWithinAlbums(): number {
         FROM items
         WHERE album_id = ?
     `);
+    // Admin path: the user explicitly invoked dedupe and accepts that the
+    // non-canonical rows lose their item rows. Files on disk are NOT touched —
+    // the canonical row points to whichever item kept its DB row, and the
+    // duplicate files (if any) get re-picked up by the next reconcile only if
+    // they're outside the canonical path.
     const deleteItem = db.prepare("DELETE FROM items WHERE id = ?");
     let deleted = 0;
     for (const { album_id } of albums) {

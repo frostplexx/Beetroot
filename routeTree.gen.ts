@@ -22,6 +22,7 @@ import { Route as ApiAdminImportHeatmapRouteImport } from './app/api/admin/impor
 import { Route as ApiAdminDeduplicateAlbumsRouteImport } from './app/api/admin/deduplicate-albums'
 import { Route as ApiItemsIdRevealRouteImport } from './app/api/items/$id/reveal'
 import { Route as ApiAlbumIdRevealRouteImport } from './app/api/album/$id/reveal'
+import { Route as ApiAlbumIdRestoreRouteImport } from './app/api/album/$id/restore'
 import { Route as ApiAlbumIdMusicbrainzRouteImport } from './app/api/album/$id/musicbrainz'
 import { Route as ApiAlbumIdFolderRouteImport } from './app/api/album/$id/folder'
 import { Route as ApiAlbumIdArtRouteImport } from './app/api/album/$id/art'
@@ -94,6 +95,11 @@ const ApiAlbumIdRevealRoute = ApiAlbumIdRevealRouteImport.update({
   path: '/reveal',
   getParentRoute: () => ApiAlbumIdRoute,
 } as any)
+const ApiAlbumIdRestoreRoute = ApiAlbumIdRestoreRouteImport.update({
+  id: '/restore',
+  path: '/restore',
+  getParentRoute: () => ApiAlbumIdRoute,
+} as any)
 const ApiAlbumIdMusicbrainzRoute = ApiAlbumIdMusicbrainzRouteImport.update({
   id: '/musicbrainz',
   path: '/musicbrainz',
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/api/album/$id/art': typeof ApiAlbumIdArtRoute
   '/api/album/$id/folder': typeof ApiAlbumIdFolderRoute
   '/api/album/$id/musicbrainz': typeof ApiAlbumIdMusicbrainzRoute
+  '/api/album/$id/restore': typeof ApiAlbumIdRestoreRoute
   '/api/album/$id/reveal': typeof ApiAlbumIdRevealRoute
   '/api/items/$id/reveal': typeof ApiItemsIdRevealRoute
 }
@@ -150,6 +157,7 @@ export interface FileRoutesByTo {
   '/api/album/$id/art': typeof ApiAlbumIdArtRoute
   '/api/album/$id/folder': typeof ApiAlbumIdFolderRoute
   '/api/album/$id/musicbrainz': typeof ApiAlbumIdMusicbrainzRoute
+  '/api/album/$id/restore': typeof ApiAlbumIdRestoreRoute
   '/api/album/$id/reveal': typeof ApiAlbumIdRevealRoute
   '/api/items/$id/reveal': typeof ApiItemsIdRevealRoute
 }
@@ -170,6 +178,7 @@ export interface FileRoutesById {
   '/api/album/$id/art': typeof ApiAlbumIdArtRoute
   '/api/album/$id/folder': typeof ApiAlbumIdFolderRoute
   '/api/album/$id/musicbrainz': typeof ApiAlbumIdMusicbrainzRoute
+  '/api/album/$id/restore': typeof ApiAlbumIdRestoreRoute
   '/api/album/$id/reveal': typeof ApiAlbumIdRevealRoute
   '/api/items/$id/reveal': typeof ApiItemsIdRevealRoute
 }
@@ -191,6 +200,7 @@ export interface FileRouteTypes {
     | '/api/album/$id/art'
     | '/api/album/$id/folder'
     | '/api/album/$id/musicbrainz'
+    | '/api/album/$id/restore'
     | '/api/album/$id/reveal'
     | '/api/items/$id/reveal'
   fileRoutesByTo: FileRoutesByTo
@@ -210,6 +220,7 @@ export interface FileRouteTypes {
     | '/api/album/$id/art'
     | '/api/album/$id/folder'
     | '/api/album/$id/musicbrainz'
+    | '/api/album/$id/restore'
     | '/api/album/$id/reveal'
     | '/api/items/$id/reveal'
   id:
@@ -229,6 +240,7 @@ export interface FileRouteTypes {
     | '/api/album/$id/art'
     | '/api/album/$id/folder'
     | '/api/album/$id/musicbrainz'
+    | '/api/album/$id/restore'
     | '/api/album/$id/reveal'
     | '/api/items/$id/reveal'
   fileRoutesById: FileRoutesById
@@ -340,6 +352,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAlbumIdRevealRouteImport
       parentRoute: typeof ApiAlbumIdRoute
     }
+    '/api/album/$id/restore': {
+      id: '/api/album/$id/restore'
+      path: '/restore'
+      fullPath: '/api/album/$id/restore'
+      preLoaderRoute: typeof ApiAlbumIdRestoreRouteImport
+      parentRoute: typeof ApiAlbumIdRoute
+    }
     '/api/album/$id/musicbrainz': {
       id: '/api/album/$id/musicbrainz'
       path: '/musicbrainz'
@@ -376,6 +395,7 @@ interface ApiAlbumIdRouteChildren {
   ApiAlbumIdArtRoute: typeof ApiAlbumIdArtRoute
   ApiAlbumIdFolderRoute: typeof ApiAlbumIdFolderRoute
   ApiAlbumIdMusicbrainzRoute: typeof ApiAlbumIdMusicbrainzRoute
+  ApiAlbumIdRestoreRoute: typeof ApiAlbumIdRestoreRoute
   ApiAlbumIdRevealRoute: typeof ApiAlbumIdRevealRoute
 }
 
@@ -384,6 +404,7 @@ const ApiAlbumIdRouteChildren: ApiAlbumIdRouteChildren = {
   ApiAlbumIdArtRoute: ApiAlbumIdArtRoute,
   ApiAlbumIdFolderRoute: ApiAlbumIdFolderRoute,
   ApiAlbumIdMusicbrainzRoute: ApiAlbumIdMusicbrainzRoute,
+  ApiAlbumIdRestoreRoute: ApiAlbumIdRestoreRoute,
   ApiAlbumIdRevealRoute: ApiAlbumIdRevealRoute,
 }
 

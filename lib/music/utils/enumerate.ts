@@ -3,6 +3,16 @@ import fs from 'fs/promises'
 import fss from 'fs'
 import path from 'path'
 
+// Directories that should never be scanned for music files. Soft-deleted
+// files live under .trash inside the music_directory; without this guard the
+// reconcile scan would re-import them as fresh items and resurrect a deleted
+// album. Names are matched against directory basename (case-sensitive).
+const EXCLUDED_DIR_NAMES = new Set(['.trash'])
+
+function isExcludedDir(name: string): boolean {
+  return EXCLUDED_DIR_NAMES.has(name) || name.startsWith('.')
+}
+
 // Async version with parallel directory traversal
 export async function enumerateMusicFiles(
   extensions: string[] = ['.mp3', '.flac', '.wav', '.aac', '.m4a', '.ogg']
@@ -23,6 +33,7 @@ export async function enumerateMusicFiles(
         const fullPath = path.join(dir, entry.name)
 
         if (entry.isDirectory()) {
+          if (isExcludedDir(entry.name)) return []
           return walkDir(fullPath) // Recursive call
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase()
@@ -66,6 +77,7 @@ export async function* enumerateMusicFilesStream(
         const fullPath = path.join(dir, entry.name)
 
         if (entry.isDirectory()) {
+          if (isExcludedDir(entry.name)) continue
           yield* walkDir(fullPath) // Recursively yield from subdirectories
         } else if (entry.isFile() && extSet.has(path.extname(entry.name).toLowerCase())) {
           yield fullPath

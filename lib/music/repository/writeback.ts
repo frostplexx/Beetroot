@@ -117,10 +117,18 @@ function writeTagsFlac(filePath: string, item: Item): boolean {
     if (item.lyrics) tags.LYRICS = item.lyrics;
     if (item.work) tags.WORK = item.work;
 
+    // Atomic write: copy original to .tmp, mutate the tmp in place, then rename.
+    // writeFlacTagsSync does an in-place read+write, so calling it on the source
+    // path would corrupt the file on crash / disk-full. Operating on a copy
+    // means the original is only replaced once the rename succeeds.
+    const tmpPath = `${filePath}.tmp`;
     try {
-        writeFlacTagsSync({ tagMap: tags }, filePath);
+        fs.copyFileSync(filePath, tmpPath);
+        writeFlacTagsSync({ tagMap: tags }, tmpPath);
+        fs.renameSync(tmpPath, filePath);
         return true;
     } catch (error) {
+        try { fs.unlinkSync(tmpPath); } catch { /* ignore cleanup error */ }
         console.error(`Error writing FLAC tags to ${filePath}:`, error);
         throw error;
     }
