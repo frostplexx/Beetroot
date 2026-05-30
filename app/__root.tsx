@@ -6,6 +6,7 @@ import {
     Scripts,
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import "./globals.css"; // forces the client bundle to emit globals.css as a file
 import appCss from "./globals.css?url";
 import { cn } from "@/lib/ui/utils";
 import Navigation from "@/components/navigation";
