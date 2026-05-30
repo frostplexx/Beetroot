@@ -245,7 +245,7 @@ Add Beetroot V2 to your NixOS configuration:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    beetroot-v2.url = "github:yourusername/beetroot_v2";
+    beetroot-v2.url = "github:frostplexx/Beetroot";
   };
 
   outputs = { nixpkgs, beetroot-v2, ... }: {
