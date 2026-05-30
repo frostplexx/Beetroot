@@ -21,14 +21,16 @@ function genreString(genres: string[] | string | null | undefined): string | und
 function writeTagsMp3(filePath: string, item: Item): boolean {
     const fileBuffer = fs.readFileSync(filePath);
 
-    // Preserve existing frames we don't manage (e.g. embedded cover art / APIC).
-    // NodeID3.write() replaces the entire ID3 block, so we must carry the image forward.
-    // node-id3 types declare read() as returning Tags, but at runtime it returns false for tagless files
+    // Preserve embedded cover art (APIC) only. NodeID3.write() replaces the entire ID3 block,
+    // and node-id3's encoders don't guard against undefined fields on frames it parsed back
+    // (e.g. COMM.create calls appendStaticValue(data.language) with no nullish check), so
+    // spreading the full read result back in occasionally throws "Received undefined" mid-encode.
+    // node-id3 types declare read() as returning Tags, but at runtime it returns false for tagless files.
     const existing = NodeID3.read(fileBuffer) as NodeID3.Tags | false;
-    const existingTags = existing === false ? {} : existing;
+    const preservedImage = existing && typeof existing === "object" ? existing.image : undefined;
 
     const tags: NodeID3.Tags = {
-        ...existingTags,
+        ...(preservedImage !== undefined ? { image: preservedImage } : {}),
         title: item.title || undefined,
         artist: item.artist || undefined,
         album: item.album || undefined,

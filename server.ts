@@ -13,7 +13,10 @@ async function tryStatic(pathname: string): Promise<Response | null> {
     if (!filePath.startsWith(PUBLIC_DIR + path.sep)) return null;
     const file = Bun.file(filePath);
     if (!(await file.exists())) return null;
-    return new Response(file);
+    const headers = pathname.startsWith("/assets/")
+        ? { "cache-control": "public, max-age=31536000, immutable" }
+        : undefined;
+    return new Response(file, { headers });
 }
 
 Bun.serve({
