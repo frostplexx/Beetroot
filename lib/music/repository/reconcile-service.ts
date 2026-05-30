@@ -1,5 +1,4 @@
 import { globalConfig } from "../../config";
-import Repository from "./index";
 import db from "../database/db";
 import chokidar, { type FSWatcher } from 'chokidar';
 import { EventEmitter } from 'events';
@@ -154,11 +153,13 @@ class ReconcileService extends EventEmitter {
     }
 
     /**
-     * Run reconciliation (prevents concurrent runs)
+     * Run reconciliation in a dedicated Worker thread (prevents concurrent runs).
+     * The worker opens its own SQLite connection; WAL mode allows the main thread
+     * to keep serving requests while the worker scans and writes.
      */
-    private async runReconciliation(): Promise<void> {
+    private runReconciliation(): Promise<void> {
         if (this.isReconciling) {
-            return;
+            return Promise.resolve();
         }
 
         this.isReconciling = true;
@@ -166,68 +167,76 @@ class ReconcileService extends EventEmitter {
         this.currentRunStart = Date.now();
         const startTime = this.currentRunStart;
 
-        try {
-            // Emit started event
-            this.emit('reconcile', { type: 'started' } as ReconcileEvent);
+        return new Promise<void>((resolve) => {
+            // Dev: Bun resolves .ts directly. Prod: bun build outputs reconcile-worker.js
+            // next to server-entry.js (same directory as import.meta.url resolves to).
+            const workerUrl = process.env.NODE_ENV === 'production'
+                ? new URL('./reconcile-worker.js', import.meta.url)
+                : new URL('./reconcile-worker.ts', import.meta.url);
 
-            const repository = Repository;
-            const result = await repository.reconcile({
-                concurrency: 10,
-                batchSize: 100,
-                progressCallback: (progress) => {
-                    // Snapshot for pollers, then emit for SSE listeners.
-                    this.currentProgress = progress;
+            const worker = new Worker(workerUrl);
 
-                    this.emit('reconcile', {
-                        type: 'progress',
-                        data: progress
-                    } as ReconcileEvent);
-                }
-            });
-
-            const duration = Math.round((Date.now() - startTime) / 1000);
-            this.lastRunTime = Date.now();
-
-            const summary = {
-                duration: `${duration}s`,
-                scannedFiles: result.scannedFiles,
-                newFilesImported: result.newFilesImported,
-                missingFilesDetected: result.missingFilesDetected,
-                artworkFixed: result.artworkFixed,
-                deletedItems: result.deletedItems,
-                errors: result.errors.length
+            const finish = () => {
+                worker.terminate();
+                this.isReconciling = false;
+                this.currentProgress = null;
+                this.currentRunStart = null;
+                this.runCounter++;
+                resolve();
             };
 
-            const hasChanges = result.newFilesImported > 0 || result.artworkFixed > 0 || result.deletedItems > 0;
+            worker.onmessage = (event: MessageEvent) => {
+                const msg = event.data as { type: string; data?: any };
 
-            // Store last result for new SSE / poll responses
-            this.lastResult = { ...summary, hasChanges, timestamp: Date.now() };
+                if (msg.type === 'started') {
+                    this.emit('reconcile', { type: 'started' } as ReconcileEvent);
 
-            if (result.errors.length > 0) {
-                console.error(`ReconcileService: ${result.errors.length} errors - showing first 5:`);
-                result.errors.slice(0, 5).forEach(err => console.error(`  ${err}`));
-            }
+                } else if (msg.type === 'progress') {
+                    this.currentProgress = msg.data;
+                    this.emit('reconcile', { type: 'progress', data: msg.data } as ReconcileEvent);
 
-            // Emit completed event
-            this.emit('reconcile', {
-                type: 'completed',
-                data: { ...summary, hasChanges }
-            } as ReconcileEvent);
+                } else if (msg.type === 'completed') {
+                    const result = msg.data;
+                    const duration = Math.round((Date.now() - startTime) / 1000);
+                    this.lastRunTime = Date.now();
 
-        } catch (error) {
-            console.error(`ReconcileService: failed - ${error instanceof Error ? error.message : String(error)}`);
+                    const summary = {
+                        duration: `${duration}s`,
+                        scannedFiles: result.scannedFiles,
+                        newFilesImported: result.newFilesImported,
+                        missingFilesDetected: result.missingFilesDetected,
+                        artworkFixed: result.artworkFixed,
+                        deletedItems: result.deletedItems,
+                        errors: result.errors?.length ?? 0,
+                    };
+                    const hasChanges = result.newFilesImported > 0 || result.artworkFixed > 0 || result.deletedItems > 0;
 
-            // Emit error event
-            this.emit('reconcile', {
-                type: 'error',
-                data: { error: String(error) }
-            } as ReconcileEvent);
-        } finally {
-            this.isReconciling = false;
-            this.currentProgress = null;
-            this.currentRunStart = null;
-            this.runCounter++;
-        }
+                    this.lastResult = { ...summary, hasChanges, timestamp: Date.now() };
+
+                    if (result.errors?.length > 0) {
+                        console.error(`ReconcileService: ${result.errors.length} errors - showing first 5:`);
+                        result.errors.slice(0, 5).forEach((err: string) => console.error(`  ${err}`));
+                    }
+
+                    this.emit('reconcile', { type: 'completed', data: { ...summary, hasChanges } } as ReconcileEvent);
+                    finish();
+
+                } else if (msg.type === 'error') {
+                    console.error(`ReconcileService: worker error - ${msg.data?.error}`);
+                    this.emit('reconcile', { type: 'error', data: msg.data } as ReconcileEvent);
+                    finish();
+                }
+            };
+
+            worker.onerror = (event: ErrorEvent) => {
+                const message = event.message || 'Worker crashed unexpectedly';
+                console.error(`ReconcileService: worker crashed - ${message}`);
+                this.emit('reconcile', { type: 'error', data: { error: message } } as ReconcileEvent);
+                finish();
+            };
+
+            worker.postMessage({ type: 'start' });
+        });
     }
 
     /**

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build && bun build --target=bun --outfile=dist/server/reconcile-worker.js lib/music/repository/reconcile-worker.ts",
     "start": "bun server.ts",
     "postinstall": "bun ./scripts/postinstall.js",
     "test:repository": "bun lib/music/repository/index.ts",
