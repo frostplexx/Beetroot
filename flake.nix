@@ -47,12 +47,13 @@
               pname = "beetroot-v2";
               version = "0.1.0";
               src = ./.;
-              nativeBuildInputs = [ pkgs.bun ];
+              nativeBuildInputs = with pkgs; [ bun nodejs ];
               buildInputs = [ pkgs.chromaprint ];
               buildPhase = ''
                 export HOME=$TMPDIR
                 cp -r ${fallbackNodeModules}/node_modules ./node_modules
                 chmod -R u+w ./node_modules
+                patchShebangs ./node_modules/.bin
                 bun run build
               '';
               installPhase = ''
@@ -246,7 +247,7 @@ EOF
 
           src = ./.;
 
-          nativeBuildInputs = [ pkgs.bun ];
+          nativeBuildInputs = with pkgs; [ bun nodejs ];
 
           buildInputs = with pkgs; [
             chromaprint
@@ -256,6 +257,7 @@ EOF
             export HOME=$TMPDIR
             cp -r ${nodeModules}/node_modules ./node_modules
             chmod -R u+w ./node_modules
+            patchShebangs ./node_modules/.bin
             bun run build
           '';
 
