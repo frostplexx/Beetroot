@@ -1,6 +1,7 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
 import { useRouter } from "@tanstack/react-router"
+import { useQueryClient } from "@tanstack/react-query"
 import {
     ContextMenu,
     ContextMenuContent,
@@ -78,6 +79,7 @@ function PrimedAlbumContextMenu({
     children: React.ReactNode
 }) {
     const router = useRouter()
+    const queryClient = useQueryClient()
     const [deleteOpen, setDeleteOpen] = React.useState(false)
     const [toast, setToast] = React.useState<Toast | null>(null)
     const [mounted, setMounted] = React.useState(false)
@@ -164,6 +166,7 @@ function PrimedAlbumContextMenu({
                     isMissing={isMissing}
                     onRemoved={() => {
                         showToast({ kind: "ok", message: "Album removed" })
+                        queryClient.invalidateQueries({ queryKey: ["albums"] })
                         router.invalidate()
                     }}
                     onError={(message) => showToast({ kind: "error", message })}

@@ -1,5 +1,6 @@
 import * as React from "react"
 import { useRouter } from "@tanstack/react-router"
+import { useQueryClient } from "@tanstack/react-query"
 import { HardDriveIcon, Trash2 } from "lucide-react"
 import {
     Dialog,
@@ -21,6 +22,7 @@ interface DeleteAlbumButtonProps {
 
 export function DeleteAlbumButton({ albumId, albumName, isMissing }: DeleteAlbumButtonProps) {
     const router = useRouter()
+    const queryClient = useQueryClient()
     const [open, setOpen] = React.useState(false)
     const [deleting, setDeleting] = React.useState(false)
     const [deleteFiles, setDeleteFiles] = React.useState(false)
@@ -39,6 +41,7 @@ export function DeleteAlbumButton({ albumId, albumName, isMissing }: DeleteAlbum
                 throw new Error(data?.error || "Failed to delete album")
             }
             setOpen(false)
+            await queryClient.invalidateQueries({ queryKey: ["albums"] })
             router.navigate({ to: "/", search: { page: 1, sort: "recently-added" as const } })
             router.invalidate()
         } catch (err) {
