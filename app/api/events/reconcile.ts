@@ -6,10 +6,12 @@ export const Route = createFileRoute("/api/events/reconcile")({
         handlers: {
             GET: async ({ request }) => {
                 const encoder = new TextEncoder();
-                let cleanedUp = false;
+                let cleanup: () => void = () => {};
 
                 const stream = new ReadableStream({
                     start(controller) {
+                        let cleanedUp = false;
+
                         const data = JSON.stringify({
                             type: "connected",
                             timestamp: Date.now(),
@@ -37,19 +39,6 @@ export const Route = createFileRoute("/api/events/reconcile")({
                             }
                         };
 
-                        const cleanup = () => {
-                            if (cleanedUp) return;
-                            cleanedUp = true;
-                            ReconcileService.off("reconcile", handleReconcileEvent);
-                            clearInterval(keepaliveInterval);
-                            console.debug("[SSE] Client disconnected, cleaned up");
-                            try {
-                                controller.close();
-                            } catch {
-                                // already closed
-                            }
-                        };
-
                         ReconcileService.on("reconcile", handleReconcileEvent);
 
                         const keepaliveInterval = setInterval(() => {
@@ -60,13 +49,24 @@ export const Route = createFileRoute("/api/events/reconcile")({
                             }
                         }, 30000);
 
+                        cleanup = () => {
+                            if (cleanedUp) return;
+                            cleanedUp = true;
+                            ReconcileService.off("reconcile", handleReconcileEvent);
+                            clearInterval(keepaliveInterval);
+                            request.signal.removeEventListener("abort", cleanup);
+                            console.debug("[SSE] Client disconnected, cleaned up");
+                            try {
+                                controller.close();
+                            } catch {
+                                // already closed
+                            }
+                        };
+
                         request.signal.addEventListener("abort", cleanup);
                     },
                     cancel() {
-                        if (!cleanedUp) {
-                            cleanedUp = true;
-                            console.debug("[SSE] Stream cancelled");
-                        }
+                        cleanup();
                     },
                 });
 
