@@ -41,7 +41,7 @@
                 '';
                 outputHashAlgo = "sha256";
                 outputHashMode = "recursive";
-                outputHash = "sha256-2gMkIiteWlr3ubIUXFmqyFomVbbLL9oFXzchmjq0lZg=";
+                outputHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
               };
             in pkgs.stdenv.mkDerivation {
               pname = "beetroot-v2";
@@ -233,7 +233,7 @@ EOF
           '';
           outputHashAlgo = "sha256";
           outputHashMode = "recursive";
-          outputHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+          outputHash = "sha256-2gMkIiteWlr3ubIUXFmqyFomVbbLL9oFXzchmjq0lZg=";
         };
 
         beetroot-v2 = pkgs.stdenv.mkDerivation {
