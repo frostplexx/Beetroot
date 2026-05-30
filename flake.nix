@@ -237,7 +237,7 @@ EOF
           '';
           outputHashAlgo = "sha256";
           outputHashMode = "recursive";
-          outputHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+          outputHash = "sha256-nUdwgi5vejx3DJeIMuw2T5Bx13GwqA+824120bj6oRU=";
         };
 
         beetroot-v2 = pkgs.stdenv.mkDerivation {
