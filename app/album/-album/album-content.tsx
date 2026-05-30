@@ -16,9 +16,13 @@ interface AlbumContentProps {
     songs: any[]
 }
 
+function titleCase(s: string): string {
+    return s.replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
     const totalMinutes = album.total_time ? Math.round(album.total_time / 60) : 0
-    const genres = album.genres?.split(",").map(g => g.trim()).filter(Boolean) || []
+    const genres = album.genres?.split(",").map(g => titleCase(g.trim())).filter(Boolean) || []
     const isMissing = album.missing_since != null
     const [activeTab, setActiveTab] = React.useState("view")
     const [isSaving, setIsSaving] = React.useState(false)
