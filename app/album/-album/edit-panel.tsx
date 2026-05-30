@@ -326,7 +326,10 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                             <FieldWithSuggestion
                                 label="Year"
                                 value={formData.year}
-                                onChange={(v) => setFormData({ ...formData, year: v })}
+                                onChange={(v) => {
+                                    setFormData(prev => ({ ...prev, year: v }))
+                                    setTracksData(prev => prev.map(t => ({ ...t, year: v })))
+                                }}
                                 suggestion={selectedMbRelease?.date?.split('-')[0]}
                                 type="number"
                             />
@@ -362,7 +365,10 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                         <FieldWithSuggestion
                             label="Genres"
                             value={formData.genres}
-                            onChange={(v) => setFormData({ ...formData, genres: v })}
+                            onChange={(v) => {
+                                setFormData(prev => ({ ...prev, genres: v }))
+                                setTracksData(prev => prev.map(t => ({ ...t, genre: v })))
+                            }}
                             multiline
                             placeholder="rock, alternative, indie"
                         />
