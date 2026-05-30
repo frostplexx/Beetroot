@@ -1,32 +1,58 @@
-FROM node:22-bookworm-slim AS frontend-build
-WORKDIR /src/frontend
-COPY frontend/package*.json ./
-RUN npm ci
-COPY frontend/ ./
-RUN npm run build
+# Stage 1: Dependencies - install packages and download chromaprint
+FROM oven/bun:1-debian AS dependencies
 
-FROM golang:1.25-bookworm AS backend-build
-WORKDIR /src/backend
-COPY backend/go.mod backend/go.sum ./
-RUN go mod download
-COPY backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/beetroot .
+WORKDIR /app
 
-FROM debian:bookworm-slim AS runtime
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends beets ca-certificates \
+RUN apt-get update && apt-get install -y \
+    python3 make g++ curl tar \
     && rm -rf /var/lib/apt/lists/*
 
-ENV PORT=4433 \
-    BEET_BIN_PATH=/usr/bin/beet \
-    BEET_WORKING_DIR=/config \
-    BEETSDIR=/config \
-    BEETSCONFIG=/config/config.yaml \
-    FRONTEND_DIST_DIR=/opt/beetroot/frontend/dist
+COPY package.json bun.lock ./
+COPY scripts/postinstall.js ./scripts/
 
-WORKDIR /config
-COPY --from=backend-build /out/beetroot /usr/local/bin/beetroot
-COPY --from=frontend-build /src/frontend/dist /opt/beetroot/frontend/dist
+RUN bun install --frozen-lockfile
 
-EXPOSE 4433
-ENTRYPOINT ["/usr/local/bin/beetroot"]
+# Stage 2: Builder - compile the TanStack Start / Nitro app
+FROM oven/bun:1-debian AS builder
+
+WORKDIR /app
+
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/lib/music/binaries ./lib/music/binaries
+
+COPY . .
+
+RUN bun run build
+
+# Stage 3: Runtime - slim production image
+FROM oven/bun:1-debian AS runtime
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r -g 1000 beetroot && \
+    useradd -r -u 1000 -g beetroot beetroot
+
+# node_modules needed for native addons (flac-tagger etc.); bun:sqlite is built-in
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/lib/music/binaries ./lib/music/binaries
+COPY --from=builder /app/.output ./.output
+COPY --from=builder /app/package.json ./
+
+RUN mkdir -p /data /music && \
+    chown -R beetroot:beetroot /app /data /music
+
+ENV NODE_ENV=production \
+    PORT=3000 \
+    CONFIG_PATH=/data/config.yaml
+
+EXPOSE 3000
+
+USER beetroot
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD bun -e "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["bun", "run", ".output/server/index.mjs"]

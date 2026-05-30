@@ -3,19 +3,62 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: beetroot:local
-    container_name: beetroot
+    image: beetroot-v2:local
+    container_name: beetroot-v2
     user: "${PUID:-1000}:${PGID:-1000}"
     ports:
-      - "${BEETROOT_PORT:-4433}:4433"
+      - "${BEETROOT_PORT:-3000}:3000"
     environment:
-      PORT: "4433"
-      BEET_BIN_PATH: /usr/bin/beet
-      BEET_WORKING_DIR: /config
-      BEETSDIR: /config
-      BEETSCONFIG: /config/config.yaml
-      FRONTEND_DIST_DIR: /opt/beetroot/frontend/dist
+      NODE_ENV: production
+      PORT: 3000
+
+      # Option 1: Use config file (recommended for complex setups)
+      CONFIG_PATH: /data/config.yaml
+
+      # Option 2: Use environment variables (uncomment to override config.yaml)
+      # DATABASE_PATH: /data/db.sqlite3
+      # MUSIC_DIRECTORY: /music
+      # ACOUSTID_API_KEY: your_acoustid_key_here
+      # LASTFM_API_KEY: your_lastfm_key_here
+      # DISCOGS_TOKEN: your_discogs_token_here
+      # RECONCILE_ON_STARTUP: "true"
+      # RECONCILE_INTERVAL: "60"
+      # DUPLICATE_DETECTION: mb_trackid
+      # DUPLICATE_ACTION: skip
+      # COMPUTE_FILE_HASH: "true"
+      # CONFLICT_RESOLUTION: keep-db
+      # WRITEBACK_MODE: missing-only
+      # DELETE_AFTER: "30"
+
     volumes:
-      - ./example-data/config:/config
-      - ./example-data/music:/music
+      # Application data (database + config)
+      - ./data:/data
+
+      # Music library (adjust path to your music directory)
+      - /path/to/your/music:/music
+
     restart: unless-stopped
+
+    # Optional: Resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 2G
+    #     reservations:
+    #       cpus: '1'
+    #       memory: 512M
+
+# Optional: Add nginx reverse proxy for HTTPS
+# nginx:
+#   image: nginx:alpine
+#   container_name: beetroot-nginx
+#   ports:
+#     - "443:443"
+#     - "80:80"
+#   volumes:
+#     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+#     - ./ssl:/etc/nginx/ssl:ro
+#   depends_on:
+#     - beetroot
+#   restart: unless-stopped

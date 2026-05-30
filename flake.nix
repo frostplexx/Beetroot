@@ -1,5 +1,5 @@
 {
-  description = "Beetroot Go backend + Vite frontend";
+  description = "Beetroot V2 - Next.js music library manager";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -13,349 +13,262 @@
       flake-utils,
     }:
     let
-      nixosModule =
-        {
-          config,
-          lib,
-          pkgs,
-          ...
-        }:
+      # NixOS module for deployment
+      nixosModule = { config, lib, pkgs, ... }:
         let
-          cfg = config.services.beetroot;
-          effectiveFrontendPort = if cfg.frontendPort != null then cfg.frontendPort else cfg.port;
-        in
-        {
-          options.services.beetroot = {
-            enable = lib.mkEnableOption "Beetroot music library service";
-
-            package = lib.mkOption {
-              type = lib.types.package;
-              default = self.packages.${pkgs.system}.default;
-              defaultText = lib.literalExpression "self.packages.${pkgs.system}.default";
-              description = "Beetroot package to run.";
-            };
+          cfg = config.services.beetroot-v2;
+          # Use the built package from the same flake
+          beetroot-package = self.packages.${pkgs.system}.default or (
+            # Fallback: build it inline if not available
+            pkgs.stdenv.mkDerivation {
+              pname = "beetroot-v2";
+              version = "0.1.0";
+              src = ./.;
+              nativeBuildInputs = [ pkgs.bun ];
+              buildInputs = [ pkgs.chromaprint ];
+              buildPhase = ''
+                export HOME=$TMPDIR
+                export BUN_INSTALL_CACHE_DIR=$TMPDIR/.bun
+                bun install --frozen-lockfile
+                bun run build
+              '';
+              installPhase = ''
+                mkdir -p $out
+                cp -r .next public node_modules app lib components package.json next.config.ts tsconfig.json $out/
+                cat > $out/start.sh <<EOF
+#!/bin/sh
+cd $out
+exec ${pkgs.bun}/bin/bun start "\$@"
+EOF
+                chmod +x $out/start.sh
+              '';
+            }
+          );
+        in {
+          options.services.beetroot-v2 = {
+            enable = lib.mkEnableOption "Beetroot v2 music library service";
 
             port = lib.mkOption {
               type = lib.types.port;
-              default = 4433;
-              description = "TCP port used by the Beetroot HTTP server.";
-            };
-
-            frontendPort = lib.mkOption {
-              type = lib.types.nullOr lib.types.port;
-              default = null;
-              description = "Port the bundled Beetroot frontend/API service listens on. Overrides services.beetroot.port when set.";
-            };
-
-            stateDirectory = lib.mkOption {
-              type = lib.types.str;
-              default = "/var/lib/beetroot";
-              description = "Directory used for build cache and runtime state.";
-            };
-
-            configDirectory = lib.mkOption {
-              type = lib.types.str;
-              default = "/var/lib/beetroot/config";
-              description = "Directory containing writable beets config and library files.";
+              default = 3000;
+              description = "TCP port for the web interface";
             };
 
             musicDirectory = lib.mkOption {
               type = lib.types.str;
               default = "/var/lib/music";
-              description = "Music directory that beetroot/beets can read and write.";
+              description = "Music directory path";
             };
 
-            databasePath = lib.mkOption {
+            dataDirectory = lib.mkOption {
+              type = lib.types.str;
+              default = "/var/lib/beetroot-v2";
+              description = "Directory for database and config";
+            };
+
+            configFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = "Path to config.yaml (optional if using environment variables)";
+            };
+
+            acoustidApiKey = lib.mkOption {
+              type = lib.types.str;
+              description = "AcoustID API key for fingerprinting";
+            };
+
+            lastfmApiKey = lib.mkOption {
+              type = lib.types.str;
+              description = "Last.fm API key for metadata";
+            };
+
+            discogsToken = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               default = null;
-              description = "Optional absolute path to the beets SQLite library database.";
+              description = "Discogs API token (optional)";
             };
 
             user = lib.mkOption {
               type = lib.types.str;
               default = "beetroot";
-              description = "User account used to run Beetroot.";
+              description = "User to run the service";
             };
 
             group = lib.mkOption {
               type = lib.types.str;
               default = "beetroot";
-              description = "Primary group used to run Beetroot.";
-            };
-
-            extraGroups = lib.mkOption {
-              type = lib.types.listOf lib.types.str;
-              default = [ ];
-              description = "Supplementary groups for shared music directories.";
+              description = "Group to run the service";
             };
 
             openFirewall = lib.mkOption {
               type = lib.types.bool;
               default = false;
-              description = "Whether to open the Beetroot port in the firewall.";
-            };
-
-            environment = lib.mkOption {
-              type = lib.types.attrsOf lib.types.str;
-              default = { };
-              description = "Extra environment variables passed to the service.";
+              description = "Open firewall port";
             };
           };
 
           config = lib.mkIf cfg.enable {
             users.groups = lib.mkIf (cfg.group == "beetroot") {
-              beetroot = { };
+              beetroot = {};
             };
 
             users.users = lib.mkIf (cfg.user == "beetroot") {
               beetroot = {
                 isSystemUser = true;
                 group = cfg.group;
-                description = "Beetroot service user";
-                home = cfg.stateDirectory;
-                createHome = false;
+                description = "Beetroot v2 service user";
+                home = cfg.dataDirectory;
               };
             };
 
-            systemd.tmpfiles.rules =
-              [
-                "d ${cfg.stateDirectory} 0750 ${cfg.user} ${cfg.group} - -"
-                "d ${cfg.configDirectory} 0750 ${cfg.user} ${cfg.group} - -"
-              ]
-              ++ lib.optional (cfg.databasePath != null) "d ${builtins.dirOf cfg.databasePath} 0750 ${cfg.user} ${cfg.group} - -";
+            systemd.tmpfiles.rules = [
+              "d ${cfg.dataDirectory} 0750 ${cfg.user} ${cfg.group} - -"
+              "d ${cfg.musicDirectory} 0755 ${cfg.user} ${cfg.group} - -"
+            ];
 
-            systemd.services.beetroot = {
-              description = "Beetroot music library service";
+            systemd.services.beetroot-v2 = {
+              description = "Beetroot v2 music library service";
               after = [ "network-online.target" ];
               wants = [ "network-online.target" ];
               wantedBy = [ "multi-user.target" ];
 
               environment = {
-                PORT = toString effectiveFrontendPort;
-                BEET_BIN_PATH = "${pkgs.beets}/bin/beet";
-                BEET_WORKING_DIR = cfg.configDirectory;
-                BEETSDIR = cfg.configDirectory;
-                BEETSCONFIG = "${cfg.configDirectory}/config.yaml";
-                BEETROOT_BUILD_DIR = "${cfg.stateDirectory}/build";
-              }
-              // lib.optionalAttrs (cfg.databasePath != null) {
-                BEETROOT_DATABASE_PATH = cfg.databasePath;
-                BEET_LIBRARY_PATH = cfg.databasePath;
-              }
-              // cfg.environment;
+                NODE_ENV = "production";
+                PORT = toString cfg.port;
+                DATABASE_PATH = "${cfg.dataDirectory}/db.sqlite3";
+                MUSIC_DIRECTORY = cfg.musicDirectory;
+                ACOUSTID_API_KEY = cfg.acoustidApiKey;
+                LASTFM_API_KEY = cfg.lastfmApiKey;
+              } // lib.optionalAttrs (cfg.discogsToken != null) {
+                DISCOGS_TOKEN = cfg.discogsToken;
+              } // lib.optionalAttrs (cfg.configFile != null) {
+                CONFIG_PATH = toString cfg.configFile;
+              };
 
               serviceConfig = {
-                ExecStart = "${cfg.package}/bin/beetroot";
-                WorkingDirectory = cfg.configDirectory;
+                Type = "simple";
+                ExecStart = "${beetroot-package}/start.sh";
+                WorkingDirectory = cfg.dataDirectory;
                 User = cfg.user;
                 Group = cfg.group;
                 Restart = "on-failure";
-                RestartSec = 5;
+                RestartSec = "5s";
+
+                # Security hardening
                 NoNewPrivileges = true;
                 PrivateTmp = true;
                 ProtectSystem = "strict";
+                ProtectHome = true;
                 ReadWritePaths = [
-                  cfg.stateDirectory
-                  cfg.configDirectory
+                  cfg.dataDirectory
                   cfg.musicDirectory
-                ] ++ lib.optional (cfg.databasePath != null) (builtins.dirOf cfg.databasePath);
-              }
-              // lib.optionalAttrs (cfg.extraGroups != []) {
-                SupplementaryGroups = cfg.extraGroups;
+                ];
+                ProtectKernelTunables = true;
+                ProtectKernelModules = true;
+                ProtectControlGroups = true;
+                RestrictRealtime = true;
+                RestrictSUIDSGID = true;
+                MemoryDenyWriteExecute = false; # Node.js needs this
+                LockPersonality = true;
               };
             };
 
-            networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ effectiveFrontendPort ];
+            networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ cfg.port ];
           };
         };
     in
-    flake-utils.lib.eachDefaultSystem (
-      system:
+    flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        lib = pkgs.lib;
-        sourceId = builtins.baseNameOf (toString self);
 
-        beetrootPackage =
-          if pkgs.stdenv.isLinux then
-            pkgs.writeShellApplication {
-              name = "beetroot";
-              runtimeInputs = with pkgs; [
-                bash
-                coreutils
-                findutils
-                gawk
-                gnugrep
-                gnused
-                go
-                gcc
-                nodejs_22
-                beets
-              ];
-              text = ''
-                set -euo pipefail
+        # Build the Next.js application
+        beetroot-v2 = pkgs.stdenv.mkDerivation {
+          pname = "beetroot-v2";
+          version = "0.1.0";
 
-                srcRoot=${self}
-                cacheRoot="''${BEETROOT_BUILD_DIR:-''${XDG_CACHE_HOME:-$HOME/.cache}/beetroot/${sourceId}-${system}}"
-                buildRoot="$cacheRoot/build"
-                frontendSrc="$buildRoot/frontend"
-                backendSrc="$buildRoot/backend"
-                frontendDist="$cacheRoot/frontend-dist"
-                binaryPath="$cacheRoot/beetroot"
-                stampFile="$cacheRoot/source-path"
-                currentSource="$srcRoot"
+          src = ./.;
 
-                if [ ! -x "$binaryPath" ] || [ ! -d "$frontendDist" ] || [ ! -f "$stampFile" ] || [ "$(cat "$stampFile")" != "$currentSource" ]; then
-                  rm -rf "$buildRoot" "$frontendDist" "$binaryPath"
-                  mkdir -p "$buildRoot" "$cacheRoot" "$cacheRoot/home"
-                  export HOME="$cacheRoot/home"
-                  export GOPATH="$cacheRoot/go"
-                  export GOMODCACHE="$cacheRoot/go/pkg/mod"
-                  export npm_config_cache="$cacheRoot/npm"
+          nativeBuildInputs = with pkgs; [
+            bun
+          ];
 
-                  cp -R "$srcRoot/frontend" "$frontendSrc"
-                  cp -R "$srcRoot/backend" "$backendSrc"
-                  chmod -R u+w "$buildRoot"
+          buildInputs = with pkgs; [
+            chromaprint  # For fpcalc
+          ];
 
-                  cd "$frontendSrc"
-                  npm ci
-                  npm run build
-                  cp -R dist "$frontendDist"
+          buildPhase = ''
+            export HOME=$TMPDIR
+            export BUN_INSTALL_CACHE_DIR=$TMPDIR/.bun
 
-                  cd "$backendSrc"
-                  go build -o "$binaryPath" .
+            # Install dependencies
+            bun install --frozen-lockfile
 
-                  printf '%s' "$currentSource" > "$stampFile"
-                fi
+            # Build Next.js app
+            bun run build
+          '';
 
-                export FRONTEND_DIST_DIR="$frontendDist"
-                : "''${BEET_BIN_PATH:=${pkgs.beets}/bin/beet}"
-                export BEET_BIN_PATH
-                exec "$binaryPath"
-              '';
-            }
-          else
-            null;
+          installPhase = ''
+            mkdir -p $out
 
-        dev-script = pkgs.writeShellScriptBin "dev" ''
-          set -e
+            # Copy built Next.js app
+            cp -r .next $out/
+            cp -r public $out/
+            cp -r node_modules $out/
 
-          echo "🚀 Starting Beetroot development servers..."
-          echo ""
+            # Copy source files needed at runtime
+            cp -r app $out/
+            cp -r lib $out/
+            cp -r components $out/
+            cp package.json $out/
+            cp next.config.ts $out/
+            cp tsconfig.json $out/
 
-          if [ ! -d "frontend/node_modules" ]; then
-            echo "📦 Installing frontend dependencies..."
-            cd frontend && npm install && cd ..
-            echo ""
-          fi
+            # Create start script
+            cat > $out/start.sh <<EOF
+#!/bin/sh
+cd $out
+exec ${pkgs.bun}/bin/bun start "\$@"
+EOF
+            chmod +x $out/start.sh
+          '';
 
-          cleanup() {
-            echo ""
-            echo "🛑 Shutting down servers..."
-            command kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
-            exit 0
-          }
-          trap cleanup SIGINT SIGTERM
-
-          echo "🔧 Starting Go backend on http://localhost:4433..."
-          cd backend
-          air > ../backend.log 2>&1 &
-          BACKEND_PID=$!
-          cd ..
-
-          echo "⚛️  Starting Vite frontend on http://localhost:5173..."
-          cd frontend
-          npm run dev > ../frontend.log 2>&1 &
-          FRONTEND_PID=$!
-          cd ..
-
-          echo ""
-          echo "✅ Servers started!"
-          echo "   Backend:  http://localhost:4433"
-          echo "   Frontend: http://localhost:5173"
-          echo ""
-          echo "📋 Logs:"
-          echo "   Backend:  tail -f backend.log"
-          echo "   Frontend: tail -f frontend.log"
-          echo ""
-          echo "Press Ctrl+C to stop both servers"
-          echo ""
-
-          wait "$BACKEND_PID" "$FRONTEND_PID"
-        '';
-
-        rebuild-backend-script = pkgs.writeShellScriptBin "rebuild-backend" ''
-          set -e
-          echo "🔨 Rebuilding Go backend..."
-          cd backend
-          GOPATH="$HOME/go" \
-          GOMODCACHE="$HOME/go/pkg/mod" \
-          go build -o ./tmp/main .
-          echo "✅ Backend rebuilt successfully!"
-          echo ""
-          echo "💡 Restart the dev server to use the new build"
-        '';
-      in
-      {
-        packages = lib.optionalAttrs pkgs.stdenv.isLinux {
-          default = beetrootPackage;
-          beetroot = beetrootPackage;
+          meta = with pkgs.lib; {
+            description = "Beetroot v2 - Next.js music library manager";
+            license = licenses.mit;
+            platforms = platforms.unix;
+          };
         };
-
-        apps = lib.optionalAttrs pkgs.stdenv.isLinux {
-          default = flake-utils.lib.mkApp { drv = beetrootPackage; };
-        };
+      in {
+        packages.default = beetroot-v2;
+        packages.beetroot-v2 = beetroot-v2;
 
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
-            # Backend
-            go
-            gopls
-            golangci-lint
-            delve # debugger
-            air # live reload
-
-            # Frontend
-            nodejs_22
-            pnpm
-
-            # Dev scripts
-            dev-script
-            rebuild-backend-script
-
-            # beets excluded — nixpkgs beets pulls in aacgain which fails to
-            # build on macOS; use your system beet instead (pip/pipx install)
-            python3
-            pipx
+            bun
+            sqlite
+          ] ++ lib.optionals stdenv.isLinux [
+            # Audio fingerprinting tools (optional, only on Linux where they build reliably)
+            chromaprint
           ];
 
           shellHook = ''
-            export GOPATH="$HOME/go"
-            export GOMODCACHE="$HOME/go/pkg/mod"
-
-            echo "Go $(go version | awk '{print $3}')"
-            echo "Node $(node --version)"
-            echo "npm $(npm --version)"
+            echo "Beetroot v2 Development Environment"
+            echo "===================================="
+            echo "Bun: $(bun --version)"
             echo ""
-            echo "💡 Commands:"
-            echo "   dev              - Start both backend and frontend"
-            echo "   rebuild-backend  - Manually rebuild the Go backend"
-
-            BEET_BIN=$(command -v beet 2>/dev/null)
-            if [ -n "$BEET_BIN" ]; then
-              export BEET_BIN
-              echo ""
-              echo "beet $($BEET_BIN version)"
-            else
-              echo ""
-              echo "warn: beet not found in PATH — install via: pipx install beets"
-            fi
+            echo "Commands:"
+            echo "  bun run dev   - Start development server"
+            echo "  bun run build - Build for production"
+            echo "  bun start     - Start production server"
+            echo ""
+            echo "Note: Audio fingerprinting requires fpcalc (chromaprint)"
+            echo "      Install separately on macOS: brew install chromaprint"
+            echo ""
           '';
         };
       }
-    )
-    // {
+    ) // {
       nixosModules.default = nixosModule;
-      nixosModules.beetroot = nixosModule;
+      nixosModules.beetroot-v2 = nixosModule;
     };
 }
