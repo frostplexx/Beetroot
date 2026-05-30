@@ -64,7 +64,7 @@ export function SongsDataTable<TData, TValue>({
     })
 
     return (
-        <div className="flex mb-4 flex-col h-full space-y-4 overflow-hidden">
+        <div className="flex mb-4 flex-col md:h-full space-y-4 md:overflow-hidden">
             <div className="flex items-center gap-2 shrink-0">
                 <Input
                     placeholder="Filter songs..."

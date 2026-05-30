@@ -35,7 +35,7 @@ export default function AlbumArtwork({
 
     return (
         <div
-            className="pt-2 w-full md:w-60 sm:w-40 aspect-square perspective-1000"
+            className="pt-2 w-48 sm:w-60 md:w-60 aspect-square perspective-1000"
             onMouseMove={handleMouseMove}
             onMouseEnter={() => setIsHovering(true)}
             onMouseLeave={handleMouseLeave}

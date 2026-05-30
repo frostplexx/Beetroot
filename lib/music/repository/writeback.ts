@@ -308,6 +308,20 @@ export function moveFile(oldPath: string, newPath: string): boolean {
         fs.renameSync(oldPath, newPath);
     }
     catch (error) {
+        // /tmp (rootfs) and /music (volume mount) are different filesystems in
+        // the container — rename(2) refuses to link across them. Fall back to
+        // copy + unlink, cleaning up the destination if the copy half-succeeds.
+        if ((error as NodeJS.ErrnoException).code === "EXDEV") {
+            try {
+                fs.copyFileSync(oldPath, newPath);
+                fs.unlinkSync(oldPath);
+                return true;
+            } catch (copyError) {
+                try { fs.unlinkSync(newPath); } catch { /* ignore cleanup */ }
+                console.error(`Error moving file from ${oldPath} to ${newPath}:`, copyError);
+                return false;
+            }
+        }
         console.error(`Error moving file from ${oldPath} to ${newPath}:`, error);
         return false;
     }

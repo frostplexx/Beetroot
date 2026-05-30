@@ -80,7 +80,7 @@ function RootLayout() {
                 </div>
                 <Providers>
                     <Navigation />
-                    <main className="flex-1 relative mt-[75px] overflow-y-auto">
+                    <main className="flex-1 relative mt-[72px] overflow-y-auto">
                         <Outlet />
                     </main>
                 </Providers>

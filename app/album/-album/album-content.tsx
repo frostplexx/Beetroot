@@ -9,7 +9,6 @@ import { Pencil, Eye } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EditPanel } from "./edit-panel"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface AlbumContentProps {
     album: Album
@@ -25,16 +24,16 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
     const [isSaving, setIsSaving] = React.useState(false)
 
     return (
-        <div className="absolute inset-0 overflow-hidden">
+        <div className="md:absolute md:inset-0 md:overflow-hidden">
             <DynamicBackground artUrl={artUrl} />
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="md:h-full flex flex-col">
                 {/* Unified Header Bar */}
-                <div className="container mx-auto shrink-0">
+                <div className="container mx-auto px-4 pt-2 shrink-0">
                     <div className="flex items-center justify-between mb-2 transition-all duration-200">
                         <div className="flex items-center gap-4 min-w-0">
                             <BackLink />
                             {activeTab === "edit" && (
-                                <div className="flex items-center gap-2 min-w-0 animate-in fade-in slide-in-from-left-2 duration-300">
+                                <div className="hidden sm:flex items-center gap-2 min-w-0 animate-in fade-in slide-in-from-left-2 duration-300">
                                     <span className="text-sm text-muted-foreground">Editing</span>
                                     <span className="text-sm font-semibold truncate">{album.album}</span>
                                 </div>
@@ -70,9 +69,9 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                     </div>
                 </div>
 
-                <TabsContent value="view" className="flex-1 flex flex-col overflow-hidden mt-0">
+                <TabsContent value="view" className="md:flex-1 flex flex-col md:overflow-hidden mt-0">
                     <div className="container mx-auto px-4 pb-4 shrink-0">
-                        <div className="flex flex-col md:flex-row gap-8 items-start">
+                        <div className="flex flex-col md:flex-row  gap-8 md:items-start items-center">
                             <AlbumArtwork
                                 artUrl={artUrl}
                                 album={`${album.album} by ${album.albumartist}`}
@@ -80,14 +79,14 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                 missingSince={album.missing_since}
                             />
 
-                            <div className="flex-1 flex flex-col justify-start gap-4">
-                                <div className="flex items-start justify-between gap-4">
-                                    <h1 className="font-heading text-4xl md:text-5xl font-black leading-none tracking-tight">
+                            <div className="flex-1 flex flex-col md:justify-start justify-center gap-4">
+                                <div className="flex md:items-start items-center justify-center md:justify-start gap-4">
+                                    <h1 className="font-heading text-4xl md:text-5xl font-black md:text-start text-center leading-none tracking-tight">
                                         {album.album}
                                     </h1>
                                 </div>
 
-                                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-base">
+                                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-base w-full text-center md:text-left justify-center md:justify-start text-white/75">
                                     <span>{album.albumartist}</span>
                                     {album.year && (
                                         <>
@@ -109,7 +108,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                                     )}
                                 </div>
 
-                                <div className="flex flex-wrap gap-6">
+                                <div className="flex flex-wrap gap-6 md:mt-0 mt-2">
                                     {album.country && (
                                         <div className="flex flex-col gap-1.5">
                                             <label className="text-[10px] uppercase tracking-[0.14em] text-white/55 font-medium">
@@ -144,12 +143,12 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                         </div>
                     </div>
 
-                    <div className="flex-1 min-h-0 flex flex-col container mx-auto">
+                    <div className="md:flex-1 md:min-h-0 flex flex-col container mx-auto px-4 pb-6">
                         <SongsDataTable columns={columns} data={songs} />
                     </div>
                 </TabsContent>
 
-                <TabsContent value="edit" className="flex-1 overflow-hidden mt-0">
+                <TabsContent value="edit" className="md:flex-1 md:overflow-hidden mt-0">
                     <EditPanel
                         album={album}
                         image={artUrl}
