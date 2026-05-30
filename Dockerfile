@@ -29,7 +29,7 @@ FROM oven/bun:1-debian AS runtime
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y ca-certificates \
+RUN apt-get update && apt-get install -y ca-certificates ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r beetroot && \
@@ -40,6 +40,8 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/lib/music/binaries ./lib/music/binaries
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/lib/music/repository/genres-tree.yaml ./lib/music/repository/genres-tree.yaml
+COPY --from=builder /app/lib/music/repository/sources/lastfm_genre/genres.txt ./lib/music/repository/sources/lastfm_genre/genres.txt
 
 RUN mkdir -p /data /music && \
     chown -R beetroot:beetroot /app /data /music
