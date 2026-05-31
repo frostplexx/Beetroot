@@ -26,7 +26,7 @@ import {
 const GAP = 16;          // gap-4
 const TARGET_CARD = 180; // px — desired card width; cols derived from this
 const MIN_COLS = 2;
-const MAX_COLS = 8;
+const MAX_COLS = 12;
 
 const SORT_LABELS: Record<AlbumSort, string> = {
     "recently-added": "Recently Added",
@@ -173,11 +173,13 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
 
     return (
         <div className="absolute inset-0 overflow-hidden">
-            <div className="container mx-auto pb-4 flex flex-col h-full">
+            {/* Cap the grid to a 16:9 box on ultrawide displays — keeps the layout
+                proportional instead of stretching cards across the full width. */}
+            <div className="w-full h-full mx-auto max-w-[calc(100vh*16/9)] flex flex-col px-6 pt-2 pb-2">
 
-                <div className="container mx-auto px-4 pt-4 pb-2 flex-1 min-h-0 flex flex-col">
+                <div className="w-full flex-1 min-h-0 flex flex-col">
                     {total !== 0 && (
-                        <div className="w-full mb-4 flex-shrink-0 flex items-center justify-between gap-4">
+                        <div className="w-full mb-3 flex-shrink-0 flex items-center justify-between gap-4">
                             <p className="text-[11px] uppercase tracking-[0.14em] text-white/55 font-medium">
                                 {total > 0 ? `${albums.length} of ${total.toLocaleString()} albums` : "\u00A0"}
                             </p>
@@ -205,7 +207,7 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
                     </div>
                 )}
 
-                <div className="mt-auto flex-shrink-0 min-h-[60px]">
+                <div className="mt-2 flex-shrink-0 min-h-[44px]">
                     {totalPages > 1 && (
                         <Pagination
                             page={page}
