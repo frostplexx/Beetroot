@@ -17,6 +17,12 @@ FROM oven/bun:1-debian AS builder
 
 WORKDIR /app
 
+# Git ref baked into the client bundle (vite.config.ts reads GIT_REF).
+# .dockerignore excludes .git, so the caller resolves the short SHA and passes
+# it via --build-arg; falls back to "unknown" when not provided.
+ARG GIT_REF=unknown
+ENV GIT_REF=${GIT_REF}
+
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/lib/music/binaries ./lib/music/binaries
 

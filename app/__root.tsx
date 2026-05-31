@@ -84,6 +84,12 @@ function RootLayout() {
                         <Outlet />
                     </main>
                 </Providers>
+                <span
+                    aria-hidden
+                    className="fixed bottom-1 right-1.5 text-[9px] leading-none font-mono text-white/20 select-none pointer-events-none tabular-nums z-50"
+                >
+                    {__GIT_REF__}
+                </span>
                 <Scripts />
             </body>
         </html>
