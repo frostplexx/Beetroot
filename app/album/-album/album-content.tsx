@@ -147,7 +147,7 @@ export function AlbumContent({ album, artUrl, songs }: AlbumContentProps) {
                         </div>
                     </div>
 
-                    <div className="md:flex-1 md:min-h-0 flex flex-col container mx-auto px-4 pb-6">
+                    <div className="md:flex-1 md:min-h-0 flex flex-col container mx-auto px-4 pb-32 md:pb-6">
                         <SongsDataTable columns={columns} data={songs} />
                     </div>
                 </TabsContent>
