@@ -589,6 +589,13 @@ class Repository {
             }
 
             // Step 4: Import new files with concurrency control
+            // Failures here are queued for a retry pass at the end of the
+            // import phase. Without that, a transient failure (file briefly
+            // locked, network blip during resolveItem) would silently drop the
+            // file until the next reconcile cycle.
+            const failedSeeded: Item[] = [];
+            const failedPaths: string[] = [];
+
             if (newFiles.length > 0) {
                 console.log(`Importing: ${newFiles.length} files...`);
 
@@ -698,9 +705,8 @@ class Repository {
                                 logImportPerf(item, resolveMs, adoptMs);
                                 result.newFilesImported++;
                             } catch (error) {
-                                const errorMsg = `Import failed: ${seeded.path} - ${error instanceof Error ? error.message : String(error)}`;
-                                console.error(errorMsg);
-                                result.errors.push(errorMsg);
+                                console.warn(`Import attempt failed (queued for retry): ${seeded.path} - ${error instanceof Error ? error.message : String(error)}`);
+                                failedSeeded.push(seeded);
                             }
                         });
                         await Promise.all(promises);
@@ -725,7 +731,54 @@ class Repository {
                             logImportPerf(item, resolveMs, adoptMs);
                             result.newFilesImported++;
                         } catch (error) {
-                            const errorMsg = `Import failed: ${filePath} - ${error instanceof Error ? error.message : String(error)}`;
+                            console.warn(`Import attempt failed (queued for retry): ${filePath} - ${error instanceof Error ? error.message : String(error)}`);
+                            failedPaths.push(filePath);
+                        }
+                    });
+                    await Promise.all(promises);
+                    if (progressCallback) {
+                        progressCallback({ ...result, phase: 'importing' });
+                    }
+                }
+            }
+
+            // Step 4b: Retry adoptions that failed on the first pass. A move
+            // may have lost a race with the OS (file still being flushed by the
+            // writer that triggered the watcher), or resolveItem may have hit a
+            // transient network error. Re-running once at the end of the cycle
+            // catches these without waiting for the next reconcile interval.
+            if (failedSeeded.length > 0 || failedPaths.length > 0) {
+                const total = failedSeeded.length + failedPaths.length;
+                console.log(`Retrying: ${total} failed adoption${total === 1 ? '' : 's'}`);
+
+                for (let i = 0; i < failedSeeded.length; i += concurrency) {
+                    const batch = failedSeeded.slice(i, i + concurrency);
+                    const promises = batch.map(async (seeded) => {
+                        try {
+                            const item = await this.resolveItem(seeded);
+                            await this.adoptItem(item);
+                            result.newFilesImported++;
+                        } catch (error) {
+                            const errorMsg = `Import retry failed: ${seeded.path} - ${error instanceof Error ? error.message : String(error)}`;
+                            console.error(errorMsg);
+                            result.errors.push(errorMsg);
+                        }
+                    });
+                    await Promise.all(promises);
+                    if (progressCallback) {
+                        progressCallback({ ...result, phase: 'importing' });
+                    }
+                }
+
+                for (let i = 0; i < failedPaths.length; i += concurrency) {
+                    const batch = failedPaths.slice(i, i + concurrency);
+                    const promises = batch.map(async (filePath) => {
+                        try {
+                            const item = await this.resolveItem(filePath);
+                            await this.adoptItem(item);
+                            result.newFilesImported++;
+                        } catch (error) {
+                            const errorMsg = `Import retry failed: ${filePath} - ${error instanceof Error ? error.message : String(error)}`;
                             console.error(errorMsg);
                             result.errors.push(errorMsg);
                         }
