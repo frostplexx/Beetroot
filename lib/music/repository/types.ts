@@ -36,6 +36,41 @@ export interface ReconcileResult {
     errors: string[];
 }
 
+// Distinct phases of the reconcile pipeline. The UI uses these to label the
+// current activity so the user can tell scanning from import from retry.
+export type ReconcilePhase =
+    | 'starting'
+    | 'scanning'
+    | 'detecting-missing'
+    | 'duplicate-check'
+    | 'tag-read'
+    | 'clustering'
+    | 'cluster-import'
+    | 'tag-failed-import'
+    | 'retry'
+    | 'fixing-artwork'
+    | 'cleanup'
+    | 'finalizing';
+
 export interface ReconcileProgress extends ReconcileResult {
-    phase: 'scanning' | 'importing' | 'fixing-artwork' | 'cleanup';
+    phase: ReconcilePhase;
+    // Short human-readable label for the current activity (rendered as the
+    // headline in the live status panel).
+    message?: string;
+    // Path of the file most recently touched in this phase. Truncated in the UI
+    // but useful for spotting which file is wedging things.
+    currentPath?: string;
+    // Items completed / expected for the current phase. Both undefined means
+    // "we don't have a meaningful denominator" (e.g. open-ended scanning).
+    processed?: number;
+    total?: number;
+}
+
+// Individual per-file failure surfaced as it happens, so the UI can show a
+// rolling tail of errors without waiting for the whole reconcile to finish.
+export interface ReconcileItemError {
+    path: string;
+    phase: ReconcilePhase;
+    error: string;
+    timestamp: number;
 }

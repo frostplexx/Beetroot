@@ -5,10 +5,11 @@ import { DiscogsSource } from "./sources/discogs/discogs";
 import { WikipediaSource } from "./sources/wikipedia/wikipedia";
 import { LrclibSource } from "./sources/lrclib/lrclib";
 import { ReplayGain } from "./sources/replaygain";
-import { DataSource, ReconcileProgress, ReconcileResult, SourceResult } from "./types";
-import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, getItemsByAlbum, getAllItemsByAlbum, deleteItemFromDB, unsafeForceDeleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById, checkAndUpdateAlbumMissingStatus, getItemById, setAlbumMarkedForDeletion, updateAlbumArtpath } from "../database";
+import { DataSource, ReconcileItemError, ReconcilePhase, ReconcileProgress, ReconcileResult, SourceResult } from "./types";
+import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, updateItem, getItemsByAlbum, getAllItemsByAlbum, deleteItemFromDB, unsafeForceDeleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById, checkAndUpdateAlbumMissingStatus, getItemById, setAlbumMarkedForDeletion, updateAlbumArtpath } from "../database";
 import { mergeData } from "./merger";
-import { writeBackItem, moveItem, moveFile, copyFile, computeTargetPath } from "./writeback";
+import { normalizeAlbumString } from "../database/normalize";
+import { writeBackItem, moveItem, moveFile, moveFileWithReason, copyFile, computeTargetPath } from "./writeback";
 import { globalConfig } from "../../config";
 import fsPromises from 'fs/promises';
 import * as fs from 'fs';
@@ -43,9 +44,14 @@ class AdoptionError extends Error {
  * before unlinking anything.
  */
 function trashRoot(): string {
+    // Trim a trailing slash from music_directory before joining .trash, otherwise
+    // a configured `music_directory: /music/` produces `/music//.trash/`, which
+    // POSIX tolerates but breaks string comparisons (path prefix checks,
+    // startsWith against trashRoot, etc.).
+    const musicDir = globalConfig.music_directory.replace(/\/+$/, '');
     const raw = globalConfig.trash_directory
         ? globalConfig.trash_directory
-        : `${globalConfig.music_directory}/.trash`;
+        : `${musicDir}/.trash`;
     return raw.endsWith('/') ? raw : raw + '/';
 }
 
@@ -64,6 +70,29 @@ function computeTrashPath(itemPath: string): string {
     }
     const relative = itemPath.slice(musicDir.length);
     return trashRoot() + relative;
+}
+
+/**
+ * If the desired trash path is already occupied — most likely an orphan from a
+ * prior failed delete cycle, or a re-add / re-delete loop — append a numeric
+ * suffix so the new file lands in trash without clobbering the old one.
+ * Returns the original path when it's free.
+ *
+ * Retention reaping doesn't care about suffixed names; restore reads
+ * `item.path` from the DB, so the suffixed path round-trips fine.
+ */
+function uniqueTrashPath(desired: string): string {
+    if (!fs.existsSync(desired)) return desired;
+
+    const dir = path.dirname(desired);
+    const ext = path.extname(desired);
+    const base = path.basename(desired, ext);
+
+    for (let i = 2; i < 1000; i++) {
+        const candidate = path.join(dir, `${base} (${i})${ext}`);
+        if (!fs.existsSync(candidate)) return candidate;
+    }
+    throw new Error(`Cannot find unique trash path for ${desired} after 1000 attempts`);
 }
 
 
@@ -131,7 +160,7 @@ class Repository {
      * 6. On move failure: rollback DB
      * 7. Handle cover art (best effort)
      */
-    async adoptItem(item: Item): Promise<void> {
+    async adoptItem(item: Item): Promise<{ action: 'inserted' | 'updated' | 'skipped' }> {
         let dbCommitted = false;
         let itemId: number | undefined;
         let albumId: number | undefined;
@@ -203,7 +232,7 @@ class Repository {
             // pointing at the same album/track row.
             if (result.action === 'skipped') {
                 console.log(`Skipped duplicate file: ${originalPath} (existing item id ${result.itemId})`);
-                return;
+                return { action: 'skipped' };
             }
 
             // Phase 5: Move or copy file (only if target differs from original).
@@ -246,6 +275,8 @@ class Repository {
 
             (item as any)._adoptTimings = adoptTimings;
 
+            return { action: result.action };
+
         } catch (error) {
             // Rollback DB if file move failed after DB commit
             if (dbCommitted && itemId) {
@@ -282,27 +313,105 @@ class Repository {
     }
 
     markItemForDeletion(item: Item): void {
-        // Soft delete: file moves into trash, item row keeps a marked_for_deletion
-        // timestamp + a path that lives under the trash root. Restoring is the
-        // inverse: move file back, clear the timestamp, reset the path.
+        // Soft delete is atomic: either the file ends up in trash AND the DB
+        // row is marked AND its path points into trash, or nothing happens.
         //
-        // Invariant maintained after this method returns successfully:
+        // Failure modes handled:
+        //   move fails        → throw with reason; DB unchanged.
+        //   move ok, DB fail  → move the file back to its original location,
+        //                       then throw; DB and disk return to pre-call state.
+        //
+        // Invariant maintained after a successful return:
         //   marked_for_deletion IS NOT NULL ⟺ item.path is inside trashRoot()
         // The reconcile cleanup at deleteItem() relies on that biconditional to
         // decide what's safe to permanently unlink.
-        const trashPath = computeTrashPath(item.path);
+        const originalPath = item.path;
+        const trashPath = uniqueTrashPath(computeTrashPath(originalPath));
 
-        // Move first; only persist the marker + new path if the move succeeds.
-        // If the move fails, the DB is unchanged and the file is unchanged —
-        // the user can retry without ending up in a half-deleted state.
-        const moveSucceeded = moveFile(item.path, trashPath);
-        if (!moveSucceeded) {
-            throw new Error(`Failed to move ${item.path} to trash at ${trashPath}`);
+        const moved = moveFileWithReason(originalPath, trashPath);
+        if (!moved.ok) {
+            throw new Error(`Failed to move ${originalPath} to trash: ${moved.reason}`);
         }
 
-        item.path = trashPath;
-        item.marked_for_deletion = Date.now();
-        writeOrUpdateItem(item);
+        try {
+            const now = Date.now();
+            // Direct UPDATE by id. writeOrUpdateItem would route through
+            // findExistingItem, which matches by mb_trackid and finds the row
+            // by itself; with the default duplicate_action: 'skip' that
+            // silently no-ops the write, leaving the file in trash but the DB
+            // row pointing at the original (now-empty) path. The whole
+            // soft-delete then appeared to succeed but didn't persist.
+            updateItem(item.id, { path: trashPath, marked_for_deletion: now });
+            item.path = trashPath;
+            item.marked_for_deletion = now;
+        } catch (dbError) {
+            // Best-effort rollback of the filesystem half. If we can't undo the
+            // move, log a critical so the user knows manual recovery is needed,
+            // and still surface the original DB error.
+            item.path = originalPath;
+            item.marked_for_deletion = undefined;
+            const rollback = moveFileWithReason(trashPath, originalPath);
+            if (!rollback.ok) {
+                console.error(
+                    `CRITICAL: failed to roll back trash move ${trashPath} → ${originalPath}: ${rollback.reason}; manual recovery needed`,
+                );
+            }
+            const msg = dbError instanceof Error ? dbError.message : String(dbError);
+            throw new Error(`Trashing rolled back, DB write failed: ${msg}`);
+        }
+    }
+
+    // Restore a single soft-deleted item to its canonical path. Refuses if the
+    // item's album is itself soft-deleted — the user should restore the whole
+    // album in that case so we don't end up with a partially-revived album.
+    //
+    // Atomic: move ok + DB ok, or no observable change.
+    restoreItem(itemId: number): { restored: boolean; from: string; to: string } {
+        const item = getItemById(itemId);
+        if (!item) throw new Error(`Item ${itemId} not found`);
+        if (item.marked_for_deletion == null) {
+            throw new Error(`Item ${itemId} is not soft-deleted`);
+        }
+        if (item.album_id != null) {
+            const album = getAlbumById(item.album_id);
+            if (album?.marked_for_deletion != null) {
+                throw new Error(
+                    `Album ${item.album_id} is soft-deleted; restore the whole album instead`,
+                );
+            }
+        }
+        const toPath = computeTargetPath(item);
+        const fromPath = item.path;
+        if (fs.existsSync(toPath)) {
+            throw new Error(`Cannot restore to ${toPath}: file already exists`);
+        }
+        const previousMarker = item.marked_for_deletion;
+
+        const moved = moveFileWithReason(fromPath, toPath);
+        if (!moved.ok) {
+            throw new Error(`Failed to move ${fromPath} back to ${toPath}: ${moved.reason}`);
+        }
+
+        try {
+            // Direct UPDATE by id — see markItemForDeletion for the reason
+            // writeOrUpdateItem isn't safe here.
+            updateItem(item.id, { path: toPath, marked_for_deletion: undefined });
+            item.path = toPath;
+            item.marked_for_deletion = undefined;
+            if (item.album_id != null) checkAndUpdateAlbumMissingStatus(item.album_id);
+        } catch (dbError) {
+            item.path = fromPath;
+            item.marked_for_deletion = previousMarker;
+            const rollback = moveFileWithReason(toPath, fromPath);
+            if (!rollback.ok) {
+                console.error(
+                    `CRITICAL: failed to roll back restore move ${toPath} → ${fromPath}: ${rollback.reason}; manual recovery needed`,
+                );
+            }
+            const msg = dbError instanceof Error ? dbError.message : String(dbError);
+            throw new Error(`Restore rolled back, DB write failed: ${msg}`);
+        }
+        return { restored: true, from: fromPath, to: toPath };
     }
 
     markMissing(item: Item): void {
@@ -348,12 +457,29 @@ class Repository {
         let itemsMoved = 0;
         let artpathMoved: { from: string; to: string } | null = null;
 
+        const rollbackMoves = (label: string) => {
+            for (const m of [...moved].reverse()) {
+                const r = moveFileWithReason(m.trashPath, m.originalPath);
+                if (!r.ok) {
+                    console.error(
+                        `CRITICAL: ${label} failed to roll back ${m.trashPath} → ${m.originalPath}: ${r.reason}; manual recovery needed`,
+                    );
+                }
+            }
+            // Reset staged paths on item objects we already mutated in memory.
+            for (const item of items) {
+                const matching = moved.find(m => m.trashPath === item.path);
+                if (matching) item.path = matching.originalPath;
+            }
+        };
+
         try {
             for (const item of items) {
-                const trashPath = computeTrashPath(item.path);
+                const trashPath = uniqueTrashPath(computeTrashPath(item.path));
                 const originalPath = item.path;
-                if (!moveFile(originalPath, trashPath)) {
-                    throw new Error(`Failed to move ${originalPath} to trash`);
+                const r = moveFileWithReason(originalPath, trashPath);
+                if (!r.ok) {
+                    throw new Error(`Failed to move ${originalPath} to trash: ${r.reason}`);
                 }
                 moved.push({ originalPath, trashPath });
                 item.path = trashPath; // staged; will be written in Phase 2
@@ -367,31 +493,21 @@ class Repository {
             if (album.artpath && fs.existsSync(album.artpath)) {
                 let trashArt: string | null = null;
                 try {
-                    trashArt = computeTrashPath(album.artpath);
+                    trashArt = uniqueTrashPath(computeTrashPath(album.artpath));
                 } catch {
                     trashArt = null;
                 }
                 if (trashArt) {
-                    if (!moveFile(album.artpath, trashArt)) {
-                        throw new Error(`Failed to move artpath ${album.artpath} to trash`);
+                    const r = moveFileWithReason(album.artpath, trashArt);
+                    if (!r.ok) {
+                        throw new Error(`Failed to move artpath ${album.artpath} to trash: ${r.reason}`);
                     }
                     moved.push({ originalPath: album.artpath, trashPath: trashArt });
                     artpathMoved = { from: album.artpath, to: trashArt };
                 }
             }
         } catch (error) {
-            // Roll back every move we already did. Best-effort: log on failure
-            // but still surface the original error.
-            for (const m of moved.reverse()) {
-                if (!moveFile(m.trashPath, m.originalPath)) {
-                    console.error(`CRITICAL: failed to roll back ${m.trashPath} → ${m.originalPath}; manual recovery needed`);
-                }
-            }
-            // Reset staged paths on item objects we already mutated in memory.
-            for (const item of items) {
-                const matching = moved.find(m => m.trashPath === item.path);
-                if (matching) item.path = matching.originalPath;
-            }
+            rollbackMoves('move');
             throw error;
         }
 
@@ -400,17 +516,33 @@ class Repository {
         //   every item.marked_for_deletion = now
         //   album.marked_for_deletion = now
         //   album.artpath either null or under trashRoot()
+        //
+        // If the DB transaction fails we have a worse state to recover from
+        // than a mid-move failure: every file has already been relocated to
+        // trash. Roll those back so the library returns to its pre-call state.
         const now = Date.now();
-        db.transaction(() => {
+        try {
+            db.transaction(() => {
+                for (const item of items) {
+                    // Direct UPDATE by id; see markItemForDeletion for why
+                    // writeOrUpdateItem skips the write under the default
+                    // duplicate_action: 'skip'.
+                    updateItem(item.id, { path: item.path, marked_for_deletion: now });
+                    item.marked_for_deletion = now;
+                }
+                if (artpathMoved) {
+                    updateAlbumArtpath(albumId, artpathMoved.to);
+                }
+                setAlbumMarkedForDeletion(albumId, now);
+            })();
+        } catch (dbError) {
             for (const item of items) {
-                item.marked_for_deletion = now;
-                writeOrUpdateItem(item);
+                item.marked_for_deletion = undefined;
             }
-            if (artpathMoved) {
-                updateAlbumArtpath(albumId, artpathMoved.to);
-            }
-            setAlbumMarkedForDeletion(albumId, now);
-        })();
+            rollbackMoves('db-failure');
+            const msg = dbError instanceof Error ? dbError.message : String(dbError);
+            throw new Error(`Trash rolled back, DB write failed: ${msg}`);
+        }
 
         return { itemsMoved, albumMarked: true, artpathMoved: artpathMoved != null };
     }
@@ -435,6 +567,25 @@ class Repository {
         const itemMoves: Array<{ item: Item; fromPath: string; toPath: string }> = [];
         let artMove: { from: string; to: string } | null = null;
 
+        const rollbackMoves = (label: string) => {
+            if (artMove) {
+                const r = moveFileWithReason(artMove.to, artMove.from);
+                if (!r.ok) {
+                    console.error(
+                        `CRITICAL: ${label} failed to roll back artpath restore ${artMove.to} → ${artMove.from}: ${r.reason}; manual recovery needed`,
+                    );
+                }
+            }
+            for (const m of [...itemMoves].reverse()) {
+                const r = moveFileWithReason(m.toPath, m.fromPath);
+                if (!r.ok) {
+                    console.error(
+                        `CRITICAL: ${label} failed to roll back restore ${m.toPath} → ${m.fromPath}: ${r.reason}; manual recovery needed`,
+                    );
+                }
+            }
+        };
+
         try {
             for (const item of items) {
                 if (item.marked_for_deletion == null) continue;
@@ -447,8 +598,9 @@ class Repository {
                 if (fs.existsSync(toPath)) {
                     throw new Error(`Cannot restore to ${toPath}: file already exists`);
                 }
-                if (!moveFile(fromPath, toPath)) {
-                    throw new Error(`Failed to move ${fromPath} back to ${toPath}`);
+                const r = moveFileWithReason(fromPath, toPath);
+                if (!r.ok) {
+                    throw new Error(`Failed to move ${fromPath} back to ${toPath}: ${r.reason}`);
                 }
                 itemMoves.push({ item, fromPath, toPath });
             }
@@ -468,35 +620,37 @@ class Repository {
                     try { fs.unlinkSync(album.artpath); } catch { /* best effort */ }
                     artMove = { from: album.artpath, to: destArt };
                 } else {
-                    if (!moveFile(album.artpath, destArt)) {
-                        throw new Error(`Failed to restore artpath ${album.artpath} → ${destArt}`);
+                    const r = moveFileWithReason(album.artpath, destArt);
+                    if (!r.ok) {
+                        throw new Error(`Failed to restore artpath ${album.artpath} → ${destArt}: ${r.reason}`);
                     }
                     artMove = { from: album.artpath, to: destArt };
                 }
             }
         } catch (error) {
-            if (artMove && !moveFile(artMove.to, artMove.from)) {
-                console.error(`CRITICAL: failed to roll back artpath restore ${artMove.to} → ${artMove.from}; manual recovery needed`);
-            }
-            for (const m of itemMoves.reverse()) {
-                if (!moveFile(m.toPath, m.fromPath)) {
-                    console.error(`CRITICAL: failed to roll back restore ${m.toPath} → ${m.fromPath}; manual recovery needed`);
-                }
-            }
+            rollbackMoves('move');
             throw error;
         }
 
-        db.transaction(() => {
-            for (const m of itemMoves) {
-                m.item.path = m.toPath;
-                m.item.marked_for_deletion = undefined;
-                writeOrUpdateItem(m.item);
-            }
-            if (artMove) {
-                updateAlbumArtpath(albumId, artMove.to);
-            }
-            setAlbumMarkedForDeletion(albumId, null);
-        })();
+        try {
+            db.transaction(() => {
+                for (const m of itemMoves) {
+                    // Direct UPDATE by id; see markItemForDeletion for why
+                    // writeOrUpdateItem skips the write.
+                    updateItem(m.item.id, { path: m.toPath, marked_for_deletion: undefined });
+                    m.item.path = m.toPath;
+                    m.item.marked_for_deletion = undefined;
+                }
+                if (artMove) {
+                    updateAlbumArtpath(albumId, artMove.to);
+                }
+                setAlbumMarkedForDeletion(albumId, null);
+            })();
+        } catch (dbError) {
+            rollbackMoves('db-failure');
+            const msg = dbError instanceof Error ? dbError.message : String(dbError);
+            throw new Error(`Restore rolled back, DB write failed: ${msg}`);
+        }
 
         return { itemsRestored: itemMoves.length, artpathRestored: artMove != null };
     }
@@ -507,10 +661,12 @@ class Repository {
         concurrency?: number;
         batchSize?: number;
         progressCallback?: (progress: ReconcileProgress) => void;
+        errorCallback?: (error: ReconcileItemError) => void;
     }): Promise<ReconcileResult> {
         const concurrency = options?.concurrency ?? 10;
         const batchSize = options?.batchSize ?? 100;
         const progressCallback = options?.progressCallback;
+        const errorCallback = options?.errorCallback;
 
         const result: ReconcileResult = {
             scannedFiles: 0,
@@ -523,11 +679,26 @@ class Repository {
             errors: [],
         };
 
+        // Centralised progress emit. Always carries the running result plus the
+        // current phase; callers add `message`, `currentPath`, `processed`,
+        // `total` to flesh out the UI.
+        const emit = (phase: ReconcilePhase, extras: Partial<ReconcileProgress> = {}) => {
+            if (progressCallback) progressCallback({ ...result, phase, ...extras });
+        };
+        const emitError = (phase: ReconcilePhase, path: string, err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (errorCallback) {
+                errorCallback({ phase, path, error: msg, timestamp: Date.now() });
+            }
+        };
+
         console.log(`Reconciling: ${globalConfig.music_directory}`);
+        emit('starting', { message: 'Starting reconcile' });
 
         try {
             // Step 1: Load DB paths filtered to music_directory scope (filter pushed to SQL)
             const musicDir = globalConfig.music_directory.replace('~', process.env.HOME || '');
+            emit('scanning', { message: 'Loading database paths' });
             const dbPaths = getAllItemPaths(musicDir); // Map<path, { id, album_id }>
             const dbPathSet = new Set(dbPaths.keys());
             console.log(`Database: ${dbPaths.size} tracks in scope`);
@@ -536,6 +707,7 @@ class Repository {
             const newFiles: string[] = [];
             const seenPaths = new Set<string>();
 
+            emit('scanning', { message: 'Walking music directory', processed: 0 });
             for await (const filePath of enumerateMusicFilesStream(undefined, globalConfig.watch_directories ?? [])) {
                 result.scannedFiles++;
                 seenPaths.add(filePath);
@@ -546,15 +718,25 @@ class Repository {
                     result.newFilesFound++;
                 }
 
-                // Report progress every 1000 files
-                if (result.scannedFiles % 1000 === 0 && progressCallback) {
-                    progressCallback({ ...result, phase: 'scanning' });
+                // Report progress every 100 files so the UI tick stays lively
+                // without spamming SSE on huge libraries.
+                if (result.scannedFiles % 100 === 0) {
+                    emit('scanning', {
+                        message: 'Walking music directory',
+                        processed: result.scannedFiles,
+                        currentPath: filePath,
+                    });
                 }
             }
 
             console.log(`Scanned: ${result.scannedFiles} files (${newFiles.length} new)`);
+            emit('scanning', {
+                message: `Scanned ${result.scannedFiles} files (${newFiles.length} new)`,
+                processed: result.scannedFiles,
+            });
 
             // Step 3: Detect missing files (in DB but not on disk)
+            emit('detecting-missing', { message: 'Detecting missing files' });
             const missingUpdates: Array<{ id: number; fields: Partial<Item> }> = [];
             const affectedAlbumIds = new Set<number>();
 
@@ -576,6 +758,10 @@ class Repository {
             // Batch update missing items
             if (missingUpdates.length > 0) {
                 console.log(`Missing: ${missingUpdates.length} files marked`);
+                emit('detecting-missing', {
+                    message: `Marking ${missingUpdates.length} missing files`,
+                    total: missingUpdates.length,
+                });
 
                 for (let i = 0; i < missingUpdates.length; i += batchSize) {
                     const batch = missingUpdates.slice(i, i + batchSize);
@@ -602,6 +788,13 @@ class Repository {
                 // Pre-filter: check for duplicates in parallel with bounded concurrency
                 const filesToImport: string[] = [];
                 let skippedDuplicates = 0;
+                let dupChecked = 0;
+
+                emit('duplicate-check', {
+                    message: 'Checking for duplicates',
+                    total: newFiles.length,
+                    processed: 0,
+                });
 
                 // Process duplicate checks in batches with same concurrency as import
                 for (let i = 0; i < newFiles.length; i += concurrency) {
@@ -621,6 +814,13 @@ class Repository {
                             filesToImport.push(filePath);
                         }
                     }
+                    dupChecked += batch.length;
+                    emit('duplicate-check', {
+                        message: 'Checking for duplicates',
+                        total: newFiles.length,
+                        processed: dupChecked,
+                        currentPath: batch[batch.length - 1],
+                    });
                 }
 
                 if (skippedDuplicates > 0) {
@@ -636,7 +836,13 @@ class Repository {
                 const tagsSource = new LocalTagsSource();
                 const tagged: Item[] = [];
                 const tagFailed: string[] = [];
+                emit('tag-read', {
+                    message: 'Reading local tags',
+                    total: filesToImport.length,
+                    processed: 0,
+                });
 
+                let tagDone = 0;
                 for (let i = 0; i < filesToImport.length; i += concurrency) {
                     const batch = filesToImport.slice(i, i + concurrency);
                     const readResults = await Promise.all(batch.map(async (filePath) => {
@@ -653,12 +859,98 @@ class Repository {
                         if (r.ok) tagged.push(r.item);
                         else tagFailed.push(r.filePath);
                     }
+                    tagDone += batch.length;
+                    emit('tag-read', {
+                        message: 'Reading local tags',
+                        total: filesToImport.length,
+                        processed: tagDone,
+                        currentPath: batch[batch.length - 1],
+                    });
                 }
 
-                const clusters = clusterTracks(tagged);
-                console.log(`Clustering: ${tagged.length} files → ${clusters.length} clusters`);
+                emit('clustering', {
+                    message: `Clustering ${tagged.length} files`,
+                });
+                const rawClusters = clusterTracks(tagged);
+                console.log(`Clustering: ${tagged.length} files → ${rawClusters.length} clusters`);
 
+                // Cheap pre-MB skip: if a cluster's seed album already exists in
+                // the DB and every cluster track matches an existing item by
+                // (disc,track) or normalized title, drop the matched tracks (or
+                // the whole cluster) before any MB / source fetching runs. This
+                // is the hot path that prevents re-importing albums that are
+                // already in the library but happen to sit at new paths (watch
+                // dir drop, manual rename, path-template change, etc.).
+                let preSkipped = 0;
+                const existingMatchStmt = db.prepare(`
+                    SELECT i.disc, i.track, i.title
+                    FROM items i
+                    JOIN albums a ON a.id = i.album_id
+                    WHERE a.album_normalized = ?
+                      AND (
+                          a.albumartist_normalized = ?
+                          OR (? = '' AND (a.albumartist_normalized IS NULL OR a.albumartist_normalized = ''))
+                      )
+                      AND i.marked_for_deletion IS NULL
+                `);
+                for (const cluster of rawClusters) {
+                    if (!cluster.seedAlbum) continue;
+                    const normAlbum = normalizeAlbumString(cluster.seedAlbum);
+                    if (!normAlbum) continue;
+                    const normArtist = normalizeAlbumString(cluster.seedAlbumArtist);
+                    const existing = existingMatchStmt.all(normAlbum, normArtist, normArtist) as Array<{
+                        disc: number | null;
+                        track: number | null;
+                        title: string | null;
+                    }>;
+                    if (existing.length === 0) continue;
+
+                    const slotSet = new Set<string>();
+                    const titleSet = new Set<string>();
+                    for (const e of existing) {
+                        if (e.track != null) slotSet.add(`${e.disc ?? 1}:${e.track}`);
+                        if (e.title) {
+                            const t = normalizeAlbumString(e.title);
+                            if (t) titleSet.add(t);
+                        }
+                    }
+
+                    const before = cluster.tracks.length;
+                    cluster.tracks = cluster.tracks.filter(t => {
+                        const slot = t.track != null ? `${t.disc ?? 1}:${t.track}` : null;
+                        if (slot && slotSet.has(slot)) return false;
+                        const tn = t.title ? normalizeAlbumString(t.title) : '';
+                        if (tn && titleSet.has(tn)) return false;
+                        return true;
+                    });
+                    preSkipped += before - cluster.tracks.length;
+                }
+
+                const clusters = rawClusters.filter(c => c.tracks.length > 0);
+                const droppedClusters = rawClusters.length - clusters.length;
+                if (preSkipped > 0 || droppedClusters > 0) {
+                    console.log(
+                        `Pre-MB skip: ${preSkipped} tracks already in library, ${droppedClusters} clusters fully covered`,
+                    );
+                    emit('clustering', {
+                        message: `Skipped ${preSkipped} already-imported track${preSkipped === 1 ? '' : 's'} (${droppedClusters} cluster${droppedClusters === 1 ? '' : 's'} dropped)`,
+                    });
+                }
+
+                const totalToImport = clusters.reduce((s, c) => s + c.tracks.length, 0) + tagFailed.length;
+                let imported = 0;
+
+                let clusterIdx = 0;
                 for (const cluster of clusters) {
+                    clusterIdx++;
+                    const clusterLabel = cluster.seedAlbum
+                        ? `${cluster.seedAlbumArtist ?? '?'}, ${cluster.seedAlbum}`
+                        : `(no album signal)`;
+                    emit('cluster-import', {
+                        message: `Cluster ${clusterIdx} of ${clusters.length}: ${clusterLabel}`,
+                        total: totalToImport,
+                        processed: imported,
+                    });
                     await this.seedClusterFromMusicBrainz(cluster);
 
                     // Pre-fetch data from all sources in parallel before any per-track
@@ -700,24 +992,36 @@ class Repository {
                                 const item = await this.resolveItem(seeded);
                                 const resolveMs = Date.now() - t0;
                                 const t1 = Date.now();
-                                await this.adoptItem(item);
+                                const adopt = await this.adoptItem(item);
                                 const adoptMs = Date.now() - t1;
                                 logImportPerf(item, resolveMs, adoptMs);
-                                result.newFilesImported++;
+                                if (adopt.action === 'inserted') result.newFilesImported++;
                             } catch (error) {
                                 console.warn(`Import attempt failed (queued for retry): ${seeded.path} - ${error instanceof Error ? error.message : String(error)}`);
                                 failedSeeded.push(seeded);
+                                emitError('cluster-import', seeded.path, error);
                             }
                         });
                         await Promise.all(promises);
-                        if (progressCallback) {
-                            progressCallback({ ...result, phase: 'importing' });
-                        }
+                        imported += batch.length;
+                        emit('cluster-import', {
+                            message: `Cluster ${clusterIdx} of ${clusters.length}: ${clusterLabel}`,
+                            total: totalToImport,
+                            processed: imported,
+                            currentPath: batch[batch.length - 1]?.path,
+                        });
                     }
                 }
 
                 // Files whose tag pre-read failed bypass clustering entirely
                 // and fall back to the original per-file path.
+                if (tagFailed.length > 0) {
+                    emit('tag-failed-import', {
+                        message: `Importing ${tagFailed.length} files without tag data`,
+                        total: totalToImport,
+                        processed: imported,
+                    });
+                }
                 for (let i = 0; i < tagFailed.length; i += concurrency) {
                     const batch = tagFailed.slice(i, i + concurrency);
                     const promises = batch.map(async (filePath) => {
@@ -726,19 +1030,24 @@ class Repository {
                             const item = await this.resolveItem(filePath);
                             const resolveMs = Date.now() - t0;
                             const t1 = Date.now();
-                            await this.adoptItem(item);
+                            const adopt = await this.adoptItem(item);
                             const adoptMs = Date.now() - t1;
                             logImportPerf(item, resolveMs, adoptMs);
-                            result.newFilesImported++;
+                            if (adopt.action === 'inserted') result.newFilesImported++;
                         } catch (error) {
                             console.warn(`Import attempt failed (queued for retry): ${filePath} - ${error instanceof Error ? error.message : String(error)}`);
                             failedPaths.push(filePath);
+                            emitError('tag-failed-import', filePath, error);
                         }
                     });
                     await Promise.all(promises);
-                    if (progressCallback) {
-                        progressCallback({ ...result, phase: 'importing' });
-                    }
+                    imported += batch.length;
+                    emit('tag-failed-import', {
+                        message: `Importing files without tag data`,
+                        total: totalToImport,
+                        processed: imported,
+                        currentPath: batch[batch.length - 1],
+                    });
                 }
             }
 
@@ -748,26 +1057,37 @@ class Repository {
             // transient network error. Re-running once at the end of the cycle
             // catches these without waiting for the next reconcile interval.
             if (failedSeeded.length > 0 || failedPaths.length > 0) {
-                const total = failedSeeded.length + failedPaths.length;
-                console.log(`Retrying: ${total} failed adoption${total === 1 ? '' : 's'}`);
+                const totalRetry = failedSeeded.length + failedPaths.length;
+                console.log(`Retrying: ${totalRetry} failed adoption${totalRetry === 1 ? '' : 's'}`);
+                let retryDone = 0;
+                emit('retry', {
+                    message: `Retrying ${totalRetry} failed adoption${totalRetry === 1 ? '' : 's'}`,
+                    total: totalRetry,
+                    processed: 0,
+                });
 
                 for (let i = 0; i < failedSeeded.length; i += concurrency) {
                     const batch = failedSeeded.slice(i, i + concurrency);
                     const promises = batch.map(async (seeded) => {
                         try {
                             const item = await this.resolveItem(seeded);
-                            await this.adoptItem(item);
-                            result.newFilesImported++;
+                            const adopt = await this.adoptItem(item);
+                            if (adopt.action === 'inserted') result.newFilesImported++;
                         } catch (error) {
                             const errorMsg = `Import retry failed: ${seeded.path} - ${error instanceof Error ? error.message : String(error)}`;
                             console.error(errorMsg);
                             result.errors.push(errorMsg);
+                            emitError('retry', seeded.path, error);
                         }
                     });
                     await Promise.all(promises);
-                    if (progressCallback) {
-                        progressCallback({ ...result, phase: 'importing' });
-                    }
+                    retryDone += batch.length;
+                    emit('retry', {
+                        message: `Retrying failed adoptions`,
+                        total: totalRetry,
+                        processed: retryDone,
+                        currentPath: batch[batch.length - 1]?.path,
+                    });
                 }
 
                 for (let i = 0; i < failedPaths.length; i += concurrency) {
@@ -775,18 +1095,23 @@ class Repository {
                     const promises = batch.map(async (filePath) => {
                         try {
                             const item = await this.resolveItem(filePath);
-                            await this.adoptItem(item);
-                            result.newFilesImported++;
+                            const adopt = await this.adoptItem(item);
+                            if (adopt.action === 'inserted') result.newFilesImported++;
                         } catch (error) {
                             const errorMsg = `Import retry failed: ${filePath} - ${error instanceof Error ? error.message : String(error)}`;
                             console.error(errorMsg);
                             result.errors.push(errorMsg);
+                            emitError('retry', filePath, error);
                         }
                     });
                     await Promise.all(promises);
-                    if (progressCallback) {
-                        progressCallback({ ...result, phase: 'importing' });
-                    }
+                    retryDone += batch.length;
+                    emit('retry', {
+                        message: `Retrying failed adoptions`,
+                        total: totalRetry,
+                        processed: retryDone,
+                        currentPath: batch[batch.length - 1],
+                    });
                 }
             }
 
@@ -796,8 +1121,13 @@ class Repository {
 
             if (albumsWithMissingArtwork.length > 0) {
                 console.log(`Artwork: fetching for ${albumsWithMissingArtwork.length} albums...`);
+                emit('fixing-artwork', {
+                    message: `Fetching artwork for ${albumsWithMissingArtwork.length} albums`,
+                    total: albumsWithMissingArtwork.length,
+                    processed: 0,
+                });
 
-                // Process in batches with controlled concurrency
+                let artDone = 0;
                 for (let i = 0; i < albumsWithMissingArtwork.length; i += concurrency) {
                     const batch = albumsWithMissingArtwork.slice(i, i + concurrency);
 
@@ -811,14 +1141,25 @@ class Repository {
                             const errorMsg = `Artwork failed: ${album.albumartist} - ${album.album}`;
                             console.error(errorMsg);
                             result.errors.push(errorMsg);
+                            emitError(
+                                'fixing-artwork',
+                                `${album.albumartist}, ${album.album}`,
+                                error,
+                            );
                         }
                     });
 
                     await Promise.all(promises);
-
-                    if (progressCallback) {
-                        progressCallback({ ...result, phase: 'fixing-artwork' });
-                    }
+                    artDone += batch.length;
+                    const last = batch[batch.length - 1];
+                    emit('fixing-artwork', {
+                        message: 'Fetching album artwork',
+                        total: albumsWithMissingArtwork.length,
+                        processed: artDone,
+                        currentPath: last
+                            ? `${last.albumartist}, ${last.album}`
+                            : undefined,
+                    });
                 }
 
                 if (result.artworkFixed > 0) {
@@ -831,6 +1172,12 @@ class Repository {
 
             if (itemsToDelete.length > 0) {
                 console.log(`Cleanup: deleting ${itemsToDelete.length} items older than ${globalConfig.delete_after} days`);
+                emit('cleanup', {
+                    message: `Cleaning up ${itemsToDelete.length} expired trash items`,
+                    total: itemsToDelete.length,
+                    processed: 0,
+                });
+                let cleanupDone = 0;
                 for (const item of itemsToDelete) {
                     try {
                         await this.deleteItem(item);
@@ -839,10 +1186,19 @@ class Repository {
                         const errorMsg = `Delete failed: ${item.path} - ${error instanceof Error ? error.message : String(error)}`;
                         console.error(errorMsg);
                         result.errors.push(errorMsg);
+                        emitError('cleanup', item.path, error);
                     }
+                    cleanupDone++;
+                    emit('cleanup', {
+                        message: 'Cleaning up expired trash items',
+                        total: itemsToDelete.length,
+                        processed: cleanupDone,
+                        currentPath: item.path,
+                    });
                 }
             }
 
+            emit('finalizing', { message: 'Finalizing' });
             console.log(`Complete: ${result.newFilesImported} imported, ${result.missingFilesDetected} missing, ${result.artworkFixed} artwork, ${result.deletedItems} deleted`);
             if (result.errors.length > 0) {
                 console.error(`Errors: ${result.errors.length} total`);

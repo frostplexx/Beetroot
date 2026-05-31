@@ -284,24 +284,46 @@ export function moveItem(item: Item): boolean {
 }
 
 
+export type MoveResult =
+    | { ok: true }
+    | { ok: false; reason: string };
+
 /**
  * Move a file via rename. Refuses to overwrite an existing destination — every
  * caller of moveFile in this codebase expects the destination to be empty (a
  * canonical library path that was just computed, a trash mirror that nothing
  * else writes to, etc.). Silent overwrite would be a data-loss footgun.
  *
- * Returns false on failure (logged), so callers can branch on the result and
- * trigger their own rollback / error path without try/catch noise.
+ * Returns a discriminated result so callers can surface *why* the move failed
+ * to the user, not just "move failed".
  */
 export function moveFile(oldPath: string, newPath: string): boolean {
-    const dir = newPath.substring(0, newPath.lastIndexOf('/'));
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+    const result = moveFileWithReason(oldPath, newPath);
+    return result.ok;
+}
+
+export function moveFileWithReason(oldPath: string, newPath: string): MoveResult {
+    if (!fs.existsSync(oldPath)) {
+        const reason = `source does not exist: ${oldPath}`;
+        console.error(`Error moving file from ${oldPath} to ${newPath}: ${reason}`);
+        return { ok: false, reason };
     }
 
     if (fs.existsSync(newPath)) {
-        console.error(`Error moving file from ${oldPath} to ${newPath}: destination already exists`);
-        return false;
+        const reason = `destination already exists: ${newPath}`;
+        console.error(`Error moving file from ${oldPath} to ${newPath}: ${reason}`);
+        return { ok: false, reason };
+    }
+
+    const dir = newPath.substring(0, newPath.lastIndexOf('/'));
+    if (!fs.existsSync(dir)) {
+        try {
+            fs.mkdirSync(dir, { recursive: true });
+        } catch (mkdirError) {
+            const reason = `cannot create destination directory ${dir}: ${(mkdirError as Error).message}`;
+            console.error(`Error moving file from ${oldPath} to ${newPath}: ${reason}`);
+            return { ok: false, reason };
+        }
     }
 
     try {
@@ -315,18 +337,21 @@ export function moveFile(oldPath: string, newPath: string): boolean {
             try {
                 fs.copyFileSync(oldPath, newPath);
                 fs.unlinkSync(oldPath);
-                return true;
+                return { ok: true };
             } catch (copyError) {
                 try { fs.unlinkSync(newPath); } catch { /* ignore cleanup */ }
+                const reason = `cross-device copy failed: ${(copyError as Error).message}`;
                 console.error(`Error moving file from ${oldPath} to ${newPath}:`, copyError);
-                return false;
+                return { ok: false, reason };
             }
         }
+        const err = error as NodeJS.ErrnoException;
+        const reason = `${err.code ?? 'error'}: ${err.message}`;
         console.error(`Error moving file from ${oldPath} to ${newPath}:`, error);
-        return false;
+        return { ok: false, reason };
     }
 
-    return true
+    return { ok: true };
 }
 
 

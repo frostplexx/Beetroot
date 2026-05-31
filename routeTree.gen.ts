@@ -17,16 +17,19 @@ import { Route as AlbumIdRouteImport } from './app/album/$id'
 import { Route as ApiItemsIdRouteImport } from './app/api/items/$id'
 import { Route as ApiEventsReconcileRouteImport } from './app/api/events/reconcile'
 import { Route as ApiAlbumIdRouteImport } from './app/api/album/$id'
+import { Route as ApiAdminTrashRouteImport } from './app/api/admin/trash'
 import { Route as ApiAdminRefetchMusicbrainzRouteImport } from './app/api/admin/refetch-musicbrainz'
 import { Route as ApiAdminImportHeatmapRouteImport } from './app/api/admin/import-heatmap'
 import { Route as ApiAdminDeduplicateAlbumsRouteImport } from './app/api/admin/deduplicate-albums'
 import { Route as ApiItemsIdRevealRouteImport } from './app/api/items/$id/reveal'
+import { Route as ApiItemsIdRestoreRouteImport } from './app/api/items/$id/restore'
 import { Route as ApiAlbumIdRevealRouteImport } from './app/api/album/$id/reveal'
 import { Route as ApiAlbumIdRestoreRouteImport } from './app/api/album/$id/restore'
 import { Route as ApiAlbumIdMusicbrainzRouteImport } from './app/api/album/$id/musicbrainz'
 import { Route as ApiAlbumIdFolderRouteImport } from './app/api/album/$id/folder'
 import { Route as ApiAlbumIdArtRouteImport } from './app/api/album/$id/art'
 import { Route as ApiAlbumIdAlternativesRouteImport } from './app/api/album/$id/alternatives'
+import { Route as ApiAdminReconcileTriggerRouteImport } from './app/api/admin/reconcile/trigger'
 
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
@@ -68,6 +71,11 @@ const ApiAlbumIdRoute = ApiAlbumIdRouteImport.update({
   path: '/api/album/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminTrashRoute = ApiAdminTrashRouteImport.update({
+  id: '/api/admin/trash',
+  path: '/api/admin/trash',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminRefetchMusicbrainzRoute =
   ApiAdminRefetchMusicbrainzRouteImport.update({
     id: '/api/admin/refetch-musicbrainz',
@@ -88,6 +96,11 @@ const ApiAdminDeduplicateAlbumsRoute =
 const ApiItemsIdRevealRoute = ApiItemsIdRevealRouteImport.update({
   id: '/reveal',
   path: '/reveal',
+  getParentRoute: () => ApiItemsIdRoute,
+} as any)
+const ApiItemsIdRestoreRoute = ApiItemsIdRestoreRouteImport.update({
+  id: '/restore',
+  path: '/restore',
   getParentRoute: () => ApiItemsIdRoute,
 } as any)
 const ApiAlbumIdRevealRoute = ApiAlbumIdRevealRouteImport.update({
@@ -120,6 +133,12 @@ const ApiAlbumIdAlternativesRoute = ApiAlbumIdAlternativesRouteImport.update({
   path: '/alternatives',
   getParentRoute: () => ApiAlbumIdRoute,
 } as any)
+const ApiAdminReconcileTriggerRoute =
+  ApiAdminReconcileTriggerRouteImport.update({
+    id: '/api/admin/reconcile/trigger',
+    path: '/api/admin/reconcile/trigger',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -130,15 +149,18 @@ export interface FileRoutesByFullPath {
   '/api/admin/deduplicate-albums': typeof ApiAdminDeduplicateAlbumsRoute
   '/api/admin/import-heatmap': typeof ApiAdminImportHeatmapRoute
   '/api/admin/refetch-musicbrainz': typeof ApiAdminRefetchMusicbrainzRoute
+  '/api/admin/trash': typeof ApiAdminTrashRoute
   '/api/album/$id': typeof ApiAlbumIdRouteWithChildren
   '/api/events/reconcile': typeof ApiEventsReconcileRoute
   '/api/items/$id': typeof ApiItemsIdRouteWithChildren
+  '/api/admin/reconcile/trigger': typeof ApiAdminReconcileTriggerRoute
   '/api/album/$id/alternatives': typeof ApiAlbumIdAlternativesRoute
   '/api/album/$id/art': typeof ApiAlbumIdArtRoute
   '/api/album/$id/folder': typeof ApiAlbumIdFolderRoute
   '/api/album/$id/musicbrainz': typeof ApiAlbumIdMusicbrainzRoute
   '/api/album/$id/restore': typeof ApiAlbumIdRestoreRoute
   '/api/album/$id/reveal': typeof ApiAlbumIdRevealRoute
+  '/api/items/$id/restore': typeof ApiItemsIdRestoreRoute
   '/api/items/$id/reveal': typeof ApiItemsIdRevealRoute
 }
 export interface FileRoutesByTo {
@@ -150,15 +172,18 @@ export interface FileRoutesByTo {
   '/api/admin/deduplicate-albums': typeof ApiAdminDeduplicateAlbumsRoute
   '/api/admin/import-heatmap': typeof ApiAdminImportHeatmapRoute
   '/api/admin/refetch-musicbrainz': typeof ApiAdminRefetchMusicbrainzRoute
+  '/api/admin/trash': typeof ApiAdminTrashRoute
   '/api/album/$id': typeof ApiAlbumIdRouteWithChildren
   '/api/events/reconcile': typeof ApiEventsReconcileRoute
   '/api/items/$id': typeof ApiItemsIdRouteWithChildren
+  '/api/admin/reconcile/trigger': typeof ApiAdminReconcileTriggerRoute
   '/api/album/$id/alternatives': typeof ApiAlbumIdAlternativesRoute
   '/api/album/$id/art': typeof ApiAlbumIdArtRoute
   '/api/album/$id/folder': typeof ApiAlbumIdFolderRoute
   '/api/album/$id/musicbrainz': typeof ApiAlbumIdMusicbrainzRoute
   '/api/album/$id/restore': typeof ApiAlbumIdRestoreRoute
   '/api/album/$id/reveal': typeof ApiAlbumIdRevealRoute
+  '/api/items/$id/restore': typeof ApiItemsIdRestoreRoute
   '/api/items/$id/reveal': typeof ApiItemsIdRevealRoute
 }
 export interface FileRoutesById {
@@ -171,15 +196,18 @@ export interface FileRoutesById {
   '/api/admin/deduplicate-albums': typeof ApiAdminDeduplicateAlbumsRoute
   '/api/admin/import-heatmap': typeof ApiAdminImportHeatmapRoute
   '/api/admin/refetch-musicbrainz': typeof ApiAdminRefetchMusicbrainzRoute
+  '/api/admin/trash': typeof ApiAdminTrashRoute
   '/api/album/$id': typeof ApiAlbumIdRouteWithChildren
   '/api/events/reconcile': typeof ApiEventsReconcileRoute
   '/api/items/$id': typeof ApiItemsIdRouteWithChildren
+  '/api/admin/reconcile/trigger': typeof ApiAdminReconcileTriggerRoute
   '/api/album/$id/alternatives': typeof ApiAlbumIdAlternativesRoute
   '/api/album/$id/art': typeof ApiAlbumIdArtRoute
   '/api/album/$id/folder': typeof ApiAlbumIdFolderRoute
   '/api/album/$id/musicbrainz': typeof ApiAlbumIdMusicbrainzRoute
   '/api/album/$id/restore': typeof ApiAlbumIdRestoreRoute
   '/api/album/$id/reveal': typeof ApiAlbumIdRevealRoute
+  '/api/items/$id/restore': typeof ApiItemsIdRestoreRoute
   '/api/items/$id/reveal': typeof ApiItemsIdRevealRoute
 }
 export interface FileRouteTypes {
@@ -193,15 +221,18 @@ export interface FileRouteTypes {
     | '/api/admin/deduplicate-albums'
     | '/api/admin/import-heatmap'
     | '/api/admin/refetch-musicbrainz'
+    | '/api/admin/trash'
     | '/api/album/$id'
     | '/api/events/reconcile'
     | '/api/items/$id'
+    | '/api/admin/reconcile/trigger'
     | '/api/album/$id/alternatives'
     | '/api/album/$id/art'
     | '/api/album/$id/folder'
     | '/api/album/$id/musicbrainz'
     | '/api/album/$id/restore'
     | '/api/album/$id/reveal'
+    | '/api/items/$id/restore'
     | '/api/items/$id/reveal'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -213,15 +244,18 @@ export interface FileRouteTypes {
     | '/api/admin/deduplicate-albums'
     | '/api/admin/import-heatmap'
     | '/api/admin/refetch-musicbrainz'
+    | '/api/admin/trash'
     | '/api/album/$id'
     | '/api/events/reconcile'
     | '/api/items/$id'
+    | '/api/admin/reconcile/trigger'
     | '/api/album/$id/alternatives'
     | '/api/album/$id/art'
     | '/api/album/$id/folder'
     | '/api/album/$id/musicbrainz'
     | '/api/album/$id/restore'
     | '/api/album/$id/reveal'
+    | '/api/items/$id/restore'
     | '/api/items/$id/reveal'
   id:
     | '__root__'
@@ -233,15 +267,18 @@ export interface FileRouteTypes {
     | '/api/admin/deduplicate-albums'
     | '/api/admin/import-heatmap'
     | '/api/admin/refetch-musicbrainz'
+    | '/api/admin/trash'
     | '/api/album/$id'
     | '/api/events/reconcile'
     | '/api/items/$id'
+    | '/api/admin/reconcile/trigger'
     | '/api/album/$id/alternatives'
     | '/api/album/$id/art'
     | '/api/album/$id/folder'
     | '/api/album/$id/musicbrainz'
     | '/api/album/$id/restore'
     | '/api/album/$id/reveal'
+    | '/api/items/$id/restore'
     | '/api/items/$id/reveal'
   fileRoutesById: FileRoutesById
 }
@@ -254,9 +291,11 @@ export interface RootRouteChildren {
   ApiAdminDeduplicateAlbumsRoute: typeof ApiAdminDeduplicateAlbumsRoute
   ApiAdminImportHeatmapRoute: typeof ApiAdminImportHeatmapRoute
   ApiAdminRefetchMusicbrainzRoute: typeof ApiAdminRefetchMusicbrainzRoute
+  ApiAdminTrashRoute: typeof ApiAdminTrashRoute
   ApiAlbumIdRoute: typeof ApiAlbumIdRouteWithChildren
   ApiEventsReconcileRoute: typeof ApiEventsReconcileRoute
   ApiItemsIdRoute: typeof ApiItemsIdRouteWithChildren
+  ApiAdminReconcileTriggerRoute: typeof ApiAdminReconcileTriggerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -317,6 +356,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAlbumIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/trash': {
+      id: '/api/admin/trash'
+      path: '/api/admin/trash'
+      fullPath: '/api/admin/trash'
+      preLoaderRoute: typeof ApiAdminTrashRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/refetch-musicbrainz': {
       id: '/api/admin/refetch-musicbrainz'
       path: '/api/admin/refetch-musicbrainz'
@@ -343,6 +389,13 @@ declare module '@tanstack/react-router' {
       path: '/reveal'
       fullPath: '/api/items/$id/reveal'
       preLoaderRoute: typeof ApiItemsIdRevealRouteImport
+      parentRoute: typeof ApiItemsIdRoute
+    }
+    '/api/items/$id/restore': {
+      id: '/api/items/$id/restore'
+      path: '/restore'
+      fullPath: '/api/items/$id/restore'
+      preLoaderRoute: typeof ApiItemsIdRestoreRouteImport
       parentRoute: typeof ApiItemsIdRoute
     }
     '/api/album/$id/reveal': {
@@ -387,6 +440,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAlbumIdAlternativesRouteImport
       parentRoute: typeof ApiAlbumIdRoute
     }
+    '/api/admin/reconcile/trigger': {
+      id: '/api/admin/reconcile/trigger'
+      path: '/api/admin/reconcile/trigger'
+      fullPath: '/api/admin/reconcile/trigger'
+      preLoaderRoute: typeof ApiAdminReconcileTriggerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -413,10 +473,12 @@ const ApiAlbumIdRouteWithChildren = ApiAlbumIdRoute._addFileChildren(
 )
 
 interface ApiItemsIdRouteChildren {
+  ApiItemsIdRestoreRoute: typeof ApiItemsIdRestoreRoute
   ApiItemsIdRevealRoute: typeof ApiItemsIdRevealRoute
 }
 
 const ApiItemsIdRouteChildren: ApiItemsIdRouteChildren = {
+  ApiItemsIdRestoreRoute: ApiItemsIdRestoreRoute,
   ApiItemsIdRevealRoute: ApiItemsIdRevealRoute,
 }
 
@@ -433,9 +495,11 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminDeduplicateAlbumsRoute: ApiAdminDeduplicateAlbumsRoute,
   ApiAdminImportHeatmapRoute: ApiAdminImportHeatmapRoute,
   ApiAdminRefetchMusicbrainzRoute: ApiAdminRefetchMusicbrainzRoute,
+  ApiAdminTrashRoute: ApiAdminTrashRoute,
   ApiAlbumIdRoute: ApiAlbumIdRouteWithChildren,
   ApiEventsReconcileRoute: ApiEventsReconcileRoute,
   ApiItemsIdRoute: ApiItemsIdRouteWithChildren,
+  ApiAdminReconcileTriggerRoute: ApiAdminReconcileTriggerRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

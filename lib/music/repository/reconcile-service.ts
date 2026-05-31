@@ -5,7 +5,7 @@ import { EventEmitter } from 'events';
 import * as path from 'path';
 
 export interface ReconcileEvent {
-    type: 'started' | 'progress' | 'completed' | 'error';
+    type: 'started' | 'progress' | 'item-error' | 'completed' | 'error';
     data?: any;
 }
 
@@ -194,6 +194,9 @@ class ReconcileService extends EventEmitter {
                 } else if (msg.type === 'progress') {
                     this.currentProgress = msg.data;
                     this.emit('reconcile', { type: 'progress', data: msg.data } as ReconcileEvent);
+
+                } else if (msg.type === 'item-error') {
+                    this.emit('reconcile', { type: 'item-error', data: msg.data } as ReconcileEvent);
 
                 } else if (msg.type === 'completed') {
                     const result = msg.data;

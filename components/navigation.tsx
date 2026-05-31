@@ -1,20 +1,18 @@
-import { Library, Search, Bell } from "lucide-react"
+import { Library, Search, Wrench } from "lucide-react"
 import { Link, useLocation } from "@tanstack/react-router"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "./ui/button"
 import { Kbd, KbdGroup } from "./ui/kbd"
 import { CommandBar } from "./command-bar"
 import { useLibrarySync } from "@/hooks/use-library-sync"
-import type { SyncLogEntry } from "@/hooks/use-library-sync"
 
 export default function Navigation() {
     const pathname = useLocation({ select: (s) => s.pathname })
     const [commandOpen, setCommandOpen] = useState(false)
-    const [notifOpen, setNotifOpen] = useState(false)
     const isLibraryActive = pathname === "/" || pathname.startsWith("/library") || pathname.startsWith("/album")
+    const isAdminActive = pathname.startsWith("/admin")
 
     const syncState = useLibrarySync()
-    const notifRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -26,17 +24,6 @@ export default function Navigation() {
         document.addEventListener("keydown", handleKeyDown)
         return () => document.removeEventListener("keydown", handleKeyDown)
     }, [])
-
-    useEffect(() => {
-        if (!notifOpen) return
-        const handleClick = (e: MouseEvent) => {
-            if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-                setNotifOpen(false)
-            }
-        }
-        document.addEventListener("mousedown", handleClick)
-        return () => document.removeEventListener("mousedown", handleClick)
-    }, [notifOpen])
 
     const iconButtonClass = "p-2.5 rounded-full transition-all duration-200 active:scale-90"
     const iconButtonActive = "text-white bg-white/15"
@@ -84,68 +71,20 @@ export default function Navigation() {
                             </Button>
                         </div>
 
-                        <div className="relative flex-shrink-0" ref={notifRef}>
-                            <button
-                                onClick={() => setNotifOpen(!notifOpen)}
-                                className={`${iconButtonClass} ${notifOpen ? iconButtonActive : iconButtonInactive} relative`}
-                                aria-label="Notifications"
-                            >
-                                <Bell className="w-5 h-5" />
-                                {syncState.isReconciling && (
-                                    <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                                )}
-                            </button>
-
-                            {notifOpen && (
-                                <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-1.5rem)] bg-[#0e0e0e]/95 backdrop-blur-2xl border border-white/[0.08] rounded-2xl shadow-[0_8px_40px_-8px_rgba(0,0,0,0.9),0_0_60px_-20px_rgba(232,65,64,0.08)] animate-in fade-in slide-in-from-top-2 duration-200 z-50">
-                                    <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
-                                        <p className="text-[11px] uppercase tracking-[0.14em] text-white/55 font-medium">Activity</p>
-                                        {syncState.isReconciling && (
-                                            <span className="flex items-center gap-1.5 text-[11px] text-white/60">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                                                Scanning
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    <div className="max-h-72 overflow-y-auto py-1">
-                                        {syncState.log.length === 0 ? (
-                                            <p className="text-sm text-white/55 px-4 py-6 text-center">No recent activity</p>
-                                        ) : (
-                                            [...syncState.log].reverse().map(entry => (
-                                                <LogRow key={entry.id} entry={entry} />
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
+                        <Link
+                            to="/admin"
+                            className={`${iconButtonClass} flex-shrink-0 relative ${isAdminActive ? iconButtonActive : iconButtonInactive}`}
+                            aria-label="Maintenance"
+                        >
+                            <Wrench className="w-5 h-5" />
+                            {syncState.isReconciling && (
+                                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                             )}
-                        </div>
+                        </Link>
                     </div>
                 </div>
                 <CommandBar open={commandOpen} onOpenChange={setCommandOpen} />
             </header>
-        </div>
-    )
-}
-
-function LogRow({ entry }: { entry: SyncLogEntry }) {
-    const dotColor =
-        entry.isActive ? "bg-white/60 animate-pulse" :
-            entry.type === "error" ? "bg-red-400" :
-                entry.type === "completed" ? "bg-emerald-400/70" :
-                    "bg-white/20"
-
-    const textColor = entry.type === "error" ? "text-red-400" : "text-white/85"
-
-    return (
-        <div className="flex items-start gap-3 px-4 py-2.5">
-            <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${dotColor}`} />
-            <div className="flex-1 min-w-0">
-                <p className={`text-[13px] leading-snug ${textColor}`}>{entry.message}</p>
-                <p className="text-[11px] text-white/55 mt-0.5">
-                    {new Date(entry.timestamp).toLocaleTimeString()}
-                </p>
-            </div>
         </div>
     )
 }

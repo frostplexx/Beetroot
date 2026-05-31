@@ -1,7 +1,7 @@
 import Repository from './index';
 
 // Runs inside a Bun Worker thread. The main thread sends { type: 'start' }
-// and receives progress/completed/error messages over postMessage.
+// and receives progress/item-error/completed/error messages over postMessage.
 //
 // Each worker has its own bun:sqlite connection to the database file.
 // WAL mode (set in db.ts) allows the main thread to serve reads while
@@ -18,6 +18,9 @@ self.onmessage = async (event: MessageEvent<{ type: string }>) => {
             batchSize: 100,
             progressCallback: (progress) => {
                 self.postMessage({ type: 'progress', data: progress });
+            },
+            errorCallback: (err) => {
+                self.postMessage({ type: 'item-error', data: err });
             },
         });
 
