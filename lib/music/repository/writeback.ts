@@ -16,6 +16,24 @@ function genreString(genres: string[] | string | null | undefined): string | und
     return genres.trim() || undefined;
 }
 
+// Plural columns are stored comma-joined in SQLite; split them back into discrete values.
+function multiValue(value: string | null | undefined): string[] {
+    if (!value) return [];
+    return value.split(',').map(v => v.trim()).filter(Boolean);
+}
+
+// Per-artist MBIDs, falling back to the single-artist column for items tagged before
+// mb_artistids was populated.
+function artistIds(item: Item): string[] {
+    const ids = multiValue(item.mb_artistids);
+    return ids.length > 0 ? ids : multiValue(item.mb_artistid);
+}
+
+function albumArtistIds(item: Item): string[] {
+    const ids = multiValue(item.mb_albumartistids);
+    return ids.length > 0 ? ids : multiValue(item.mb_albumartistid);
+}
+
 // == MP3 (ID3v2) Logic ==
 
 function writeTagsMp3(filePath: string, item: Item): boolean {
@@ -41,14 +59,26 @@ function writeTagsMp3(filePath: string, item: Item): boolean {
         genre: genreString(item.genres) || undefined,
         composer: item.composers || undefined,
         comment: item.comments ? { language: 'eng', text: item.comments } : undefined,
+        ISRC: item.isrc || undefined, // TSRC, the dedicated frame; readers ignore TXXX:ISRC
+        // mb_trackid is a recording id, which ID3 carries in UFID rather than TXXX.
+        // Omit the key entirely when unset — UFID.create maps over the value without a
+        // nullish check and throws on an explicit undefined.
+        ...(item.mb_trackid
+            ? { uniqueFileIdentifier: [{ ownerIdentifier: 'http://musicbrainz.org', identifier: Buffer.from(item.mb_trackid, 'utf8') }] }
+            : {}),
         userDefinedText: [
-            { description: 'MUSICBRAINZ_TRACKID', value: item.mb_trackid || '' },
-            { description: 'MUSICBRAINZ_ALBUMID', value: item.mb_albumid || '' },
-            { description: 'MUSICBRAINZ_ARTISTID', value: item.mb_artistid || '' },
-            { description: 'MUSICBRAINZ_ALBUMARTISTID', value: item.mb_albumartistid || '' },
-            { description: 'MUSICBRAINZ_RELEASEGROUPID', value: item.mb_releasegroupid || '' },
-            { description: 'MUSICBRAINZ_WORKID', value: item.mb_workid || '' },
-            { description: 'ISRC', value: item.isrc || '' },
+            // ARTIST above stays the joined credit string; ARTISTS carries one frame per
+            // artist. Repeated TXXX frames are how ID3v2.3 expresses a multi-value tag.
+            ...multiValue(item.artists).map(value => ({ description: 'ARTISTS', value })),
+            // Navidrome maps the plural album artist tag from 'ALBUM ARTISTS' on ID3 but
+            // from 'ALBUMARTISTS' on Vorbis; the spellings are not interchangeable.
+            ...multiValue(item.albumartists).map(value => ({ description: 'ALBUM ARTISTS', value })),
+            ...artistIds(item).map(value => ({ description: 'MusicBrainz Artist Id', value })),
+            ...albumArtistIds(item).map(value => ({ description: 'MusicBrainz Album Artist Id', value })),
+            { description: 'MusicBrainz Album Id', value: item.mb_albumid || '' },
+            { description: 'MusicBrainz Release Track Id', value: item.mb_releasetrackid || '' },
+            { description: 'MusicBrainz Release Group Id', value: item.mb_releasegroupid || '' },
+            { description: 'MusicBrainz Work Id', value: item.mb_workid || '' },
             { description: 'BARCODE', value: item.barcode || '' },
             { description: 'ASIN', value: item.asin || '' },
             { description: 'ACOUSTID_ID', value: item.acoustid_id || '' },
@@ -86,11 +116,16 @@ function writeTagsMp3(filePath: string, item: Item): boolean {
 // == FLAC (Vorbis Comments) Logic ==
 
 function writeTagsFlac(filePath: string, item: Item): boolean {
-    const tags: Record<string, string> = {};
+    // string[] values are emitted as repeated Vorbis comment fields.
+    const tags: Record<string, string | string[]> = {};
     if (item.title) tags.TITLE = item.title;
     if (item.artist) tags.ARTIST = item.artist;
+    const artists = multiValue(item.artists);
+    if (artists.length > 0) tags.ARTISTS = artists;
     if (item.album) tags.ALBUM = item.album;
     if (item.albumartist) tags.ALBUMARTIST = item.albumartist;
+    const albumartists = multiValue(item.albumartists);
+    if (albumartists.length > 0) tags.ALBUMARTISTS = albumartists;
     if (item.year) tags.DATE = String(item.year);
     if (item.track) tags.TRACKNUMBER = String(item.track);
     if (item.tracktotal) tags.TRACKTOTAL = String(item.tracktotal);
@@ -102,8 +137,11 @@ function writeTagsFlac(filePath: string, item: Item): boolean {
     if (item.comments) tags.COMMENT = item.comments;
     if (item.mb_trackid) tags.MUSICBRAINZ_TRACKID = item.mb_trackid;
     if (item.mb_albumid) tags.MUSICBRAINZ_ALBUMID = item.mb_albumid;
-    if (item.mb_artistid) tags.MUSICBRAINZ_ARTISTID = item.mb_artistid;
-    if (item.mb_albumartistid) tags.MUSICBRAINZ_ALBUMARTISTID = item.mb_albumartistid;
+    const mbArtistIds = artistIds(item);
+    if (mbArtistIds.length > 0) tags.MUSICBRAINZ_ARTISTID = mbArtistIds;
+    const mbAlbumArtistIds = albumArtistIds(item);
+    if (mbAlbumArtistIds.length > 0) tags.MUSICBRAINZ_ALBUMARTISTID = mbAlbumArtistIds;
+    if (item.mb_releasetrackid) tags.MUSICBRAINZ_RELEASETRACKID = item.mb_releasetrackid;
     if (item.mb_releasegroupid) tags.MUSICBRAINZ_RELEASEGROUPID = item.mb_releasegroupid;
     if (item.mb_workid) tags.MUSICBRAINZ_WORKID = item.mb_workid;
     if (item.isrc) tags.ISRC = item.isrc;
@@ -155,12 +193,11 @@ async function writeTagsM4A(filePath: string, item: Item): Promise<boolean> {
         comment: item.comments || undefined,
         lyrics: item.lyrics || undefined,
         custom: {
-            'MUSICBRAINZ_TRACKID': item.mb_trackid || '',
-            'MUSICBRAINZ_ALBUMID': item.mb_albumid || '',
-            'MUSICBRAINZ_ARTISTID': item.mb_artistid || '',
-            'MUSICBRAINZ_ALBUMARTISTID': item.mb_albumartistid || '',
-            'MUSICBRAINZ_RELEASEGROUPID': item.mb_releasegroupid || '',
-            'MUSICBRAINZ_WORKID': item.mb_workid || '',
+            'MusicBrainz Track Id': item.mb_trackid || '',
+            'MusicBrainz Album Id': item.mb_albumid || '',
+            'MusicBrainz Release Track Id': item.mb_releasetrackid || '',
+            'MusicBrainz Release Group Id': item.mb_releasegroupid || '',
+            'MusicBrainz Work Id': item.mb_workid || '',
             'ISRC': item.isrc || '',
             'BARCODE': item.barcode || '',
             'ASIN': item.asin || '',
@@ -179,6 +216,16 @@ async function writeTagsM4A(filePath: string, item: Item): Promise<boolean> {
     Object.keys(tags.custom).forEach(key => {
         if (tags.custom[key] === '') delete tags.custom[key];
     });
+
+    // Array values become repeated '----' atoms sharing a mean/name pair.
+    const artists = multiValue(item.artists);
+    if (artists.length > 0) tags.custom['ARTISTS'] = artists;
+    // The album artist *names* have no MP4 alias in any reader, unlike the ids below,
+    // so item.albumartists is intentionally not written here.
+    const mbArtistIds = artistIds(item);
+    if (mbArtistIds.length > 0) tags.custom['MusicBrainz Artist Id'] = mbArtistIds;
+    const mbAlbumArtistIds = albumArtistIds(item);
+    if (mbAlbumArtistIds.length > 0) tags.custom['MusicBrainz Album Artist Id'] = mbAlbumArtistIds;
 
     try {
         writeMp4Tags(filePath, tags);
