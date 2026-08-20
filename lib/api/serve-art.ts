@@ -71,10 +71,12 @@ const CONTENT_TYPE_BY_EXT: Record<string, string> = {
 function baseHeaders(contentType: string, etag: string, mtimeMs: number) {
     return {
         "Content-Type": contentType,
-        // No `immutable` — art bytes can be replaced via the edit dialog. The
-        // browser still uses the cache for normal navigation, but revalidates
-        // via ETag on explicit reload so freshly-saved art shows up.
-        "Cache-Control": "public, max-age=31536000",
+        // Art bytes can be replaced via the edit dialog while the URL stays the
+        // same (it is keyed by album id), so the response must be revalidated
+        // rather than reused blind — a max-age here serves stale art until a
+        // forced reload. `no-cache` still caches; it just requires an ETag
+        // check first, which the 304 fast-path above answers with a stat.
+        "Cache-Control": "no-cache",
         "ETag": etag,
         "Last-Modified": new Date(mtimeMs).toUTCString(),
         "Access-Control-Allow-Origin": "*",
@@ -130,7 +132,7 @@ export async function serveArtFromPath(
     if (ifNoneMatch && ifNoneMatch === etag) {
         return new Response(null, {
             status: 304,
-            headers: { ETag: etag, "Cache-Control": "public, max-age=31536000" },
+            headers: { ETag: etag, "Cache-Control": "no-cache" },
         })
     }
 
