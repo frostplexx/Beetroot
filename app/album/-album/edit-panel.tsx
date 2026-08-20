@@ -106,16 +106,26 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
     const [mbView, setMbView] = React.useState<"results" | "data">("data")
     const [mbError, setMbError] = React.useState<string | null>(null)
 
+    // Re-run whenever the selected release changes: for an unmatched album the stored
+    // name is "Unknown Album", which returns artwork for arbitrary records.
+    const selectedMbReleaseId = selectedMbRelease?.id
     React.useEffect(() => {
-        if (alternatives.length === 0) {
-            setLoadingAlternatives(true)
-            fetch(`/api/album/${album.id}/alternatives`)
-                .then(res => res.json())
-                .then(data => setAlternatives(data.alternatives || []))
-                .catch(err => console.error(err))
-                .finally(() => setLoadingAlternatives(false))
+        const params = new URLSearchParams()
+        if (selectedMbRelease) {
+            params.set("release", selectedMbRelease.id)
+            params.set("artist", selectedMbRelease.artist)
+            params.set("album", selectedMbRelease.title)
         }
-    }, [album.id, alternatives.length])
+        const query = params.toString()
+        let cancelled = false
+        setLoadingAlternatives(true)
+        fetch(`/api/album/${album.id}/alternatives${query ? `?${query}` : ""}`)
+            .then(res => res.json())
+            .then(data => { if (!cancelled) setAlternatives(data.alternatives || []) })
+            .catch(err => console.error(err))
+            .finally(() => { if (!cancelled) setLoadingAlternatives(false) })
+        return () => { cancelled = true }
+    }, [album.id, selectedMbReleaseId])
 
     const searchMusicBrainz = async (useExactLookup = false) => {
         setLoadingMb(true)

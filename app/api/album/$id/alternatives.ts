@@ -94,10 +94,34 @@ async function fetchFromDiscogs(
     }
 }
 
+// Keyed by release MBID rather than a text search, so it returns the artwork for
+// exactly the release the user picked instead of a same-titled one.
+async function fetchFromCoverArtArchive(releaseId: string): Promise<AlternativeArtwork[]> {
+    try {
+        const response = await fetch(`https://coverartarchive.org/release/${releaseId}`, {
+            headers: { "User-Agent": "Beetroot/0.1.0" },
+            signal: AbortSignal.timeout(15_000),
+        });
+        // 404 just means this release has no artwork submitted.
+        if (!response.ok) return [];
+        const data = await response.json();
+        return (data.images ?? [])
+            .filter((img: any) => img.image)
+            .map((img: any) => ({
+                source: "Cover Art Archive",
+                url: img.image,
+                thumbnail: img.thumbnails?.small ?? img.thumbnails?.["250"] ?? img.image,
+            }));
+    } catch (error) {
+        console.error("Cover Art Archive error:", error);
+        return [];
+    }
+}
+
 export const Route = createFileRoute("/api/album/$id/alternatives")({
     server: {
         handlers: {
-            GET: async ({ params }) => {
+            GET: async ({ request, params }) => {
                 try {
                     const albumId = parseInt(params.id, 10);
                     if (!Number.isFinite(albumId) || albumId <= 0) {
@@ -108,17 +132,27 @@ export const Route = createFileRoute("/api/album/$id/alternatives")({
                         return Response.json({ error: "Album not found" }, { status: 404 });
                     }
 
-                    const [itunesResults, lastfmResults, discogsResults] = await Promise.all([
-                        fetchFromItunes(album.albumartist || "", album.album || ""),
-                        fetchFromLastfm(album.albumartist || "", album.album || ""),
+                    // The edit panel passes the release it has selected. Without it the
+                    // stored album is used, which for an unmatched album is "Unknown
+                    // Album" and returns artwork for arbitrary records.
+                    const { searchParams } = new URL(request.url);
+                    const releaseId = searchParams.get("release");
+                    const artist = searchParams.get("artist") || album.albumartist || "";
+                    const title = searchParams.get("album") || album.album || "";
+
+                    const [caaResults, itunesResults, lastfmResults, discogsResults] = await Promise.all([
+                        releaseId ? fetchFromCoverArtArchive(releaseId) : Promise.resolve([]),
+                        fetchFromItunes(artist, title),
+                        fetchFromLastfm(artist, title),
                         fetchFromDiscogs(
-                            album.albumartist || "",
-                            album.album || "",
+                            artist,
+                            title,
                             album.discogs_albumid?.toString() || undefined,
                         ),
                     ]);
 
-                    const allResults = [...itunesResults, ...lastfmResults, ...discogsResults];
+                    // Cover Art Archive first: it is the artwork for this exact release.
+                    const allResults = [...caaResults, ...itunesResults, ...lastfmResults, ...discogsResults];
                     const uniqueResults = Array.from(
                         new Map(allResults.map((item) => [item.url, item])).values(),
                     );
