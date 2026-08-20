@@ -37,6 +37,7 @@ interface MusicBrainzTrack {
     position: number
     title: string
     artist: string
+    artists?: string[]
     composer?: string
     length: number
     isrc?: string
@@ -79,6 +80,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
             id: song.id,
             title: song.title || "",
             artist: song.artist || "",
+            artists: song.artists || "",
             albumartist: song.albumartist || "",
             composer: song.composers || song.composer || "",
             track: song.track || "",
@@ -181,6 +183,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                         body: JSON.stringify({
                             title: track.title,
                             artist: track.artist,
+                            artists: track.artists,
                             albumartist: track.albumartist,
                             composers: track.composer,
                             track: track.track ? parseInt(String(track.track)) : undefined,
@@ -569,7 +572,8 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                             const suggestion = getTrackSuggestion(index)
                             const hasDifference = suggestion && (
                                 suggestion.title !== track.title ||
-                                suggestion.artist !== track.artist
+                                suggestion.artist !== track.artist ||
+                                (suggestion.artists?.join(', ') ?? '') !== track.artists
                             )
 
                             return (
@@ -634,9 +638,23 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                                     label="Album Artist"
                                                     value={track.albumartist}
                                                     onChange={(v) => updateTrack(index, 'albumartist', v)}
+                                                    // The release credit, which is the album artist. Differs from
+                                                    // the track credit above whenever a track has a feature.
+                                                    suggestion={selectedMbRelease?.artist}
                                                     compact
                                                 />
                                             </div>
+
+                                            {/* Row 2b: Artists — individual credits, written as a
+                                                multi-value tag. Artist above stays the display string. */}
+                                            <FieldWithSuggestion
+                                                label="Artists"
+                                                value={track.artists}
+                                                onChange={(v) => updateTrack(index, 'artists', v)}
+                                                suggestion={suggestion?.artists?.join(', ')}
+                                                placeholder="Artist A, Artist B — one entry per artist"
+                                                compact
+                                            />
 
                                             {/* Row 3: Composer */}
                                             <FieldWithSuggestion

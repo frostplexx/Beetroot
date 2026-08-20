@@ -7,10 +7,28 @@ import {
     MusicBrainzRelease,
 } from "@/lib/music/repository/sources/musicbrainz/musicbrainz";
 
+type ArtistCredit = Array<{
+    artist: { id: string; name: string };
+    name?: string;
+    joinphrase?: string;
+}>;
+
+// MusicBrainz splits a credit into one entry per artist plus the phrase joining it to
+// the next, so "DJ Ali" + " & " + "Clair Bai" reassembles the credit exactly.
+function creditString(credit?: ArtistCredit): string {
+    if (!credit?.length) return "";
+    return credit.map((c) => `${c.name || c.artist.name}${c.joinphrase || ""}`).join("");
+}
+
+function creditNames(credit?: ArtistCredit): string[] {
+    return credit?.map((c) => c.name || c.artist.name) ?? [];
+}
+
 interface MusicBrainzTrack {
     position: number;
     title: string;
     artist: string;
+    artists: string[];
     composer?: string;
     length: number;
     isrc?: string;
@@ -36,7 +54,7 @@ function formatMusicBrainzRelease(
     release: MusicBrainzRelease,
     score: number,
 ): MusicBrainzReleaseResponse {
-    const artistCredit = release["artist-credit"]?.[0];
+    const releaseCredit = release["artist-credit"];
     const labelInfo = release["label-info"]?.[0];
 
     const tracks: MusicBrainzTrack[] = [];
@@ -44,10 +62,16 @@ function formatMusicBrainzRelease(
         for (const medium of release.media) {
             if (medium.tracks) {
                 for (const track of medium.tracks) {
+                    // A track's own credit carries its features; the release credit
+                    // names only the primary artist and is just the fallback.
+                    const trackCredit = track["artist-credit"]?.length
+                        ? track["artist-credit"]
+                        : releaseCredit;
                     tracks.push({
                         position: track.position,
                         title: track.title,
-                        artist: artistCredit?.artist.name || "",
+                        artist: creditString(trackCredit),
+                        artists: creditNames(trackCredit),
                         length: 0,
                     });
                 }
@@ -60,7 +84,7 @@ function formatMusicBrainzRelease(
     return {
         id: release.id,
         title: release.title,
-        artist: artistCredit?.artist.name || "",
+        artist: creditString(releaseCredit),
         date: release.date || "",
         country: release.country || "",
         label: labelInfo?.label?.name || "",

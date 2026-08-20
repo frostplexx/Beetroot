@@ -87,6 +87,7 @@ export interface MusicBrainzRelease {
     'release-group'?: MusicBrainzReleaseGroup;
     'artist-credit'?: Array<{
         artist: { id: string; name: string };
+        name?: string;
         joinphrase?: string;
     }>;
     media?: Array<{
@@ -97,6 +98,13 @@ export interface MusicBrainzRelease {
             number: string;
             position: number;
             title: string;
+            // Present when the lookup asks for artist-credits. Differs from the release
+            // credit whenever a track has a feature or collaborator.
+            'artist-credit'?: Array<{
+                artist: { id: string; name: string };
+                name?: string;
+                joinphrase?: string;
+            }>;
             recording?: { id: string };
         }>;
     }>;
