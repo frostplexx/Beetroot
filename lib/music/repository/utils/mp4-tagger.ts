@@ -176,7 +176,10 @@ function createIlstBuffer(tags: Record<string, any>): Buffer {
     for (const [key, value] of Object.entries(tags)) {
         if (key === 'custom' && typeof value === 'object' && value !== null) {
             for (const [name, val] of Object.entries(value)) {
-                atoms.push(createCustomAtom(name, String(val)));
+                // Multi-value freeform tags are repeated '----' atoms sharing a mean/name pair.
+                for (const single of Array.isArray(val) ? val : [val]) {
+                    atoms.push(createCustomAtom(name, String(single)));
+                }
             }
             continue;
         }
