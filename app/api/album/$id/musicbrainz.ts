@@ -4,6 +4,7 @@ import { getItemsByAlbum } from "@/lib/music/database/items";
 import {
     lookupReleaseForCluster,
     searchReleasesByArtistAlbum,
+    fetchReleaseDetails,
     MusicBrainzRelease,
 } from "@/lib/music/repository/sources/musicbrainz/musicbrainz";
 
@@ -121,6 +122,22 @@ export const Route = createFileRoute("/api/album/$id/musicbrainz")({
                     const { searchParams } = new URL(request.url);
                     const query = searchParams.get("q");
                     const artistOverride = searchParams.get("artist");
+                    const releaseId = searchParams.get("release");
+
+                    // Hydrate one search hit. Search results carry no track list and
+                    // often no date, so the panel asks for full details on selection.
+                    if (releaseId) {
+                        const details = await fetchReleaseDetails(releaseId, 1);
+                        if (!details) {
+                            return Response.json(
+                                { error: "Release not found in MusicBrainz" },
+                                { status: 404 },
+                            );
+                        }
+                        return Response.json({
+                            selectedRelease: formatMusicBrainzRelease(details, 100),
+                        });
+                    }
 
                     if (query) {
                         const artist = artistOverride ?? album.albumartist ?? "";
@@ -139,9 +156,14 @@ export const Route = createFileRoute("/api/album/$id/musicbrainz")({
                         const formattedReleases = searchResults.map((release) =>
                             formatMusicBrainzRelease(release, release.score || 0),
                         );
+                        // Only the auto-selected hit is hydrated; doing all of them would
+                        // cost one rate-limited MusicBrainz call per result.
+                        const details = await fetchReleaseDetails(searchResults[0].id, 1);
                         return Response.json({
                             releases: formattedReleases,
-                            selectedRelease: formattedReleases[0],
+                            selectedRelease: details
+                                ? formatMusicBrainzRelease(details, searchResults[0].score || 0)
+                                : formattedReleases[0],
                         });
                     }
 

@@ -152,6 +152,20 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
         }
     }
 
+    // Search hits have no track list and often no date, so pull full details for the
+    // one being selected. Show the thin version immediately so the click feels instant.
+    const selectMbRelease = async (release: MusicBrainzRelease) => {
+        setSelectedMbRelease(release)
+        try {
+            const response = await fetch(`/api/album/${album.id}/musicbrainz?release=${release.id}`)
+            if (!response.ok) return
+            const data = await response.json()
+            if (data.selectedRelease) setSelectedMbRelease(data.selectedRelease)
+        } catch (err) {
+            console.error('MusicBrainz release fetch error:', err)
+        }
+    }
+
     React.useEffect(() => {
         searchMusicBrainz(true) // Use cluster lookup for initial best match
     }, [])
@@ -511,7 +525,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                                     key={release.id}
                                                     type="button"
                                                     onClick={() => {
-                                                        setSelectedMbRelease(release)
+                                                        void selectMbRelease(release)
                                                     }}
                                                     className={cn(
                                                         "w-full text-left p-2.5 rounded-lg text-xs border transition-all duration-200 active:scale-[0.99]",
