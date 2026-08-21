@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "bun --bun vite dev",
     "build": "vite build && bun build --target=bun --outfile=dist/server/reconcile-worker.js lib/music/repository/reconcile-worker.ts",
     "start": "bun server.ts",
     "postinstall": "bun ./scripts/postinstall.js",

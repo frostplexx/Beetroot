@@ -87,6 +87,7 @@ export interface MusicBrainzRelease {
     'release-group'?: MusicBrainzReleaseGroup;
     'artist-credit'?: Array<{
         artist: { id: string; name: string };
+        name?: string;
         joinphrase?: string;
     }>;
     media?: Array<{
@@ -97,6 +98,13 @@ export interface MusicBrainzRelease {
             number: string;
             position: number;
             title: string;
+            // Present when the lookup asks for artist-credits. Differs from the release
+            // credit whenever a track has a feature or collaborator.
+            'artist-credit'?: Array<{
+                artist: { id: string; name: string };
+                name?: string;
+                joinphrase?: string;
+            }>;
             recording?: { id: string };
         }>;
     }>;
@@ -183,7 +191,7 @@ async function fetchMusicBrainz(recordingId: string): Promise<MusicBrainzRecordi
 // dedupe to a single network request. Cleared when the promise settles.
 const releaseDetailsInFlight = new Map<string, Promise<MusicBrainzRelease | undefined>>();
 
-async function fetchReleaseDetails(releaseId: string, priority = 0): Promise<MusicBrainzRelease | undefined> {
+export async function fetchReleaseDetails(releaseId: string, priority = 0): Promise<MusicBrainzRelease | undefined> {
     const cached = releaseDetailsInFlight.get(releaseId);
     if (cached) return cached;
 
@@ -195,8 +203,15 @@ async function fetchReleaseDetails(releaseId: string, priority = 0): Promise<Mus
             priority,
         );
 
-        // 404 or other client errors - don't retry, just return undefined
-        if (!response.ok) return undefined;
+        // 404 and other client errors are terminal. 429/5xx are transient and must
+        // throw so withRetry backs off; returning undefined for them silently
+        // disabled the retry config below.
+        if (!response.ok) {
+            if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+                return undefined;
+            }
+            throw new Error(`MusicBrainz API error ${response.status}`);
+        }
 
         return await response.json() as MusicBrainzRelease;
     }, {

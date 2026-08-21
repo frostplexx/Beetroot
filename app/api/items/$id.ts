@@ -43,6 +43,7 @@ interface UpdateItemPayload {
     album_id?: number;
     title?: string;
     artist?: string;
+    artists?: string;
     albumartist?: string;
     composers?: string;
     track?: number;
@@ -119,6 +120,16 @@ export const Route = createFileRoute("/api/items/$id")({
                 const updates: Partial<typeof item> = {};
                 if (body.title !== undefined) updates.title = body.title.trim();
                 if (body.artist !== undefined) updates.artist = body.artist.trim();
+                // Stored comma-joined; normalise so writeback splits it back cleanly.
+                if (body.artists !== undefined) {
+                    updates.artists = body.artists.trim()
+                        ? body.artists
+                              .split(",")
+                              .map((a) => a.trim())
+                              .filter(Boolean)
+                              .join(", ")
+                        : null;
+                }
                 if (body.albumartist !== undefined)
                     updates.albumartist = body.albumartist.trim() || null;
                 if (body.composers !== undefined)

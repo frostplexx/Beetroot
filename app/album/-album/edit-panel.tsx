@@ -37,6 +37,7 @@ interface MusicBrainzTrack {
     position: number
     title: string
     artist: string
+    artists?: string[]
     composer?: string
     length: number
     isrc?: string
@@ -79,6 +80,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
             id: song.id,
             title: song.title || "",
             artist: song.artist || "",
+            artists: song.artists || "",
             albumartist: song.albumartist || "",
             composer: song.composers || song.composer || "",
             track: song.track || "",
@@ -104,16 +106,26 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
     const [mbView, setMbView] = React.useState<"results" | "data">("data")
     const [mbError, setMbError] = React.useState<string | null>(null)
 
+    // Re-run whenever the selected release changes: for an unmatched album the stored
+    // name is "Unknown Album", which returns artwork for arbitrary records.
+    const selectedMbReleaseId = selectedMbRelease?.id
     React.useEffect(() => {
-        if (alternatives.length === 0) {
-            setLoadingAlternatives(true)
-            fetch(`/api/album/${album.id}/alternatives`)
-                .then(res => res.json())
-                .then(data => setAlternatives(data.alternatives || []))
-                .catch(err => console.error(err))
-                .finally(() => setLoadingAlternatives(false))
+        const params = new URLSearchParams()
+        if (selectedMbRelease) {
+            params.set("release", selectedMbRelease.id)
+            params.set("artist", selectedMbRelease.artist)
+            params.set("album", selectedMbRelease.title)
         }
-    }, [album.id, alternatives.length])
+        const query = params.toString()
+        let cancelled = false
+        setLoadingAlternatives(true)
+        fetch(`/api/album/${album.id}/alternatives${query ? `?${query}` : ""}`)
+            .then(res => res.json())
+            .then(data => { if (!cancelled) setAlternatives(data.alternatives || []) })
+            .catch(err => console.error(err))
+            .finally(() => { if (!cancelled) setLoadingAlternatives(false) })
+        return () => { cancelled = true }
+    }, [album.id, selectedMbReleaseId])
 
     const searchMusicBrainz = async (useExactLookup = false) => {
         setLoadingMb(true)
@@ -150,6 +162,20 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
         }
     }
 
+    // Search hits have no track list and often no date, so pull full details for the
+    // one being selected. Show the thin version immediately so the click feels instant.
+    const selectMbRelease = async (release: MusicBrainzRelease) => {
+        setSelectedMbRelease(release)
+        try {
+            const response = await fetch(`/api/album/${album.id}/musicbrainz?release=${release.id}`)
+            if (!response.ok) return
+            const data = await response.json()
+            if (data.selectedRelease) setSelectedMbRelease(data.selectedRelease)
+        } catch (err) {
+            console.error('MusicBrainz release fetch error:', err)
+        }
+    }
+
     React.useEffect(() => {
         searchMusicBrainz(true) // Use cluster lookup for initial best match
     }, [])
@@ -181,6 +207,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                         body: JSON.stringify({
                             title: track.title,
                             artist: track.artist,
+                            artists: track.artists,
                             albumartist: track.albumartist,
                             composers: track.composer,
                             track: track.track ? parseInt(String(track.track)) : undefined,
@@ -508,7 +535,7 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                                     key={release.id}
                                                     type="button"
                                                     onClick={() => {
-                                                        setSelectedMbRelease(release)
+                                                        void selectMbRelease(release)
                                                     }}
                                                     className={cn(
                                                         "w-full text-left p-2.5 rounded-lg text-xs border transition-all duration-200 active:scale-[0.99]",
@@ -569,7 +596,8 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                             const suggestion = getTrackSuggestion(index)
                             const hasDifference = suggestion && (
                                 suggestion.title !== track.title ||
-                                suggestion.artist !== track.artist
+                                suggestion.artist !== track.artist ||
+                                (suggestion.artists?.join(', ') ?? '') !== track.artists
                             )
 
                             return (
@@ -634,9 +662,23 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                                                     label="Album Artist"
                                                     value={track.albumartist}
                                                     onChange={(v) => updateTrack(index, 'albumartist', v)}
+                                                    // The release credit, which is the album artist. Differs from
+                                                    // the track credit above whenever a track has a feature.
+                                                    suggestion={selectedMbRelease?.artist}
                                                     compact
                                                 />
                                             </div>
+
+                                            {/* Row 2b: Artists — individual credits, written as a
+                                                multi-value tag. Artist above stays the display string. */}
+                                            <FieldWithSuggestion
+                                                label="Artists"
+                                                value={track.artists}
+                                                onChange={(v) => updateTrack(index, 'artists', v)}
+                                                suggestion={suggestion?.artists?.join(', ')}
+                                                placeholder="Artist A, Artist B — one entry per artist"
+                                                compact
+                                            />
 
                                             {/* Row 3: Composer */}
                                             <FieldWithSuggestion
