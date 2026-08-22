@@ -1,4 +1,6 @@
 import * as React from "react"
+import { useRouter } from "@tanstack/react-router"
+import { useQueryClient } from "@tanstack/react-query"
 import { Album } from "@/lib/music/database"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -60,6 +62,8 @@ interface MusicBrainzRelease {
 }
 
 export function EditPanel({ album, image, songs, onClose, onSavingChange }: EditPanelProps) {
+    const router = useRouter()
+    const queryClient = useQueryClient()
     const [formData, setFormData] = React.useState({
         album: album.album,
         albumartist: album.albumartist || "",
@@ -243,8 +247,16 @@ export function EditPanel({ album, image, songs, onClose, onSavingChange }: Edit
                 return
             }
 
-            // Reload to show updated data
-            window.location.reload()
+            // Two independent caches back this view: the library grid is a
+            // query, the album page is a route loader. Re-running the loader
+            // also recomputes the mtime-versioned art URL, which is what makes
+            // a replaced cover appear without a full page load.
+            await queryClient.invalidateQueries({ queryKey: ["albums"] })
+            await router.invalidate()
+
+            setSaving(false)
+            onSavingChange?.(false)
+            onClose()
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to save changes')
             setSaving(false)
