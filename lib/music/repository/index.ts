@@ -160,6 +160,40 @@ function applyMoves(
     for (const m of itemMoves) m.item.path = m.to;
 }
 
+/**
+ * True when both paths name the same file on disk. A case-only rename is a real
+ * change on ext4 but a no-op on APFS, where the destination "already exists"
+ * and a move would be refused.
+ */
+function isSameFile(a: string, b: string): boolean {
+    try {
+        const sa = fs.statSync(a);
+        const sb = fs.statSync(b);
+        return sa.ino === sb.ino && sa.dev === sb.dev;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Delete directories a move left empty, walking up until a non-empty parent or
+ * music_directory. Best effort: any error just leaves the folder behind. A
+ * directory still holding files we don't track (a stray cover, a .cue) reads as
+ * non-empty and stops the walk, so nothing untracked is ever removed.
+ */
+function pruneEmptyDirs(startDir: string): void {
+    const root = globalConfig.music_directory.replace(/\/+$/, '');
+    let dir = path.resolve(startDir);
+    while (dir !== root && dir.startsWith(root + path.sep)) {
+        try {
+            if (fs.readdirSync(dir).length > 0) return;
+            fs.rmdirSync(dir);
+        } catch {
+            return;
+        }
+        dir = path.dirname(dir);
+    }
+}
 
 
 class Repository {
@@ -561,6 +595,83 @@ class Repository {
         return { itemsRestored: itemMoves.length, artpathRestored: artpath !== album.artpath };
     }
 
+    /**
+     * Move an album's files to the paths its current metadata implies and prune
+     * the directories they vacate. The path template is otherwise only applied
+     * at import time, so an album tagged after adoption keeps sitting wherever
+     * it first landed, typically under Unknown Artist/Unknown Album.
+     */
+    relocateAlbum(albumId: number): { itemsMoved: number; artpathMoved: boolean } {
+        const album = getAlbumById(albumId);
+        if (!album) throw new Error(`Album ${albumId} not found`);
+        if (album.marked_for_deletion != null) {
+            throw new Error(`Album ${albumId} is soft-deleted; restore it before relocating`);
+        }
+
+        // Read the rows back rather than taking the caller's copies: the
+        // metadata write that triggered this is what decides the target paths.
+        // A row whose file is missing is skipped instead of failing the batch,
+        // since the edit that triggered us succeeded for every other track.
+        const itemMoves: ItemMove[] = getItemsByAlbum(albumId)
+            .filter(item => item.missing_since == null && fs.existsSync(item.path))
+            .map(item => ({ item, from: item.path, to: computeTargetPath(item) }))
+            .filter(m => m.from !== m.to && !isSameFile(m.from, m.to));
+
+        // Cover art follows the tracks into the new directory. A track-number
+        // or title edit renames files within the same directory, which leaves
+        // the art where it is.
+        let artMove: { from: string; to: string } | null = null;
+        if (album.artpath && fs.existsSync(album.artpath) && itemMoves.length > 0) {
+            const destArt = path.join(path.dirname(itemMoves[0].to), path.basename(album.artpath));
+            if (destArt !== album.artpath && !isSameFile(album.artpath, destArt)) {
+                artMove = { from: album.artpath, to: destArt };
+            }
+        }
+
+        if (itemMoves.length === 0 && !artMove) {
+            return { itemsMoved: 0, artpathMoved: false };
+        }
+
+        const vacated = new Set(itemMoves.map(m => path.dirname(m.from)));
+        if (artMove) vacated.add(path.dirname(artMove.from));
+
+        applyMoves('Relocation', itemMoves, artMove ? [artMove] : [], () => {
+            if (artMove) updateAlbumArtpath(albumId, artMove.to);
+        });
+
+        for (const dir of vacated) pruneEmptyDirs(dir);
+
+        return { itemsMoved: itemMoves.length, artpathMoved: artMove != null };
+    }
+
+    /**
+     * Relocate a single track after its own metadata changed. Album artwork is
+     * left alone: the sibling tracks still reference it, and an album-wide edit
+     * goes through relocateAlbum instead.
+     */
+    relocateItem(itemId: number): { moved: boolean; from: string; to: string } {
+        const item = getItemById(itemId);
+        if (!item) throw new Error(`Item ${itemId} not found`);
+        if (item.marked_for_deletion != null) {
+            throw new Error(`Item ${itemId} is soft-deleted; restore it before relocating`);
+        }
+
+        const from = item.path;
+        const to = computeTargetPath(item);
+        if (
+            from === to ||
+            item.missing_since != null ||
+            !fs.existsSync(from) ||
+            isSameFile(from, to)
+        ) {
+            return { moved: false, from, to: from };
+        }
+
+        applyMoves('Relocation', [{ item, from, to }], [], () => {});
+        pruneEmptyDirs(path.dirname(from));
+
+        return { moved: true, from, to };
+    }
 
 
     // Runs full reconciliation: detect missing, import new, cleanup trash

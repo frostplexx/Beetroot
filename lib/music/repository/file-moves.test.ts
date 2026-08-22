@@ -59,6 +59,36 @@ function makeItem(
     return Number(info.lastInsertRowid);
 }
 
+/**
+ * An album sitting where the importer parked it because nothing identified it,
+ * which is the state a manual edit in the UI has to get the files out of.
+ */
+function unknownAlbum(): { albumId: number; itemId: number; itemPath: string; artPath: string } {
+    const albumId = makeAlbum({ album: "Unknown Album", albumartist: "Unknown Artist" });
+    const itemPath = write(
+        lib("N-Z", "Unknown Artist", "Unknown Album", "DJ Ali feat. Clair Bai - Cocktail.mp3"),
+    );
+    const artPath = write(lib("N-Z", "Unknown Artist", "Unknown Album", "cover.jpg"), "jpeg");
+    db.prepare("UPDATE albums SET artpath = ? WHERE id = ?").run(artPath, albumId);
+    const itemId = makeItem(albumId, {
+        path: itemPath,
+        title: "Cocktail",
+        album: "Unknown Album",
+        albumartist: "Unknown Artist",
+        track: 1,
+    });
+    return { albumId, itemId, itemPath, artPath };
+}
+
+/** Retag the rows the way an album edit in the UI does, without moving anything. */
+function retag(albumId: number, album: string, albumartist: string): void {
+    db.prepare("UPDATE albums SET album = ?, albumartist = ? WHERE id = ?").run(album, albumartist, albumId);
+    db.prepare("UPDATE items SET album = ?, albumartist = ? WHERE album_id = ?").run(
+        album,
+        albumartist,
+        albumId,
+    );
+}
 
 beforeEach(() => {
     db.run("DELETE FROM items");
@@ -169,5 +199,162 @@ describe("restoreAlbum", () => {
         expect(fs.existsSync(art)).toBe(true);
         expect(getAlbumById(albumId)!.marked_for_deletion).toBeNull();
         expect(getAlbumById(albumId)!.artpath).toBe(art);
+    });
+});
+
+describe("relocateAlbum", () => {
+    test("moves a retagged album out of Unknown Artist, cover art included", () => {
+        const { albumId, itemId, itemPath, artPath } = unknownAlbum();
+        retag(albumId, "Cocktail", "DJ Ali");
+
+        const result = Repository.relocateAlbum(albumId);
+
+        const expected = lib("A-F", "DJ Ali", "Cocktail", "01 Cocktail.mp3");
+        expect(result.itemsMoved).toBe(1);
+        expect(result.artpathMoved).toBe(true);
+        expect(getItemById(itemId)!.path).toBe(expected);
+        expect(fs.existsSync(expected)).toBe(true);
+        expect(fs.existsSync(itemPath)).toBe(false);
+        expect(getAlbumById(albumId)!.artpath).toBe(lib("A-F", "DJ Ali", "Cocktail", "cover.jpg"));
+        expect(fs.existsSync(artPath)).toBe(false);
+    });
+
+    test("prunes the directories the album vacated", () => {
+        const { albumId } = unknownAlbum();
+        retag(albumId, "Cocktail", "DJ Ali");
+
+        Repository.relocateAlbum(albumId);
+
+        expect(fs.existsSync(lib("N-Z", "Unknown Artist", "Unknown Album"))).toBe(false);
+        expect(fs.existsSync(lib("N-Z", "Unknown Artist"))).toBe(false);
+        expect(fs.existsSync(lib("N-Z"))).toBe(false);
+        expect(fs.existsSync(MUSIC)).toBe(true);
+    });
+
+    test("leaves a directory that still holds untracked files", () => {
+        const { albumId } = unknownAlbum();
+        const stray = write(lib("N-Z", "Unknown Artist", "Unknown Album", "notes.txt"), "hi");
+        retag(albumId, "Cocktail", "DJ Ali");
+
+        Repository.relocateAlbum(albumId);
+
+        expect(fs.existsSync(stray)).toBe(true);
+    });
+
+    test("does nothing when the files are already canonical", () => {
+        const albumId = makeAlbum({ album: "Cocktail", albumartist: "DJ Ali" });
+        const at = write(lib("A-F", "DJ Ali", "Cocktail", "01 Cocktail.mp3"));
+        makeItem(albumId, { path: at, title: "Cocktail", album: "Cocktail", albumartist: "DJ Ali", track: 1 });
+
+        const result = Repository.relocateAlbum(albumId);
+
+        expect(result.itemsMoved).toBe(0);
+        expect(fs.existsSync(at)).toBe(true);
+    });
+
+    test("rolls every move back when two tracks collide on one target path", () => {
+        const albumId = makeAlbum({ album: "Unknown Album", albumartist: "Unknown Artist" });
+        const one = write(lib("N-Z", "Unknown Artist", "Unknown Album", "a.mp3"));
+        const two = write(lib("N-Z", "Unknown Artist", "Unknown Album", "b.mp3"));
+        // Same track number and title, so both resolve to the same target.
+        makeItem(albumId, { path: one, title: "Cocktail", album: "Cocktail", albumartist: "DJ Ali", track: 1 });
+        makeItem(albumId, { path: two, title: "Cocktail", album: "Cocktail", albumartist: "DJ Ali", track: 1 });
+        retag(albumId, "Cocktail", "DJ Ali");
+
+        expect(() => Repository.relocateAlbum(albumId)).toThrow(/already exists/);
+
+        expect(fs.existsSync(one)).toBe(true);
+        expect(fs.existsSync(two)).toBe(true);
+        expect(fs.existsSync(lib("A-F", "DJ Ali", "Cocktail", "01 Cocktail.mp3"))).toBe(false);
+    });
+
+    test("skips items whose file is gone rather than failing the whole album", () => {
+        const albumId = makeAlbum({ album: "Unknown Album", albumartist: "Unknown Artist" });
+        const present = write(lib("N-Z", "Unknown Artist", "Unknown Album", "a.mp3"));
+        makeItem(albumId, { path: present, title: "Cocktail", album: "Cocktail", albumartist: "DJ Ali", track: 1 });
+        makeItem(albumId, {
+            path: lib("N-Z", "Unknown Artist", "Unknown Album", "gone.mp3"),
+            title: "Sundown",
+            album: "Cocktail",
+            albumartist: "DJ Ali",
+            track: 2,
+        });
+        retag(albumId, "Cocktail", "DJ Ali");
+
+        const result = Repository.relocateAlbum(albumId);
+
+        expect(result.itemsMoved).toBe(1);
+        expect(fs.existsSync(lib("A-F", "DJ Ali", "Cocktail", "01 Cocktail.mp3"))).toBe(true);
+    });
+
+    test("survives a case-only retag, which collides with itself on APFS", () => {
+        const albumId = makeAlbum({ album: "Cocktail", albumartist: "dj ali" });
+        const at = write(lib("A-F", "dj ali", "Cocktail", "01 Cocktail.mp3"));
+        const itemId = makeItem(albumId, {
+            path: at,
+            title: "Cocktail",
+            album: "Cocktail",
+            albumartist: "dj ali",
+            track: 1,
+        });
+        retag(albumId, "Cocktail", "DJ Ali");
+
+        expect(() => Repository.relocateAlbum(albumId)).not.toThrow();
+
+        // Case-sensitive filesystems rename it; case-insensitive ones leave it
+        // put. Either way the row has to point at a file that exists.
+        expect(fs.existsSync(getItemById(itemId)!.path)).toBe(true);
+    });
+
+    test("refuses to touch a soft-deleted album", () => {
+        const albumId = makeAlbum({ album: "Cocktail", albumartist: "DJ Ali" });
+        const at = write(lib("A-F", "DJ Ali", "Cocktail", "01 Cocktail.mp3"));
+        makeItem(albumId, { path: at, title: "Cocktail", album: "Cocktail", albumartist: "DJ Ali", track: 1 });
+        Repository.markAlbumForDeletion(albumId);
+
+        expect(() => Repository.relocateAlbum(albumId)).toThrow(/soft-deleted/);
+    });
+});
+
+describe("relocateItem", () => {
+    test("renames a single track after a title edit", () => {
+        const albumId = makeAlbum({ album: "Cocktail", albumartist: "DJ Ali" });
+        const from = write(lib("A-F", "DJ Ali", "Cocktail", "01 Cocktail.mp3"));
+        const sibling = write(lib("A-F", "DJ Ali", "Cocktail", "02 Sundown.mp3"));
+        const itemId = makeItem(albumId, {
+            path: from,
+            title: "Cocktail",
+            album: "Cocktail",
+            albumartist: "DJ Ali",
+            track: 1,
+        });
+        makeItem(albumId, { path: sibling, title: "Sundown", album: "Cocktail", albumartist: "DJ Ali", track: 2 });
+        db.prepare("UPDATE items SET title = ? WHERE id = ?").run("Cocktail (Remix)", itemId);
+
+        const result = Repository.relocateItem(itemId);
+
+        const expected = lib("A-F", "DJ Ali", "Cocktail", "01 Cocktail (Remix).mp3");
+        expect(result.moved).toBe(true);
+        expect(result.to).toBe(expected);
+        expect(fs.existsSync(expected)).toBe(true);
+        expect(fs.existsSync(from)).toBe(false);
+        expect(getItemById(itemId)!.path).toBe(expected);
+        // The album directory still holds a sibling, so it must survive.
+        expect(fs.existsSync(sibling)).toBe(true);
+    });
+
+    test("reports no move when the file is already canonical", () => {
+        const albumId = makeAlbum({ album: "Cocktail", albumartist: "DJ Ali" });
+        const at = write(lib("A-F", "DJ Ali", "Cocktail", "01 Cocktail.mp3"));
+        const itemId = makeItem(albumId, {
+            path: at,
+            title: "Cocktail",
+            album: "Cocktail",
+            albumartist: "DJ Ali",
+            track: 1,
+        });
+
+        expect(Repository.relocateItem(itemId).moved).toBe(false);
+        expect(fs.existsSync(at)).toBe(true);
     });
 });
