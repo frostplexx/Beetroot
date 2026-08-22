@@ -5,7 +5,8 @@ import {
     Outlet,
     Scripts,
 } from "@tanstack/react-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import "./globals.css"; // forces the client bundle to emit globals.css as a file
 import appCss from "./globals.css?url";
 import { cn } from "@/lib/ui/utils";
@@ -97,21 +98,13 @@ function RootLayout() {
 }
 
 function Providers({ children }: { children: React.ReactNode }) {
-    const [client] = React.useState(
-        () =>
-            new QueryClient({
-                defaultOptions: {
-                    queries: {
-                        staleTime: 60_000,
-                        gcTime: 5 * 60_000,
-                        refetchOnWindowFocus: false,
-                    },
-                },
-            }),
-    );
+    // One QueryClient for the whole app. The router builds it per request and
+    // passes it down as route context, so loaders and components read and
+    // invalidate the same cache.
+    const { queryClient } = Route.useRouteContext();
 
     return (
-        <QueryClientProvider client={client}>
+        <QueryClientProvider client={queryClient}>
             <TooltipProvider>{children}</TooltipProvider>
         </QueryClientProvider>
     );
