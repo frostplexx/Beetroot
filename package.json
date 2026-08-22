@@ -7,6 +7,7 @@
     "dev": "bun --bun vite dev",
     "build": "vite build && bun build --target=bun --outfile=dist/server/reconcile-worker.js lib/music/repository/reconcile-worker.ts",
     "start": "bun server.ts",
+    "test": "bun test",
     "postinstall": "bun ./scripts/postinstall.js",
     "test:repository": "bun lib/music/repository/index.ts",
     "test:coverart": "bun lib/music/repository/test-coverart.ts",
