@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import { Music2, FileQuestion } from "lucide-react"
 import { cn } from "@/lib/ui/utils"
+import { albumArtUrl } from "@/lib/art-url"
 
 interface AlbumCardData {
     id: number;
@@ -9,6 +10,7 @@ interface AlbumCardData {
     artpath: string | null;
     added: number;
     missing_since: number | null;
+    art_version?: number;
 }
 
 export default function AlbumCard({
@@ -37,7 +39,7 @@ export default function AlbumCard({
                     </div>
                 ) : album.artpath ? (
                     <img
-                        src={`/api/album/${album.id}/art?size=400`}
+                        src={albumArtUrl(album.id, 400, album.art_version)}
                         alt={`${album.album} by ${album.albumartist}`}
                         className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
                         loading={priority ? "eager" : "lazy"}

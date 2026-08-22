@@ -5,7 +5,9 @@ import {
     Outlet,
     Scripts,
 } from "@tanstack/react-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { useLibrarySync } from "@/hooks/use-library-sync";
 import "./globals.css"; // forces the client bundle to emit globals.css as a file
 import appCss from "./globals.css?url";
 import { cn } from "@/lib/ui/utils";
@@ -97,22 +99,48 @@ function RootLayout() {
 }
 
 function Providers({ children }: { children: React.ReactNode }) {
-    const [client] = React.useState(
-        () =>
-            new QueryClient({
-                defaultOptions: {
-                    queries: {
-                        staleTime: 60_000,
-                        gcTime: 5 * 60_000,
-                        refetchOnWindowFocus: false,
-                    },
-                },
-            }),
-    );
+    // One QueryClient for the whole app. The router builds it per request and
+    // passes it down as route context, so loaders and components read and
+    // invalidate the same cache.
+    const { queryClient } = Route.useRouteContext();
 
     return (
-        <QueryClientProvider client={client}>
+        <QueryClientProvider client={queryClient}>
+            <LibrarySyncInvalidator />
             <TooltipProvider>{children}</TooltipProvider>
         </QueryClientProvider>
     );
+}
+
+/**
+ * Drops cached album data whenever a reconcile changes the library. Sits at the
+ * root because the subscription has to outlive any one page: an import started
+ * from the admin screen completes while the library route is unmounted, and a
+ * subscription owned by that route would never see the event.
+ */
+function LibrarySyncInvalidator() {
+    const queryClient = useQueryClient();
+    const pending = React.useRef(false);
+
+    // Defer while the tab is hidden so a background window doesn't refetch.
+    React.useEffect(() => {
+        const onVisible = () => {
+            if (document.visibilityState === "visible" && pending.current) {
+                pending.current = false;
+                queryClient.invalidateQueries({ queryKey: ["albums"] });
+            }
+        };
+        document.addEventListener("visibilitychange", onVisible);
+        return () => document.removeEventListener("visibilitychange", onVisible);
+    }, [queryClient]);
+
+    useLibrarySync(() => {
+        if (document.visibilityState === "visible") {
+            queryClient.invalidateQueries({ queryKey: ["albums"] });
+        } else {
+            pending.current = true;
+        }
+    });
+
+    return null;
 }

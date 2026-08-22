@@ -6,7 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import AlbumCard from "@/components/album_card";
 import { AlbumContextMenu } from "@/components/album-context-menu";
 import type { AlbumCardData, AlbumSort } from "@/lib/music/database/albums";
-import { useLibrarySync } from "@/hooks/use-library-sync";
+import { albumArtUrl } from "@/lib/art-url";
 import {
     Pagination as ShadcnPagination,
     PaginationContent,
@@ -60,7 +60,7 @@ function warmImages(albums: AlbumCardData[] | undefined) {
     albums?.forEach((album) => {
         if (!album.artpath || album.missing_since) return;
         const img = new window.Image();
-        img.src = `/api/album/${album.id}/art?size=400`;
+        img.src = albumArtUrl(album.id, 400, album.art_version);
     });
 }
 
@@ -126,26 +126,8 @@ export default function Library({ page, sort }: { page: number; sort: AlbumSort 
             .catch(() => { });
     }, [page, totalPages, pageSize, sort, queryClient]);
 
-    // Library sync → invalidate instead of full refresh. Defer while hidden.
-    const pendingInvalidate = useRef(false);
-    useEffect(() => {
-        const onVisible = () => {
-            if (document.visibilityState === "visible" && pendingInvalidate.current) {
-                pendingInvalidate.current = false;
-                queryClient.invalidateQueries({ queryKey: ["albums"] });
-            }
-        };
-        document.addEventListener("visibilitychange", onVisible);
-        return () => document.removeEventListener("visibilitychange", onVisible);
-    }, [queryClient]);
-
-    useLibrarySync(() => {
-        if (document.visibilityState === "visible") {
-            queryClient.invalidateQueries({ queryKey: ["albums"] });
-        } else {
-            pendingInvalidate.current = true;
-        }
-    });
+    // Reconcile-driven invalidation lives in LibrarySyncInvalidator at the
+    // root, so it still fires while this route is unmounted.
 
     // Keyboard nav.
     useEffect(() => {

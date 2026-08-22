@@ -148,10 +148,26 @@ export const Route = createFileRoute("/api/album/$id")({
                         );
                     }
 
+                    // The path template is applied at import time, so an album
+                    // renamed here still sits under its old directory until the
+                    // files are moved to match. Not fatal if it fails: the tags
+                    // and the database are already correct, only the layout is
+                    // stale, so report it instead of failing the whole save.
+                    let relocation: { itemsMoved: number; artpathMoved: boolean } | null = null;
+                    let relocationError: string | null = null;
+                    try {
+                        relocation = Repository.relocateAlbum(albumId);
+                    } catch (error) {
+                        relocationError = error instanceof Error ? error.message : String(error);
+                        console.error(`Failed to relocate album ${albumId}:`, error);
+                    }
+
                     return Response.json({
                         success: true,
                         albumId,
                         tracksUpdated: items.length,
+                        filesMoved: relocation?.itemsMoved ?? 0,
+                        relocationError,
                     });
                 } catch (error) {
                     console.error("Error updating album:", error);

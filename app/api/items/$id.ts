@@ -175,10 +175,25 @@ export const Route = createFileRoute("/api/items/$id")({
                     );
                 }
 
+                // Track number, title and artist all feed the path template, so
+                // the file has to follow the edit. Not fatal if it fails: the
+                // tags and the database are already correct, only the layout is
+                // stale, so report it instead of failing the whole save.
+                let fileMoved = false;
+                let relocationError: string | null = null;
+                try {
+                    fileMoved = Repository.relocateItem(itemId).moved;
+                } catch (error) {
+                    relocationError = error instanceof Error ? error.message : String(error);
+                    console.error(`Failed to relocate item ${itemId}:`, error);
+                }
+
                 return Response.json({
                     item: getItemById(itemId),
                     updated: true,
                     fieldsUpdated: Object.keys(updates),
+                    fileMoved,
+                    relocationError,
                 });
             },
 

@@ -8,6 +8,8 @@ const loadAlbum = createServerFn({ method: "GET" })
         const { getAlbumById, getItemsByAlbum } = await import(
             "@/lib/music/database"
         );
+        const { artVersion } = await import("@/lib/api/art-version");
+        const { albumArtUrl } = await import("@/lib/art-url");
         const albumId = parseInt(id, 10);
         if (!Number.isFinite(albumId) || albumId <= 0) {
             return null;
@@ -18,7 +20,7 @@ const loadAlbum = createServerFn({ method: "GET" })
         if (!album || album.marked_for_deletion != null) return null;
         const artUrl =
             album.artpath && !album.missing_since
-                ? `/api/album/${albumId}/art?size=800&t=${album.added}`
+                ? albumArtUrl(albumId, 800, artVersion(album.artpath))
                 : null;
         const songs = getItemsByAlbum(albumId);
         return { album, artUrl, songs };

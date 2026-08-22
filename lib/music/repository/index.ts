@@ -9,7 +9,7 @@ import { DataSource, ReconcileItemError, ReconcilePhase, ReconcileProgress, Reco
 import { Item, Album, writeOrUpdateAlbum, writeOrUpdateItem, updateItem, getItemsByAlbum, getAllItemsByAlbum, deleteItemFromDB, unsafeForceDeleteItemFromDB, getAllItemPaths, batchUpdateItems, getItemsReadyForDeletion, batchDeleteItems, getAlbumsWithMissingArtwork, getAlbumById, checkAndUpdateAlbumMissingStatus, getItemById, setAlbumMarkedForDeletion, updateAlbumArtpath } from "../database";
 import { mergeData } from "./merger";
 import { normalizeAlbumString } from "../database/normalize";
-import { writeBackItem, moveItem, moveFile, moveFileWithReason, copyFile, computeTargetPath } from "./writeback";
+import { writeBackItem, moveFile, moveFileWithReason, copyFile, computeTargetPath } from "./writeback";
 import { globalConfig } from "../../config";
 import fsPromises from 'fs/promises';
 import * as fs from 'fs';
@@ -93,6 +93,106 @@ function uniqueTrashPath(desired: string): string {
         if (!fs.existsSync(candidate)) return candidate;
     }
     throw new Error(`Cannot find unique trash path for ${desired} after 1000 attempts`);
+}
+
+type ItemMove = { item: Item; from: string; to: string };
+
+/**
+ * Relocate a batch of files and commit the result in a single DB transaction.
+ * Either every file sits at its new path with the database agreeing, or nothing
+ * observably changed: a failed move unwinds the moves before it, and a failed
+ * DB write unwinds all of them.
+ *
+ * `extraMoves` carries files that travel with the batch but have no item row of
+ * their own, i.e. album cover art. `commit` runs inside the transaction and
+ * owns every column beyond `items.path` — the deletion markers, the album row.
+ * Item objects are only mutated once the transaction has committed, so a caller
+ * holding one never sees a path that didn't make it to disk.
+ */
+function applyMoves(
+    label: string,
+    itemMoves: ItemMove[],
+    extraMoves: Array<{ from: string; to: string }>,
+    commit: () => void,
+): void {
+    const done: Array<{ from: string; to: string }> = [];
+
+    const rollback = (stage: string) => {
+        for (const m of [...done].reverse()) {
+            const r = moveFileWithReason(m.to, m.from);
+            if (!r.ok) {
+                console.error(
+                    `CRITICAL: ${label} ${stage} failed to roll back ${m.to} → ${m.from}: ${r.reason}; manual recovery needed`,
+                );
+            }
+        }
+    };
+
+    try {
+        for (const m of [...itemMoves, ...extraMoves]) {
+            const r = moveFileWithReason(m.from, m.to);
+            if (!r.ok) throw new Error(`${label} failed, ${m.from} → ${m.to}: ${r.reason}`);
+            done.push({ from: m.from, to: m.to });
+        }
+    } catch (error) {
+        rollback('move');
+        throw error;
+    }
+
+    try {
+        db.transaction(() => {
+            for (const m of itemMoves) {
+                // Direct UPDATE by id. writeOrUpdateItem routes through
+                // findExistingItem, which matches by mb_trackid and finds this
+                // very row; under the default duplicate_action 'skip' that
+                // silently no-ops the write, leaving the file moved and the row
+                // pointing at the old path.
+                updateItem(m.item.id, { path: m.to });
+            }
+            commit();
+        })();
+    } catch (dbError) {
+        rollback('db-failure');
+        const msg = dbError instanceof Error ? dbError.message : String(dbError);
+        throw new Error(`${label} rolled back, DB write failed: ${msg}`);
+    }
+
+    for (const m of itemMoves) m.item.path = m.to;
+}
+
+/**
+ * True when both paths name the same file on disk. A case-only rename is a real
+ * change on ext4 but a no-op on APFS, where the destination "already exists"
+ * and a move would be refused.
+ */
+function isSameFile(a: string, b: string): boolean {
+    try {
+        const sa = fs.statSync(a);
+        const sb = fs.statSync(b);
+        return sa.ino === sb.ino && sa.dev === sb.dev;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Delete directories a move left empty, walking up until a non-empty parent or
+ * music_directory. Best effort: any error just leaves the folder behind. A
+ * directory still holding files we don't track (a stray cover, a .cue) reads as
+ * non-empty and stops the walk, so nothing untracked is ever removed.
+ */
+function pruneEmptyDirs(startDir: string): void {
+    const root = globalConfig.music_directory.replace(/\/+$/, '');
+    let dir = path.resolve(startDir);
+    while (dir !== root && dir.startsWith(root + path.sep)) {
+        try {
+            if (fs.readdirSync(dir).length > 0) return;
+            fs.rmdirSync(dir);
+        } catch {
+            return;
+        }
+        dir = path.dirname(dir);
+    }
 }
 
 
@@ -313,52 +413,19 @@ class Repository {
     }
 
     markItemForDeletion(item: Item): void {
-        // Soft delete is atomic: either the file ends up in trash AND the DB
-        // row is marked AND its path points into trash, or nothing happens.
-        //
-        // Failure modes handled:
-        //   move fails        → throw with reason; DB unchanged.
-        //   move ok, DB fail  → move the file back to its original location,
-        //                       then throw; DB and disk return to pre-call state.
-        //
         // Invariant maintained after a successful return:
         //   marked_for_deletion IS NOT NULL ⟺ item.path is inside trashRoot()
         // The reconcile cleanup at deleteItem() relies on that biconditional to
-        // decide what's safe to permanently unlink.
-        const originalPath = item.path;
-        const trashPath = uniqueTrashPath(computeTrashPath(originalPath));
+        // decide what's safe to permanently unlink, so the path and the marker
+        // have to land in the same transaction.
+        const now = Date.now();
+        const trashPath = uniqueTrashPath(computeTrashPath(item.path));
 
-        const moved = moveFileWithReason(originalPath, trashPath);
-        if (!moved.ok) {
-            throw new Error(`Failed to move ${originalPath} to trash: ${moved.reason}`);
-        }
+        applyMoves('Trashing', [{ item, from: item.path, to: trashPath }], [], () => {
+            updateItem(item.id, { marked_for_deletion: now });
+        });
 
-        try {
-            const now = Date.now();
-            // Direct UPDATE by id. writeOrUpdateItem would route through
-            // findExistingItem, which matches by mb_trackid and finds the row
-            // by itself; with the default duplicate_action: 'skip' that
-            // silently no-ops the write, leaving the file in trash but the DB
-            // row pointing at the original (now-empty) path. The whole
-            // soft-delete then appeared to succeed but didn't persist.
-            updateItem(item.id, { path: trashPath, marked_for_deletion: now });
-            item.path = trashPath;
-            item.marked_for_deletion = now;
-        } catch (dbError) {
-            // Best-effort rollback of the filesystem half. If we can't undo the
-            // move, log a critical so the user knows manual recovery is needed,
-            // and still surface the original DB error.
-            item.path = originalPath;
-            item.marked_for_deletion = undefined;
-            const rollback = moveFileWithReason(trashPath, originalPath);
-            if (!rollback.ok) {
-                console.error(
-                    `CRITICAL: failed to roll back trash move ${trashPath} → ${originalPath}: ${rollback.reason}; manual recovery needed`,
-                );
-            }
-            const msg = dbError instanceof Error ? dbError.message : String(dbError);
-            throw new Error(`Trashing rolled back, DB write failed: ${msg}`);
-        }
+        item.marked_for_deletion = now;
     }
 
     // Restore a single soft-deleted item to its canonical path. Refuses if the
@@ -380,37 +447,15 @@ class Repository {
                 );
             }
         }
-        const toPath = computeTargetPath(item);
         const fromPath = item.path;
-        if (fs.existsSync(toPath)) {
-            throw new Error(`Cannot restore to ${toPath}: file already exists`);
-        }
-        const previousMarker = item.marked_for_deletion;
+        const toPath = computeTargetPath(item);
 
-        const moved = moveFileWithReason(fromPath, toPath);
-        if (!moved.ok) {
-            throw new Error(`Failed to move ${fromPath} back to ${toPath}: ${moved.reason}`);
-        }
+        applyMoves('Restore', [{ item, from: fromPath, to: toPath }], [], () => {
+            updateItem(item.id, { marked_for_deletion: undefined });
+        });
 
-        try {
-            // Direct UPDATE by id — see markItemForDeletion for the reason
-            // writeOrUpdateItem isn't safe here.
-            updateItem(item.id, { path: toPath, marked_for_deletion: undefined });
-            item.path = toPath;
-            item.marked_for_deletion = undefined;
-            if (item.album_id != null) checkAndUpdateAlbumMissingStatus(item.album_id);
-        } catch (dbError) {
-            item.path = fromPath;
-            item.marked_for_deletion = previousMarker;
-            const rollback = moveFileWithReason(toPath, fromPath);
-            if (!rollback.ok) {
-                console.error(
-                    `CRITICAL: failed to roll back restore move ${toPath} → ${fromPath}: ${rollback.reason}; manual recovery needed`,
-                );
-            }
-            const msg = dbError instanceof Error ? dbError.message : String(dbError);
-            throw new Error(`Restore rolled back, DB write failed: ${msg}`);
-        }
+        item.marked_for_deletion = undefined;
+        if (item.album_id != null) checkAndUpdateAlbumMissingStatus(item.album_id);
         return { restored: true, from: fromPath, to: toPath };
     }
 
@@ -450,101 +495,43 @@ class Repository {
         const album = getAlbumById(albumId);
         if (!album) throw new Error(`Album ${albumId} not found`);
         const items = getItemsByAlbum(albumId);
+        const now = Date.now();
 
-        // Phase 1: move every file (tracks + artpath, if any) into trash.
-        // Tracked so a later failure can roll back the moves we already did.
-        const moved: Array<{ originalPath: string; trashPath: string }> = [];
-        let itemsMoved = 0;
-        let artpathMoved: { from: string; to: string } | null = null;
+        const itemMoves: ItemMove[] = items.map(item => ({
+            item,
+            from: item.path,
+            to: uniqueTrashPath(computeTrashPath(item.path)),
+        }));
 
-        const rollbackMoves = (label: string) => {
-            for (const m of [...moved].reverse()) {
-                const r = moveFileWithReason(m.trashPath, m.originalPath);
-                if (!r.ok) {
-                    console.error(
-                        `CRITICAL: ${label} failed to roll back ${m.trashPath} → ${m.originalPath}: ${r.reason}; manual recovery needed`,
-                    );
-                }
+        // Album artpath: only move it if it's inside music_directory and the
+        // file actually exists on disk. computeTrashPath throws otherwise,
+        // which we treat as "not ours to manage" (e.g. an absolute path
+        // pointing at an external cache) and silently skip.
+        let artMove: { from: string; to: string } | null = null;
+        if (album.artpath && fs.existsSync(album.artpath)) {
+            try {
+                artMove = { from: album.artpath, to: uniqueTrashPath(computeTrashPath(album.artpath)) };
+            } catch {
+                artMove = null;
             }
-            // Reset staged paths on item objects we already mutated in memory.
-            for (const item of items) {
-                const matching = moved.find(m => m.trashPath === item.path);
-                if (matching) item.path = matching.originalPath;
-            }
-        };
-
-        try {
-            for (const item of items) {
-                const trashPath = uniqueTrashPath(computeTrashPath(item.path));
-                const originalPath = item.path;
-                const r = moveFileWithReason(originalPath, trashPath);
-                if (!r.ok) {
-                    throw new Error(`Failed to move ${originalPath} to trash: ${r.reason}`);
-                }
-                moved.push({ originalPath, trashPath });
-                item.path = trashPath; // staged; will be written in Phase 2
-                itemsMoved++;
-            }
-
-            // Album artpath: only move if it's inside music_directory and the
-            // file actually exists on disk. computeTrashPath throws otherwise,
-            // which we treat as "not ours to manage" (e.g. an absolute path
-            // pointing at an external cache) and silently skip.
-            if (album.artpath && fs.existsSync(album.artpath)) {
-                let trashArt: string | null = null;
-                try {
-                    trashArt = uniqueTrashPath(computeTrashPath(album.artpath));
-                } catch {
-                    trashArt = null;
-                }
-                if (trashArt) {
-                    const r = moveFileWithReason(album.artpath, trashArt);
-                    if (!r.ok) {
-                        throw new Error(`Failed to move artpath ${album.artpath} to trash: ${r.reason}`);
-                    }
-                    moved.push({ originalPath: album.artpath, trashPath: trashArt });
-                    artpathMoved = { from: album.artpath, to: trashArt };
-                }
-            }
-        } catch (error) {
-            rollbackMoves('move');
-            throw error;
         }
 
-        // Phase 2: commit metadata + marker. Reaches the post-condition:
+        // Post-condition once this returns:
         //   every item.path under trashRoot()
         //   every item.marked_for_deletion = now
         //   album.marked_for_deletion = now
-        //   album.artpath either null or under trashRoot()
-        //
-        // If the DB transaction fails we have a worse state to recover from
-        // than a mid-move failure: every file has already been relocated to
-        // trash. Roll those back so the library returns to its pre-call state.
-        const now = Date.now();
-        try {
-            db.transaction(() => {
-                for (const item of items) {
-                    // Direct UPDATE by id; see markItemForDeletion for why
-                    // writeOrUpdateItem skips the write under the default
-                    // duplicate_action: 'skip'.
-                    updateItem(item.id, { path: item.path, marked_for_deletion: now });
-                    item.marked_for_deletion = now;
-                }
-                if (artpathMoved) {
-                    updateAlbumArtpath(albumId, artpathMoved.to);
-                }
-                setAlbumMarkedForDeletion(albumId, now);
-            })();
-        } catch (dbError) {
-            for (const item of items) {
-                item.marked_for_deletion = undefined;
+        //   album.artpath either unchanged or under trashRoot()
+        applyMoves('Trashing', itemMoves, artMove ? [artMove] : [], () => {
+            for (const m of itemMoves) {
+                updateItem(m.item.id, { marked_for_deletion: now });
             }
-            rollbackMoves('db-failure');
-            const msg = dbError instanceof Error ? dbError.message : String(dbError);
-            throw new Error(`Trash rolled back, DB write failed: ${msg}`);
-        }
+            if (artMove) updateAlbumArtpath(albumId, artMove.to);
+            setAlbumMarkedForDeletion(albumId, now);
+        });
 
-        return { itemsMoved, albumMarked: true, artpathMoved: artpathMoved != null };
+        for (const item of items) item.marked_for_deletion = now;
+
+        return { itemsMoved: itemMoves.length, albumMarked: true, artpathMoved: artMove != null };
     }
 
     /**
@@ -562,97 +549,128 @@ class Repository {
         }
         // getItemsByAlbum hides marked items from user-facing lookups; here we
         // explicitly need to see them.
-        const items = getAllItemsByAlbum(albumId);
+        const items = getAllItemsByAlbum(albumId).filter(i => i.marked_for_deletion != null);
 
-        const itemMoves: Array<{ item: Item; fromPath: string; toPath: string }> = [];
+        const itemMoves: ItemMove[] = items.map(item => ({
+            item,
+            from: item.path,
+            to: computeTargetPath(item),
+        }));
+
+        // Restore artpath to the directory the tracks land in (all items in a
+        // single-disc album share one dir; for multi-disc the cover sits next
+        // to the first item). Skip if there's no artpath or it's gone from disk
+        // (e.g. retention reaped just the art).
         let artMove: { from: string; to: string } | null = null;
-
-        const rollbackMoves = (label: string) => {
-            if (artMove) {
-                const r = moveFileWithReason(artMove.to, artMove.from);
-                if (!r.ok) {
-                    console.error(
-                        `CRITICAL: ${label} failed to roll back artpath restore ${artMove.to} → ${artMove.from}: ${r.reason}; manual recovery needed`,
-                    );
-                }
+        let staleArt: string | null = null;
+        let artpath = album.artpath;
+        if (album.artpath && fs.existsSync(album.artpath) && itemMoves.length > 0) {
+            const destArt = path.join(path.dirname(itemMoves[0].to), path.basename(album.artpath));
+            artpath = destArt;
+            if (fs.existsSync(destArt)) {
+                // The destination already has a cover, e.g. a re-imported copy
+                // of the album wrote one. Keep that file and drop our trash
+                // copy, re-pointing album.artpath at the survivor so nothing
+                // dangles in either the DB or trash. Deleting only once the
+                // batch has committed keeps it out of the rollback path.
+                staleArt = album.artpath;
+            } else {
+                artMove = { from: album.artpath, to: destArt };
             }
-            for (const m of [...itemMoves].reverse()) {
-                const r = moveFileWithReason(m.toPath, m.fromPath);
-                if (!r.ok) {
-                    console.error(
-                        `CRITICAL: ${label} failed to roll back restore ${m.toPath} → ${m.fromPath}: ${r.reason}; manual recovery needed`,
-                    );
-                }
-            }
-        };
-
-        try {
-            for (const item of items) {
-                if (item.marked_for_deletion == null) continue;
-                const toPath = computeTargetPath(item);
-                const fromPath = item.path;
-                // Refuse to overwrite: if something already occupies the
-                // canonical path (e.g. the user re-imported the same album
-                // while this one sat in trash), rename() would silently
-                // replace it on POSIX. That's a data-loss footgun, so bail.
-                if (fs.existsSync(toPath)) {
-                    throw new Error(`Cannot restore to ${toPath}: file already exists`);
-                }
-                const r = moveFileWithReason(fromPath, toPath);
-                if (!r.ok) {
-                    throw new Error(`Failed to move ${fromPath} back to ${toPath}: ${r.reason}`);
-                }
-                itemMoves.push({ item, fromPath, toPath });
-            }
-
-            // Restore artpath to the directory of any restored item (all items
-            // in a single-disc album land in the same dir; for multi-disc, the
-            // cover sits next to the first item). Skip if there's no artpath
-            // or it doesn't exist on disk (e.g. retention reaped just the art).
-            if (album.artpath && fs.existsSync(album.artpath) && itemMoves.length > 0) {
-                const destDir = path.dirname(itemMoves[0].toPath);
-                const destArt = path.join(destDir, path.basename(album.artpath));
-                if (fs.existsSync(destArt)) {
-                    // The destination already has a cover (e.g. a re-imported
-                    // copy of the album wrote one). Keep that file, drop our
-                    // trash copy, and re-point album.artpath at the surviving
-                    // file so nothing dangles in either DB or trash.
-                    try { fs.unlinkSync(album.artpath); } catch { /* best effort */ }
-                    artMove = { from: album.artpath, to: destArt };
-                } else {
-                    const r = moveFileWithReason(album.artpath, destArt);
-                    if (!r.ok) {
-                        throw new Error(`Failed to restore artpath ${album.artpath} → ${destArt}: ${r.reason}`);
-                    }
-                    artMove = { from: album.artpath, to: destArt };
-                }
-            }
-        } catch (error) {
-            rollbackMoves('move');
-            throw error;
         }
 
-        try {
-            db.transaction(() => {
-                for (const m of itemMoves) {
-                    // Direct UPDATE by id; see markItemForDeletion for why
-                    // writeOrUpdateItem skips the write.
-                    updateItem(m.item.id, { path: m.toPath, marked_for_deletion: undefined });
-                    m.item.path = m.toPath;
-                    m.item.marked_for_deletion = undefined;
-                }
-                if (artMove) {
-                    updateAlbumArtpath(albumId, artMove.to);
-                }
-                setAlbumMarkedForDeletion(albumId, null);
-            })();
-        } catch (dbError) {
-            rollbackMoves('db-failure');
-            const msg = dbError instanceof Error ? dbError.message : String(dbError);
-            throw new Error(`Restore rolled back, DB write failed: ${msg}`);
+        applyMoves('Restore', itemMoves, artMove ? [artMove] : [], () => {
+            for (const m of itemMoves) {
+                updateItem(m.item.id, { marked_for_deletion: undefined });
+            }
+            if (artpath !== album.artpath) updateAlbumArtpath(albumId, artpath);
+            setAlbumMarkedForDeletion(albumId, null);
+        });
+
+        for (const item of items) item.marked_for_deletion = undefined;
+        if (staleArt) {
+            try { fs.unlinkSync(staleArt); } catch { /* best effort */ }
         }
 
-        return { itemsRestored: itemMoves.length, artpathRestored: artMove != null };
+        return { itemsRestored: itemMoves.length, artpathRestored: artpath !== album.artpath };
+    }
+
+    /**
+     * Move an album's files to the paths its current metadata implies and prune
+     * the directories they vacate. The path template is otherwise only applied
+     * at import time, so an album tagged after adoption keeps sitting wherever
+     * it first landed, typically under Unknown Artist/Unknown Album.
+     */
+    relocateAlbum(albumId: number): { itemsMoved: number; artpathMoved: boolean } {
+        const album = getAlbumById(albumId);
+        if (!album) throw new Error(`Album ${albumId} not found`);
+        if (album.marked_for_deletion != null) {
+            throw new Error(`Album ${albumId} is soft-deleted; restore it before relocating`);
+        }
+
+        // Read the rows back rather than taking the caller's copies: the
+        // metadata write that triggered this is what decides the target paths.
+        // A row whose file is missing is skipped instead of failing the batch,
+        // since the edit that triggered us succeeded for every other track.
+        const itemMoves: ItemMove[] = getItemsByAlbum(albumId)
+            .filter(item => item.missing_since == null && fs.existsSync(item.path))
+            .map(item => ({ item, from: item.path, to: computeTargetPath(item) }))
+            .filter(m => m.from !== m.to && !isSameFile(m.from, m.to));
+
+        // Cover art follows the tracks into the new directory. A track-number
+        // or title edit renames files within the same directory, which leaves
+        // the art where it is.
+        let artMove: { from: string; to: string } | null = null;
+        if (album.artpath && fs.existsSync(album.artpath) && itemMoves.length > 0) {
+            const destArt = path.join(path.dirname(itemMoves[0].to), path.basename(album.artpath));
+            if (destArt !== album.artpath && !isSameFile(album.artpath, destArt)) {
+                artMove = { from: album.artpath, to: destArt };
+            }
+        }
+
+        if (itemMoves.length === 0 && !artMove) {
+            return { itemsMoved: 0, artpathMoved: false };
+        }
+
+        const vacated = new Set(itemMoves.map(m => path.dirname(m.from)));
+        if (artMove) vacated.add(path.dirname(artMove.from));
+
+        applyMoves('Relocation', itemMoves, artMove ? [artMove] : [], () => {
+            if (artMove) updateAlbumArtpath(albumId, artMove.to);
+        });
+
+        for (const dir of vacated) pruneEmptyDirs(dir);
+
+        return { itemsMoved: itemMoves.length, artpathMoved: artMove != null };
+    }
+
+    /**
+     * Relocate a single track after its own metadata changed. Album artwork is
+     * left alone: the sibling tracks still reference it, and an album-wide edit
+     * goes through relocateAlbum instead.
+     */
+    relocateItem(itemId: number): { moved: boolean; from: string; to: string } {
+        const item = getItemById(itemId);
+        if (!item) throw new Error(`Item ${itemId} not found`);
+        if (item.marked_for_deletion != null) {
+            throw new Error(`Item ${itemId} is soft-deleted; restore it before relocating`);
+        }
+
+        const from = item.path;
+        const to = computeTargetPath(item);
+        if (
+            from === to ||
+            item.missing_since != null ||
+            !fs.existsSync(from) ||
+            isSameFile(from, to)
+        ) {
+            return { moved: false, from, to: from };
+        }
+
+        applyMoves('Relocation', [{ item, from, to }], [], () => {});
+        pruneEmptyDirs(path.dirname(from));
+
+        return { moved: true, from, to };
     }
 
 

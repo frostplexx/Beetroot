@@ -127,6 +127,8 @@ export interface AlbumCardData {
     artpath: string | null
     added: number
     missing_since: number | null
+    // Added by the API layer, not the query. See lib/api/art-version.ts.
+    art_version?: number
 }
 
 export type AlbumSort = "recently-added" | "name" | "artist" | "year"

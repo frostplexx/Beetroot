@@ -32,6 +32,7 @@ import {
     FileQuestion,
 } from "lucide-react";
 import type { Item } from "@/lib/music/database";
+import { albumArtUrl } from "@/lib/art-url";
 
 type AlbumSummary = {
     id: number;
@@ -40,6 +41,7 @@ type AlbumSummary = {
     year: number | null;
     added: number;
     missing_since: number | null;
+    art_version?: number;
 };
 
 // ---- Move-to-album dialog ----
@@ -188,7 +190,7 @@ function MoveToAlbumDialog({
                                                     <FileQuestion className="w-5 h-5 text-red-400/60" />
                                                 ) : (
                                                     <img
-                                                        src={`/api/album/${album.id}/art?size=64&t=${album.added}`}
+                                                        src={albumArtUrl(album.id, 64, album.art_version)}
                                                         alt=""
                                                         className="w-full h-full object-cover"
                                                         onError={(e) => {

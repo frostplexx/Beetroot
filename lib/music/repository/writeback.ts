@@ -317,20 +317,6 @@ export function computeTargetPath(item: Item): string {
     return result;
 }
 
-export function moveItem(item: Item): boolean {
-    const targetPath = computeTargetPath(item);
-
-    // Only move file if the evaluated path is different from current path
-    const shouldMove = item.path !== targetPath;
-
-    if (shouldMove && moveFile(item.path, targetPath)) {
-        item.path = targetPath;  // Update item path after successful move
-        return true;
-    }
-    return false;
-}
-
-
 export type MoveResult =
     | { ok: true }
     | { ok: false; reason: string };

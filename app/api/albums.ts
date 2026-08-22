@@ -4,6 +4,7 @@ import {
     getCachedAlbumCount,
     type AlbumSort,
 } from "@/lib/music/database/albums";
+import { withArtVersion } from "@/lib/api/art-version";
 
 const VALID_SORTS = new Set<AlbumSort>(["recently-added", "name", "artist", "year"]);
 
@@ -27,7 +28,7 @@ export const Route = createFileRoute("/api/albums")({
 
                     return Response.json(
                         {
-                            albums,
+                            albums: withArtVersion(albums),
                             pagination: {
                                 page,
                                 pageSize,
@@ -37,7 +38,12 @@ export const Route = createFileRoute("/api/albums")({
                         },
                         {
                             headers: {
-                                "Cache-Control": "private, max-age=10, stale-while-revalidate=60",
+                                // React Query owns caching for this route via
+                                // staleTime plus explicit invalidation. An HTTP
+                                // cache would outrank that, since the browser
+                                // can answer an invalidated refetch from its own
+                                // copy and hide a just-saved edit.
+                                "Cache-Control": "no-store",
                             },
                         },
                     );

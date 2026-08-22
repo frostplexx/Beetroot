@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { searchAlbums, getAlbumsSearchCount } from "@/lib/music/database";
+import { searchAlbums, getAlbumsSearchCount, getAlbumById } from "@/lib/music/database";
 import { searchItems } from "@/lib/music/database/items";
+import { artVersion, withArtVersion } from "@/lib/api/art-version";
 
 export const Route = createFileRoute("/api/search")({
     server: {
@@ -23,22 +24,31 @@ export const Route = createFileRoute("/api/search")({
                     const albums = searchAlbums(query, page, pageSize);
                     const total = getAlbumsSearchCount(query);
 
-                    const rawTracks = searchItems(query, 0, 10);
-                    const tracks = rawTracks
-                        .filter((item) => item.album_id != null)
-                        .map((item) => ({
-                            id: item.id,
-                            title: item.title,
-                            artist: item.artist,
-                            album: item.album,
-                            album_id: item.album_id,
-                            track: item.track,
-                            year: item.year,
-                            added: item.added,
-                        }));
+                    const rawTracks = searchItems(query, 0, 10)
+                        .filter((item) => item.album_id != null);
+
+                    // Track results render their album's cover, so they need the
+                    // same art version as an album row. Resolved per distinct
+                    // album rather than per track.
+                    const versionByAlbum = new Map<number, number>();
+                    for (const albumId of new Set(rawTracks.map((item) => item.album_id!))) {
+                        versionByAlbum.set(albumId, artVersion(getAlbumById(albumId)?.artpath));
+                    }
+
+                    const tracks = rawTracks.map((item) => ({
+                        id: item.id,
+                        title: item.title,
+                        artist: item.artist,
+                        album: item.album,
+                        album_id: item.album_id,
+                        track: item.track,
+                        year: item.year,
+                        added: item.added,
+                        art_version: versionByAlbum.get(item.album_id!) ?? 0,
+                    }));
 
                     return Response.json({
-                        albums,
+                        albums: withArtVersion(albums),
                         tracks,
                         pagination: {
                             page,

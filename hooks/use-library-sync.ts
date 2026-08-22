@@ -150,6 +150,12 @@ function extractLastResult(d: any): ReconcileLastResult | null {
 let _eventSource: EventSource | null = null;
 let _reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
+// Timestamp of the newest reconcile result the update callbacks have acted on.
+// Every new connection is greeted with a status event replaying the last
+// result, so this keeps a reconnect from re-running work already done.
+let _appliedResultAt = 0;
+let _seenStatus = false;
+
 function _connect() {
     if (typeof window === 'undefined') return;
 
@@ -265,8 +271,24 @@ function _connect() {
                     return { ...prev, isReconciling, log, progress, itemErrors, lastResult };
                 });
 
-                if (data.type === 'completed' && data.data?.hasChanges) {
-                    for (const cb of _onUpdateCallbacks) cb();
+                if (data.type === 'completed') {
+                    _appliedResultAt = Date.now();
+                    if (data.data?.hasChanges) {
+                        for (const cb of _onUpdateCallbacks) cb();
+                    }
+                } else if (data.type === 'status') {
+                    // A reconcile that finished while this client was
+                    // disconnected is reported nowhere else, so without this
+                    // subscribers keep rendering pre-import data until a manual
+                    // reload. The first status of a page load is skipped: the
+                    // page's own initial fetches are already newer than it.
+                    const lastResult = data.data?.lastResult;
+                    const at = lastResult?.timestamp ?? 0;
+                    if (_seenStatus && lastResult?.hasChanges && at > _appliedResultAt) {
+                        for (const cb of _onUpdateCallbacks) cb();
+                    }
+                    _appliedResultAt = Math.max(_appliedResultAt, at);
+                    _seenStatus = true;
                 }
             } catch (error) {
                 console.error('[LibrarySync] Error parsing event:', error);
