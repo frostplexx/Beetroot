@@ -6,6 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import AlbumCard from "@/components/album_card";
 import { AlbumContextMenu } from "@/components/album-context-menu";
 import type { AlbumCardData, AlbumSort } from "@/lib/music/database/albums";
+import { albumArtUrl } from "@/lib/art-url";
 import {
     Pagination as ShadcnPagination,
     PaginationContent,
@@ -59,7 +60,7 @@ function warmImages(albums: AlbumCardData[] | undefined) {
     albums?.forEach((album) => {
         if (!album.artpath || album.missing_since) return;
         const img = new window.Image();
-        img.src = `/api/album/${album.id}/art?size=400`;
+        img.src = albumArtUrl(album.id, 400, album.art_version);
     });
 }
 

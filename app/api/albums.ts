@@ -4,6 +4,7 @@ import {
     getCachedAlbumCount,
     type AlbumSort,
 } from "@/lib/music/database/albums";
+import { withArtVersion } from "@/lib/api/art-version";
 
 const VALID_SORTS = new Set<AlbumSort>(["recently-added", "name", "artist", "year"]);
 
@@ -27,7 +28,7 @@ export const Route = createFileRoute("/api/albums")({
 
                     return Response.json(
                         {
-                            albums,
+                            albums: withArtVersion(albums),
                             pagination: {
                                 page,
                                 pageSize,

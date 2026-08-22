@@ -12,6 +12,10 @@ import {
   CommandSeparator,
 } from "@/components/ui/command"
 import { Album } from "@/lib/music/database/albums"
+import { albumArtUrl } from "@/lib/art-url"
+
+// art_version is attached by the API layer, not stored on the album row.
+type AlbumWithArt = Album & { art_version?: number }
 
 interface Track {
   id: number
@@ -22,16 +26,17 @@ interface Track {
   track: number | null
   year: number | null
   added: number
+  art_version?: number
 }
 
-function AlbumArtwork({ albumId, albumName, added, missingSince }: { albumId: number; albumName: string; added: number; missingSince?: number | null }) {
+function AlbumArtwork({ albumId, albumName, artVersion, missingSince }: { albumId: number; albumName: string; artVersion?: number; missingSince?: number | null }) {
   return (
     <div className="relative w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-white/5 flex items-center justify-center">
       {missingSince ? (
         <FileQuestion className="w-5 h-5 text-red-400/60" />
       ) : (
         <img
-          src={`/api/album/${albumId}/art?size=80&t=${added}`}
+          src={albumArtUrl(albumId, 80, artVersion)}
           alt={albumName}
           className="absolute inset-0 w-full h-full object-cover"
         />
@@ -48,9 +53,9 @@ interface CommandBarProps {
 export function CommandBar({ open, onOpenChange }: CommandBarProps) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = React.useState("")
-  const [searchResults, setSearchResults] = React.useState<Album[]>([])
+  const [searchResults, setSearchResults] = React.useState<AlbumWithArt[]>([])
   const [trackResults, setTrackResults] = React.useState<Track[]>([])
-  const [recentAlbums, setRecentAlbums] = React.useState<Album[]>([])
+  const [recentAlbums, setRecentAlbums] = React.useState<AlbumWithArt[]>([])
   const [loading, setLoading] = React.useState(false)
   const hasFetchedRecent = React.useRef(false)
 
@@ -168,7 +173,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
                         onSelect={() => handleSelectAlbum(album.id)}
                         className="py-3 px-3"
                       >
-                        <AlbumArtwork albumId={album.id} albumName={album.album} added={album.added} missingSince={album.missing_since} />
+                        <AlbumArtwork albumId={album.id} albumName={album.album} artVersion={album.art_version} missingSince={album.missing_since} />
                         <div className="flex flex-col ml-3 flex-1 min-w-0">
                           <span className="font-medium text-sm truncate">{album.album}</span>
                           <span className="text-xs text-muted-foreground truncate">
@@ -196,7 +201,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
                       onSelect={() => handleSelectAlbum(album.id)}
                       className="py-3 px-3"
                     >
-                      <AlbumArtwork albumId={album.id} albumName={album.album} added={album.added} missingSince={album.missing_since} />
+                      <AlbumArtwork albumId={album.id} albumName={album.album} artVersion={album.art_version} missingSince={album.missing_since} />
                       <div className="flex flex-col ml-3 flex-1 min-w-0">
                         <span className="font-medium text-sm truncate">{album.album}</span>
                         {album.year && (
@@ -220,7 +225,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
                         onSelect={() => handleSelectTrack(track)}
                         className="py-3 px-3"
                       >
-                        <AlbumArtwork albumId={track.album_id} albumName={track.album} added={track.added} />
+                        <AlbumArtwork albumId={track.album_id} albumName={track.album} artVersion={track.art_version} />
                         <div className="flex flex-col ml-3 flex-1 min-w-0">
                           <span className="font-medium text-sm truncate">{track.title}</span>
                           <span className="text-xs text-muted-foreground truncate">
