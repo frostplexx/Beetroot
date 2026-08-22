@@ -6,7 +6,8 @@ import {
     Scripts,
 } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { useLibrarySync } from "@/hooks/use-library-sync";
 import "./globals.css"; // forces the client bundle to emit globals.css as a file
 import appCss from "./globals.css?url";
 import { cn } from "@/lib/ui/utils";
@@ -105,7 +106,41 @@ function Providers({ children }: { children: React.ReactNode }) {
 
     return (
         <QueryClientProvider client={queryClient}>
+            <LibrarySyncInvalidator />
             <TooltipProvider>{children}</TooltipProvider>
         </QueryClientProvider>
     );
+}
+
+/**
+ * Drops cached album data whenever a reconcile changes the library. Sits at the
+ * root because the subscription has to outlive any one page: an import started
+ * from the admin screen completes while the library route is unmounted, and a
+ * subscription owned by that route would never see the event.
+ */
+function LibrarySyncInvalidator() {
+    const queryClient = useQueryClient();
+    const pending = React.useRef(false);
+
+    // Defer while the tab is hidden so a background window doesn't refetch.
+    React.useEffect(() => {
+        const onVisible = () => {
+            if (document.visibilityState === "visible" && pending.current) {
+                pending.current = false;
+                queryClient.invalidateQueries({ queryKey: ["albums"] });
+            }
+        };
+        document.addEventListener("visibilitychange", onVisible);
+        return () => document.removeEventListener("visibilitychange", onVisible);
+    }, [queryClient]);
+
+    useLibrarySync(() => {
+        if (document.visibilityState === "visible") {
+            queryClient.invalidateQueries({ queryKey: ["albums"] });
+        } else {
+            pending.current = true;
+        }
+    });
+
+    return null;
 }
